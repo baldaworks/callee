@@ -9,7 +9,22 @@ permissions:
   contents: write
 
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: go test -race ./...
+      - run: go tool golangci-lint run ./...
+      - run: go tool govulncheck ./...
+
   release:
+    needs: checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
