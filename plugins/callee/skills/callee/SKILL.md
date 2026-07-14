@@ -1,9 +1,15 @@
 ---
 name: callee
 description: Run Markdown-defined Callee roles as subagents. Use when the user asks to run a Callee role, delegate work to a named Callee role, continue a role conversation, or configure Callee MCP.
+user-invocable: true
 ---
 
 # Callee
+
+## Invocation
+
+Use the host's Callee skill command with `<role> <task> [--new]`. The first
+argument is the Callee role ID; all remaining text is its task.
 
 Run Callee roles through MCP whenever the `callee.role.list` tool is available.
 Use the CLI fallback only when that MCP tool is unavailable or fails.
@@ -18,7 +24,7 @@ First discover roles. In MCP mode, call `callee.role.list` with `{}`. In CLI
 fallback mode, show the role list when the user needs it:
 
 ```bash
-npx --yes @baldaworks/callee@0.4.0 role list
+npx --yes @baldaworks/callee@0.4.1 role list
 ```
 
 In CLI mode, let the role runner report an unknown role and its available IDs.
@@ -46,7 +52,7 @@ Announce that MCP is unavailable and that the CLI run cannot be continued.
 Run one role invocation only:
 
 ```bash
-npx --yes @baldaworks/callee@0.4.0 --role "<role>" --prompt "<task>"
+npx --yes @baldaworks/callee@0.4.1 --role "<role>" --prompt "<task>"
 ```
 
 Do not launch `mcp-server` from fallback mode and do not retain a thread ledger
@@ -59,7 +65,7 @@ reload the plugin and verify that Callee appears in the host's MCP tool list.
 For a manual Codex setup, provide:
 
 ```bash
-codex mcp add callee -- npx --yes @baldaworks/callee@0.4.0 mcp-server
+codex mcp add callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
 ```
 
 For a manual Claude Code project setup, provide this `.mcp.json` entry:
@@ -69,10 +75,16 @@ For a manual Claude Code project setup, provide this `.mcp.json` entry:
   "mcpServers": {
     "callee": {
       "command": "npx",
-      "args": ["--yes", "@baldaworks/callee@0.4.0", "mcp-server"]
+      "args": ["--yes", "@baldaworks/callee@0.4.1", "mcp-server"]
     }
   }
 }
+```
+
+For a manual Grok Build project setup, provide:
+
+```bash
+grok mcp add --scope project callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
 ```
 
 Do not add MCP forwarding, provider configuration, Gemini support, or nested

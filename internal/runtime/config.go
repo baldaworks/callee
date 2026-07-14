@@ -80,6 +80,8 @@ func Normalize(r role.Role) (agentconfig.Config, error) {
 		cfg.OpenCodeACP = block
 	case agentconfig.AgentTypeCopilotACP:
 		cfg.CopilotACP = block
+	case agentconfig.AgentTypeGrokACP:
+		cfg.GrokACP = block
 	case agentconfig.AgentTypeGenericACP:
 		cfg.GenericACP = block
 	}

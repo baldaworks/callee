@@ -43,7 +43,7 @@ func TestParseValidation(t *testing.T) {
 }
 
 func TestRuntimeType(t *testing.T) {
-	want := map[string]string{"codex": "codex_acp", "claude": "claude_code_acp", "opencode": "opencode_acp", "copilot": "copilot_acp", "generic_acp": "generic_acp"}
+	want := map[string]string{"codex": "codex_acp", "claude": "claude_code_acp", "opencode": "opencode_acp", "copilot": "copilot_acp", "grok": "grok_acp", "generic_acp": "generic_acp"}
 	for kind, runtime := range want {
 		if got, ok := RuntimeType(kind); !ok || got != runtime {
 			t.Errorf("%s = %q", kind, got)

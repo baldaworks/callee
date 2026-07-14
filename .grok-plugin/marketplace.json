@@ -1,0 +1,18 @@
+{
+  "name": "callee",
+  "owner": {
+    "name": "Baldaworks",
+    "url": "https://github.com/baldaworks"
+  },
+  "description": "Marketplace for Callee roles in Grok Build.",
+  "plugins": [
+    {
+      "name": "callee",
+      "description": "Run Callee roles as persistent MCP-backed subagents.",
+      "version": "0.4.1",
+      "source": "./plugins/callee",
+      "homepage": "https://github.com/baldaworks/callee",
+      "keywords": ["subagents", "mcp", "roles"]
+    }
+  ]
+}

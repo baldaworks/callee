@@ -24,7 +24,7 @@ type NormaFactory struct{}
 
 var buildNormaAgent = buildNormaAgentDefault
 
-const sessionConfigCapacity = 2
+const sessionConfigCapacity = 3
 
 func (NormaFactory) New(provider Provider) (Conversation, error) {
 	ag, closer, err := buildNormaAgent(context.Background(), provider)
@@ -149,22 +149,15 @@ func roleSessionState(r role.Role) map[string]any {
 		configValues = append(configValues, acpagent.SelectSessionConfigValue("mode", mode))
 	}
 
-	acpState := make(map[string]any)
-	if len(configValues) > 0 {
-		acpState["config_values"] = configValues
-	}
-
 	if reasoning := strings.TrimSpace(r.Metadata.Reasoning); reasoning != "" {
-		acpState["meta"] = map[string]any{
-			"codex": map[string]any{"config": map[string]any{"model_reasoning_effort": reasoning}},
-		}
+		configValues = append(configValues, acpagent.SelectSessionConfigValue("reasoning_effort", reasoning))
 	}
 
-	if len(acpState) == 0 {
+	if len(configValues) == 0 {
 		return nil
 	}
 
-	return map[string]any{acpagent.SessionStateKey: acpState}
+	return map[string]any{acpagent.SessionStateKey: map[string]any{"config_values": configValues}}
 }
 
 func (n *normaConversation) Reply(ctx context.Context, threadID, prompt string) (string, error) {

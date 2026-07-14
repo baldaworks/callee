@@ -244,20 +244,45 @@ func TestRoleSessionState(t *testing.T) {
 	}
 
 	values, ok := acpState["config_values"].([]acpagent.SessionConfigValue)
-	if !ok || len(values) != 2 {
+	if !ok || len(values) != 3 {
 		t.Fatalf("session config values = %#v", acpState["config_values"])
 	}
 
-	if values[0] != acpagent.SelectSessionConfigValue("model", "gpt-5.6-sol") || values[1] != acpagent.SelectSessionConfigValue("mode", "review") {
+	want := []acpagent.SessionConfigValue{
+		acpagent.SelectSessionConfigValue("model", "gpt-5.6-sol"),
+		acpagent.SelectSessionConfigValue("mode", "review"),
+		acpagent.SelectSessionConfigValue("reasoning_effort", "high"),
+	}
+	if !reflect.DeepEqual(values, want) {
 		t.Fatalf("session config values = %#v", values)
 	}
 
-	meta := acpState["meta"].(map[string]any)
-	codex := meta["codex"].(map[string]any)
+	if _, ok := acpState["meta"]; ok {
+		t.Fatalf("ACP state must not contain vendor metadata: %#v", acpState)
+	}
+}
 
-	config := codex["config"].(map[string]any)
-	if got, want := config["model_reasoning_effort"], "high"; got != want {
-		t.Fatalf("reasoning effort = %q, want %q", got, want)
+func TestGrokRoleSessionStateUsesOnlyACPConfigValues(t *testing.T) {
+	r := testRole("reviewer", "grok")
+	r.Metadata.Model = "grok-4.5"
+	r.Metadata.Mode = "plan"
+	r.Metadata.Reasoning = "high"
+
+	state := roleSessionState(r)
+	acpState := state[acpagent.SessionStateKey].(map[string]any)
+	values := acpState["config_values"].([]acpagent.SessionConfigValue)
+
+	want := []acpagent.SessionConfigValue{
+		acpagent.SelectSessionConfigValue("model", "grok-4.5"),
+		acpagent.SelectSessionConfigValue("mode", "plan"),
+		acpagent.SelectSessionConfigValue("reasoning_effort", "high"),
+	}
+	if !reflect.DeepEqual(values, want) {
+		t.Fatalf("session config values = %#v, want %#v", values, want)
+	}
+
+	if _, ok := acpState["meta"]; ok {
+		t.Fatalf("ACP state must not contain vendor metadata: %#v", acpState)
 	}
 }
 
@@ -279,6 +304,30 @@ func TestCodexRoleSessionStatePassesModeToACPBridge(t *testing.T) {
 
 	if want := []acpagent.SessionConfigValue{acpagent.SelectSessionConfigValue("mode", "review")}; !reflect.DeepEqual(values, want) {
 		t.Fatalf("session config values = %#v, want %#v", values, want)
+	}
+}
+
+func TestCodexProviderUsesRuntimeBridgeVersion(t *testing.T) {
+	provider, err := ProviderFor(testRole("reviewer", "codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"npx", "-y", "@normahq/codex-acp-bridge@1.7.3"}
+	if !reflect.DeepEqual(provider.command, want) {
+		t.Fatalf("Codex ACP command = %#v, want %#v", provider.command, want)
+	}
+}
+
+func TestGrokProviderUsesRuntimeCommand(t *testing.T) {
+	provider, err := ProviderFor(testRole("reviewer", "grok"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"grok", "agent", "stdio"}
+	if !reflect.DeepEqual(provider.command, want) {
+		t.Fatalf("Grok ACP command = %#v, want %#v", provider.command, want)
 	}
 }
 

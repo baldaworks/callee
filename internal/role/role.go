@@ -29,6 +29,7 @@ var runtimeTypes = map[string]string{
 	"claude":      "claude_code_acp",
 	"opencode":    "opencode_acp",
 	"copilot":     "copilot_acp",
+	"grok":        "grok_acp",
 	"generic_acp": "generic_acp",
 }
 
@@ -41,7 +42,7 @@ func RuntimeType(kind string) (string, bool) {
 
 // SupportedTypes returns the supported public types in stable order.
 func SupportedTypes() []string {
-	return []string{"codex", "claude", "opencode", "copilot", "generic_acp"}
+	return []string{"codex", "claude", "opencode", "copilot", "grok", "generic_acp"}
 }
 
 // Validate validates role metadata and the prompt template.

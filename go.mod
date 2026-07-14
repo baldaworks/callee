@@ -4,8 +4,8 @@ go 1.26.5
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
-	github.com/normahq/go-adk-acpagent/v2 v2.2.0
-	github.com/normahq/runtime/v2 v2.0.5
+	github.com/normahq/go-adk-acpagent/v2 v2.2.1
+	github.com/normahq/runtime/v2 v2.0.7
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/fx v1.24.0

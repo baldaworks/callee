@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Callee roles for Claude Code.",
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "plugins": [
     {
       "name": "callee",
       "description": "Run Callee roles as persistent MCP-backed subagents.",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "author": {
         "name": "Baldaworks"
       },

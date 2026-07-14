@@ -33,7 +33,7 @@ func TestMCPConfigUsesPublishedCalleeRunner(t *testing.T) {
 		t.Fatalf("command = %q, want npx", server.Command)
 	}
 
-	want := []string{"--yes", "@baldaworks/callee@0.4.0", "mcp-server"}
+	want := []string{"--yes", "@baldaworks/callee@0.4.1", "mcp-server"}
 	if strings.Join(server.Args, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("args = %#v, want %#v", server.Args, want)
 	}
@@ -48,15 +48,28 @@ func TestSkillDescribesMCPAndCLIModes(t *testing.T) {
 	text := string(data)
 	for _, want := range []string{
 		"name: callee",
+		"user-invocable: true",
 		"callee.role.list",
 		"callee.subagent.prompt",
 		"callee.subagent.reply",
-		"@baldaworks/callee@0.4.0",
+		"@baldaworks/callee@0.4.1",
 		"--new",
+		"<role> <task> [--new]",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill is missing %q", want)
 		}
+	}
+}
+
+func TestCodexStarterPromptUsesCalleeRoleSyntax(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(".codex-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(data), "$callee reviewer Review the current changes.") {
+		t.Error("Codex plugin does not include the Callee reviewer starter prompt")
 	}
 }
 
@@ -77,6 +90,7 @@ func TestMarketplaceCatalogsReferenceCalleePlugin(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join("..", "..", ".agents", "plugins", "marketplace.json"),
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
 	} {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -92,5 +106,25 @@ func TestMarketplaceCatalogsReferenceCalleePlugin(t *testing.T) {
 		if !strings.Contains(text, "\"callee\"") || !strings.Contains(text, "./plugins/callee") {
 			t.Errorf("%s does not reference the Callee plugin", path)
 		}
+	}
+}
+
+func TestGrokPluginManifestUsesSharedSkillAndMCPConfig(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(".grok-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var manifest struct {
+		Name       string `json:"name"`
+		Skills     string `json:"skills"`
+		MCPServers string `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if manifest.Name != "callee" || manifest.Skills != "./skills/" || manifest.MCPServers != "./.mcp.json" {
+		t.Fatalf("Grok manifest = %#v", manifest)
 	}
 }

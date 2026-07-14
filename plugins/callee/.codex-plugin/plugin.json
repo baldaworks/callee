@@ -1,6 +1,6 @@
 {
   "name": "callee",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Run Callee roles as MCP-backed subagents or through the CLI fallback.",
   "author": {
     "name": "Baldaworks",
@@ -19,7 +19,7 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Run the reviewer Callee role on the current changes.",
+      "$callee reviewer Review the current changes.",
       "Show me how to configure Callee MCP in this project."
     ]
   },
