@@ -74,7 +74,23 @@ initialized. It closes each successfully initialized runtime before continuing.
 }
 ```
 
-The server exposes two tools: `callee` starts a conversation and `callee-reply` continues one.
+The server exposes three namespaced tools:
+
+- `callee.role.list` returns the available role IDs and descriptions.
+- `callee.subagent.prompt` starts a conversation.
+- `callee.subagent.reply` continues a conversation.
+
+List roles before selecting one:
+
+```json
+{}
+```
+
+The response contains:
+
+```json
+{"roles":[{"id":"reviewer","description":"Reviews code changes for correctness and regressions."}]}
+```
 
 First call:
 
@@ -82,7 +98,7 @@ First call:
 {"role":"reviewer","prompt":"Review the current changes"}
 ```
 
-Follow-up with `callee-reply`:
+Follow-up with `callee.subagent.reply`:
 
 ```json
 {"threadId":"cal_01JXYZ123","prompt":"Recheck the first finding."}
@@ -91,8 +107,9 @@ Follow-up with `callee-reply`:
 Both responses contain `structuredContent: { "threadId", "content" }` and legacy text `content`.
 
 Within one MCP server process, roles sharing the same `type`, resolved command,
-and `extra_args` share one ACP provider process. Each `callee` call creates an
-independent ACP session with that role's model, mode, reasoning, and prompt.
+and `extra_args` share one ACP provider process. Each
+`callee.subagent.prompt` call creates an independent ACP session with that
+role's model, mode, reasoning, and prompt.
 
 ## Frontmatter reference
 

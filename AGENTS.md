@@ -1,6 +1,6 @@
 # Callee agent guidance
 
-- Preserve the two-tool MCP surface: `callee` starts conversations and `callee-reply` continues them.
+- Preserve the three-tool MCP surface: `callee.subagent.prompt` starts conversations, `callee.subagent.reply` continues them, and `callee.role.list` lists roles.
 - Preserve flat role frontmatter. Do not add nested provider configuration.
 - Do not add Gemini support.
 - Do not add MCP forwarding without an explicit product decision.
