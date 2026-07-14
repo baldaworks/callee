@@ -23,9 +23,9 @@ type Conversation interface {
 	Close() error
 }
 
-// Factory constructs a provider runtime lazily.
+// Factory constructs a provider runtime.
 type Factory interface {
-	New(provider Provider) (Conversation, error)
+	New(ctx context.Context, provider Provider) (Conversation, error)
 }
 
 // ThreadBinding binds a public Callee thread ID to an internal ACP session.
@@ -65,7 +65,7 @@ func (m *Manager) Start(ctx context.Context, r role.Role, prompt string) (string
 
 	log.Debug().Str("role", r.ID).Msg("starting role conversation")
 
-	provider, rt, err := m.runtime(r)
+	provider, rt, err := m.runtime(ctx, r)
 	if err != nil {
 		return "", "", fmt.Errorf("start role %q runtime: %w", r.ID, err)
 	}
@@ -137,7 +137,7 @@ func (m *Manager) RunOnce(ctx context.Context, r role.Role, prompt string) (stri
 		return "", fmt.Errorf("start role %q runtime: %w", r.ID, err)
 	}
 
-	rt, err := m.factory.New(provider)
+	rt, err := m.factory.New(ctx, provider)
 	if err != nil {
 		return "", fmt.Errorf("start role %q runtime: %w", r.ID, err)
 	}
@@ -167,6 +167,30 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	return m.closeLocked()
+}
+
+// Initialize starts one ACP runtime for every unique provider configuration in
+// roles. It is safe to call repeatedly; an already started runtime is reused.
+// If startup fails, all runtimes started by this manager are closed.
+func (m *Manager) Initialize(ctx context.Context, roles []role.Role) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, r := range roles {
+		if _, _, err := m.runtime(ctx, r); err != nil {
+			if closeErr := m.closeLocked(); closeErr != nil {
+				log.Debug().Err(closeErr).Msg("close ACP runtimes after initialization failure")
+			}
+
+			return fmt.Errorf("initialize role %q runtime: %w", r.ID, err)
+		}
+	}
+
+	return nil
+}
+
+func (m *Manager) closeLocked() error {
 	var first error
 	for _, rt := range m.runtimes {
 		if err := rt.Close(); err != nil && first == nil {
@@ -182,7 +206,7 @@ func (m *Manager) Close() error {
 	return first
 }
 
-func (m *Manager) runtime(r role.Role) (Provider, Conversation, error) {
+func (m *Manager) runtime(ctx context.Context, r role.Role) (Provider, Conversation, error) {
 	provider, err := ProviderFor(r)
 	if err != nil {
 		return Provider{}, nil, err
@@ -198,7 +222,7 @@ func (m *Manager) runtime(r role.Role) (Provider, Conversation, error) {
 
 	log.Debug().Str("role", r.ID).Str("provider", provider.Type()).Msg("starting provider runtime")
 
-	rt, err := m.factory.New(provider)
+	rt, err := m.factory.New(ctx, provider)
 	if err != nil {
 		return Provider{}, nil, err
 	}

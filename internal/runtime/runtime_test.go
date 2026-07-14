@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -62,7 +63,7 @@ type fakeFactory struct {
 	conversations map[string]*fakeConversation
 }
 
-func (f *fakeFactory) New(provider Provider) (Conversation, error) {
+func (f *fakeFactory) New(_ context.Context, provider Provider) (Conversation, error) {
 	f.n++
 	c := &fakeConversation{}
 
@@ -136,6 +137,63 @@ func TestManagerSeparatesProviderCommands(t *testing.T) {
 	}
 }
 
+func TestManagerInitializeStartsEachProviderOnce(t *testing.T) {
+	f := &fakeFactory{}
+	m := NewManager(f)
+	reviewer := testRole("reviewer", "codex")
+	explorer := testRole("explorer", "codex")
+	tester := testRole("tester", "claude")
+
+	if err := m.Initialize(context.Background(), []role.Role{reviewer, explorer, tester}); err != nil {
+		t.Fatal(err)
+	}
+
+	if f.n != 2 {
+		t.Fatalf("provider starts = %d, want 2", f.n)
+	}
+
+	if _, _, err := m.Start(context.Background(), reviewer, "review"); err != nil {
+		t.Fatal(err)
+	}
+
+	if f.n != 2 {
+		t.Fatalf("provider starts after initialized role = %d, want 2", f.n)
+	}
+}
+
+type failingFactory struct {
+	conversations []*fakeConversation
+}
+
+func (f *failingFactory) New(_ context.Context, provider Provider) (Conversation, error) {
+	if provider.Type() == "claude" {
+		return nil, errors.New("cannot start claude")
+	}
+
+	c := &fakeConversation{}
+	f.conversations = append(f.conversations, c)
+
+	return c, nil
+}
+
+func TestManagerInitializeClosesStartedRuntimesAfterFailure(t *testing.T) {
+	f := &failingFactory{}
+	m := NewManager(f)
+
+	err := m.Initialize(context.Background(), []role.Role{testRole("reviewer", "codex"), testRole("writer", "claude")})
+	if err == nil || !strings.Contains(err.Error(), `initialize role "writer" runtime: cannot start claude`) {
+		t.Fatalf("initialize error = %v", err)
+	}
+
+	if len(f.conversations) != 1 || !f.conversations[0].closed {
+		t.Fatal("started runtime was not closed")
+	}
+
+	if len(m.runtimes) != 0 || len(m.runtimeIDs) != 0 || len(m.threads) != 0 {
+		t.Fatalf("manager retained state after failed initialization: %#v %#v %#v", m.runtimes, m.runtimeIDs, m.threads)
+	}
+}
+
 type crashingConversation struct{ fakeConversation }
 
 func (c *crashingConversation) Reply(context.Context, string, string) (string, error) {
@@ -147,7 +205,7 @@ type crashingFactory struct {
 	conversation *crashingConversation
 }
 
-func (f *crashingFactory) New(Provider) (Conversation, error) {
+func (f *crashingFactory) New(_ context.Context, _ Provider) (Conversation, error) {
 	f.n++
 	if f.conversation == nil {
 		f.conversation = &crashingConversation{}

@@ -204,7 +204,7 @@ timeout. The plugin-provided server does not expose this setting:
 [mcp_servers.callee]
 command = "npx"
 args = ["--yes", "@baldaworks/callee@0.5.0", "mcp-server"]
-startup_timeout_sec = 10
+startup_timeout_sec = 3600
 tool_timeout_sec = 3600
 ```
 
@@ -227,6 +227,10 @@ For Copilot CLI, use `--timeout` in milliseconds when adding a manual server:
 ```bash
 copilot mcp add --timeout 3600000 callee -- npx --yes @baldaworks/callee@0.5.0 mcp-server
 ```
+
+When the MCP server starts, Callee initializes one ACP runtime for every
+unique configured provider (type, command, and extra arguments). If any
+provider cannot start, the MCP server does not become available.
 
 Grok Build has no verified timeout override for this configuration; use its host
 defaults rather than adding an unsupported field to `.mcp.json`.

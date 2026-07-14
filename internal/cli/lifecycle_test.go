@@ -30,7 +30,7 @@ func (c *lifecycleConversation) Close() error {
 
 type lifecycleFactory struct{ conversation *lifecycleConversation }
 
-func (f *lifecycleFactory) New(runtime.Provider) (runtime.Conversation, error) {
+func (f *lifecycleFactory) New(context.Context, runtime.Provider) (runtime.Conversation, error) {
 	if f.conversation == nil {
 		f.conversation = &lifecycleConversation{}
 	}

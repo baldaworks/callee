@@ -170,8 +170,18 @@ func (s *MCP) ListRoles() RoleListOutput {
 	return RoleListOutput{Roles: items}
 }
 
+// Initialize starts ACP runtimes for all configured providers before the MCP
+// server begins accepting requests.
+func (s *MCP) Initialize(ctx context.Context) error {
+	return s.manager.Initialize(ctx, s.registry.Roles())
+}
+
 // RunStdio serves standard MCP over stdio.
 func (s *MCP) RunStdio(ctx context.Context, version string) error {
+	if err := s.Initialize(ctx); err != nil {
+		return fmt.Errorf("initialize ACP runtimes: %w", err)
+	}
+
 	m := mcp.NewServer(&mcp.Implementation{Name: "callee", Version: version}, nil)
 	s.Install(m)
 

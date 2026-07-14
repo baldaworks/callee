@@ -29,14 +29,23 @@ func (f *fake) Reply(_ context.Context, _ string, p string) (string, error) {
 }
 func (*fake) Close() error { return nil }
 
-type factory struct{ f *fake }
+type factory struct {
+	f        *fake
+	newCalls *int
+}
 
-func (f factory) New(runtime.Provider) (runtime.Conversation, error) { return f.f, nil }
+func (f factory) New(context.Context, runtime.Provider) (runtime.Conversation, error) {
+	if f.newCalls != nil {
+		*f.newCalls++
+	}
+
+	return f.f, nil
+}
 
 func TestToolCall(t *testing.T) {
 	r, _ := registry.New([]role.Role{{ID: "reviewer", Metadata: role.Metadata{Description: "Reviews code", Type: "codex"}, Template: "Task: {{ prompt }}"}})
 	f := &fake{}
-	s := New(r, runtime.NewManager(factory{f}))
+	s := New(r, runtime.NewManager(factory{f: f}))
 
 	start, reply, list := s.StartDefinition(), s.ReplyDefinition(), s.RoleListDefinition()
 	if start.Name != roleTool || reply.Name != roleReplyTool || list.Name != roleListTool {
@@ -87,7 +96,7 @@ func TestListRoles(t *testing.T) {
 	}
 
 	f := &fake{}
-	s := New(r, runtime.NewManager(factory{f}))
+	s := New(r, runtime.NewManager(factory{f: f}))
 
 	got := s.ListRoles()
 
@@ -119,6 +128,32 @@ func TestListRoles(t *testing.T) {
 	}
 }
 
+func TestInitializeStartsConfiguredProviders(t *testing.T) {
+	r, err := registry.New([]role.Role{
+		{ID: "reviewer", Metadata: role.Metadata{Description: "Reviews code", Type: "codex"}, Template: "{{ prompt }}"},
+		{ID: "explorer", Metadata: role.Metadata{Description: "Explores code", Type: "codex"}, Template: "{{ prompt }}"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f := &fake{}
+	newCalls := 0
+
+	s := New(r, runtime.NewManager(factory{f: f, newCalls: &newCalls}))
+	if err := s.Initialize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if newCalls != 1 {
+		t.Fatalf("provider starts = %d, want 1", newCalls)
+	}
+
+	if f.n != 0 {
+		t.Fatalf("a runtime conversation received a prompt at startup, got %d", f.n)
+	}
+}
+
 func TestInstallPublishesOnlyUnprefixedTools(t *testing.T) {
 	r, err := registry.New([]role.Role{
 		{ID: "reviewer", Metadata: role.Metadata{Description: "Reviews code", Type: "codex"}, Template: "{{ prompt }}"},
@@ -128,7 +163,7 @@ func TestInstallPublishesOnlyUnprefixedTools(t *testing.T) {
 	}
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
-	New(r, runtime.NewManager(factory{&fake{}})).Install(server)
+	New(r, runtime.NewManager(factory{f: &fake{}})).Install(server)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 

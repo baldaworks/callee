@@ -223,10 +223,12 @@ func TestREADMEDocumentsOneHourManualMCPTimeouts(t *testing.T) {
 	}
 
 	for _, want := range []string{
+		"startup_timeout_sec = 3600",
 		"tool_timeout_sec = 3600",
 		`"timeout": 3600000`,
 		"copilot mcp add --timeout 3600000 callee",
 		"plugin-provided server does not expose this setting",
+		"the MCP server does not become available",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("README is missing %q", want)

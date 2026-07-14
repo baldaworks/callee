@@ -26,8 +26,8 @@ var buildNormaAgent = buildNormaAgentDefault
 
 const sessionConfigCapacity = 3
 
-func (NormaFactory) New(provider Provider) (Conversation, error) {
-	ag, closer, err := buildNormaAgent(context.Background(), provider)
+func (NormaFactory) New(ctx context.Context, provider Provider) (Conversation, error) {
+	ag, closer, err := buildNormaAgent(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
