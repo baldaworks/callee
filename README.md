@@ -84,7 +84,23 @@ Callee is available as a Claude Code and Codex plugin. Both bundle a skill that
 uses Callee MCP when it is available and falls back to the npx CLI runner when
 it is not.
 
-#### Claude Code
+To install a host plugin and create `.callee/roles/reviewer.md` in one step:
+
+```bash
+callee setup codex
+# or
+callee setup claude
+```
+
+The generated reviewer uses the matching runtime type. Existing reviewer roles
+are left unchanged; pass `--force` to replace one deliberately.
+
+#### Manual plugin installation
+
+Use the following existing commands when you want to install the plugin or
+configure MCP yourself without creating the sample role.
+
+##### Claude Code
 
 ```text
 /plugin marketplace add baldaworks/callee
@@ -97,7 +113,7 @@ same role in one parent conversation reuse its MCP thread; add `--new` to start
 another role conversation. Use `/callee:setup` for the MCP configuration of
 the current host.
 
-#### Codex
+##### Codex
 
 ```bash
 codex plugin marketplace add baldaworks/callee --sparse .agents/plugins

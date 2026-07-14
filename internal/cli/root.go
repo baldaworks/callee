@@ -106,6 +106,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(mcpServerCommand(&rolesDir))
 	root.AddCommand(doctorCommand(&rolesDir))
 	root.AddCommand(roleCommand(&rolesDir))
+	root.AddCommand(setupCommand())
 
 	return root
 }
