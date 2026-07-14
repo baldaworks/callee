@@ -7,7 +7,7 @@ code and run them as subagents. Roles are project-local Markdown files: review
 them in pull requests, override them per repository, and use them from the
 coding agent already working on the task.
 
-Built for Codex, Claude Code, Grok Build, OpenCode, and Copilot.
+Built for Codex, Claude Code, Grok Build, Copilot CLI, and OpenCode.
 
 ```text
 .callee/roles/reviewer.md  →  host plugin / MCP  →  reviewer subagent
@@ -27,6 +27,7 @@ From the repository you want to work in:
    npx --yes @baldaworks/callee@0.4.1 setup codex
    # or: npx --yes @baldaworks/callee@0.4.1 setup claude
    # or: npx --yes @baldaworks/callee@0.4.1 setup grok
+   # or: npx --yes @baldaworks/callee@0.4.1 setup copilot
    ```
 
 2. Start a fresh host session.
@@ -36,20 +37,30 @@ From the repository you want to work in:
    Codex:
 
    ```text
-   $callee reviewer Review the current changes
+   $callee role:reviewer Review the current changes
    ```
 
    Claude Code:
 
    ```text
-   /callee:subagent reviewer Review the current changes
+   /callee:role reviewer Review the current changes
    ```
 
    Grok Build:
 
    ```text
-   /callee reviewer Review the current changes
+   /callee role:reviewer Review the current changes
    ```
+
+   Copilot CLI:
+
+   ```text
+   /callee role:reviewer Review the current changes
+   ```
+
+Later calls to the same role in the same host conversation continue its active
+Callee thread. To make the next call start fresh, reset the role first:
+`$callee reset:reviewer`, `/callee:reset reviewer`, or `/callee reset:reviewer`.
 
 The reviewer returns findings with severity, evidence, impact, and a suggested
 fix or test.
@@ -89,9 +100,9 @@ Or run the published CLI without installing Go:
 npx --yes @baldaworks/callee@0.4.1 --version
 ```
 
-Callee is available as a Codex, Claude Code, and Grok Build plugin. Each bundles a skill that
-uses Callee MCP when it is available and falls back to the npx CLI runner when
-it is not.
+Callee is available as a Codex, Claude Code, Grok Build, and Copilot CLI
+plugin. Each bundles a skill that uses Callee MCP when it is available and
+falls back to the npx CLI runner when it is not.
 
 #### Manual plugin installation
 
@@ -105,11 +116,11 @@ codex plugin marketplace add baldaworks/callee --sparse .agents/plugins
 codex plugin add callee@callee
 ```
 
-Start a new Codex session, then invoke `$callee <role> <task>`. The first
-argument after `$callee` is the project role ID, for example:
+Start a new Codex session, then invoke `$callee role:<role> <task>`, for
+example:
 
 ```text
-$callee reviewer Review the current changes
+$callee role:reviewer Review the current changes
 ```
 
 For a manual MCP setup, run:
@@ -126,10 +137,10 @@ codex mcp add callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
 /reload-plugins
 ```
 
-Run a role with `/callee:subagent <role> <task>`. Repeated requests for the
-same role in one parent conversation reuse its MCP thread; add `--new` to start
-another role conversation. Use `/callee:setup` for the MCP configuration of
-the current host.
+Run a role with `/callee:role <role> <task>`. Repeated requests for the same
+role in one parent conversation reuse its MCP thread. Use `/callee:reset <role>`
+when the next request should start fresh, or `/callee:setup` for MCP
+configuration of the current host.
 
 ##### Grok Build
 
@@ -138,12 +149,14 @@ grok plugin marketplace add baldaworks/callee
 grok plugin install callee@callee --trust
 ```
 
-Start a new Grok Build session, then invoke `/callee <role> <task>`, for
+Start a new Grok Build session, then invoke `/callee role:<role> <task>`, for
 example:
 
 ```text
-/callee reviewer Review the current changes
+/callee role:reviewer Review the current changes
 ```
+
+Use `/callee reset:<role>` when the next request should start fresh.
 
 The plugin bundles the MCP server. For a project-local manual configuration:
 
@@ -152,6 +165,26 @@ grok mcp add --scope project callee -- npx --yes @baldaworks/callee@0.4.1 mcp-se
 ```
 
 The runtime itself needs a local `grok login` session or `XAI_API_KEY`.
+
+##### Copilot CLI
+
+```bash
+copilot plugin marketplace add baldaworks/callee
+copilot plugin install callee@callee
+```
+
+Start a new Copilot CLI session, then invoke `/callee role:<role> <task>`, for
+example:
+
+```text
+/callee role:reviewer Review the current changes
+```
+
+Use `/callee reset:<role>` when the next request should start fresh.
+
+`reset` only forgets the plugin's active thread for that role in the current
+host conversation. It does not close the old ACP session, which remains
+process-local until the MCP server exits.
 
 ### Role format
 

@@ -53,10 +53,10 @@ func TestSkillDescribesMCPAndCLIModes(t *testing.T) {
 		"callee.subagent.prompt",
 		"callee.subagent.reply",
 		"@baldaworks/callee@0.4.1",
-		"--new",
-		"<role> <task> [--new]",
-		"When the user supplies a role ID, dispatch it directly.",
-		"only when the user asks what roles exist",
+		"role:<role-id> <task>",
+		"reset:<role-id>",
+		"For `role:<role-id>`, dispatch the supplied role directly.",
+		"only when the user explicitly asks what roles exist",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill is missing %q", want)
@@ -70,6 +70,18 @@ func TestSkillDescribesMCPAndCLIModes(t *testing.T) {
 	if strings.Contains(text, "whenever the `callee.role.list` tool is available") {
 		t.Error("skill must use the prompt tool to select MCP mode")
 	}
+
+	if strings.Contains(text, "--new") {
+		t.Error("skill must use explicit role and reset actions instead of --new")
+	}
+
+	if strings.Contains(text, "reset <role-id>") {
+		t.Error("skill must bind reset to the role with a colon")
+	}
+
+	if !strings.Contains(text, "Do not try to\n  close the old ACP session.") {
+		t.Error("skill must document reset as a local thread-ledger operation")
+	}
 }
 
 func TestCodexStarterPromptUsesCalleeRoleSyntax(t *testing.T) {
@@ -78,13 +90,13 @@ func TestCodexStarterPromptUsesCalleeRoleSyntax(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(string(data), "$callee reviewer Review the current changes.") {
+	if !strings.Contains(string(data), "$callee role:reviewer Review the current changes.") {
 		t.Error("Codex plugin does not include the Callee reviewer starter prompt")
 	}
 }
 
 func TestClaudeCommandsUseCalleeSkill(t *testing.T) {
-	for _, name := range []string{"subagent.md", "setup.md"} {
+	for _, name := range []string{"role.md", "reset.md", "setup.md"} {
 		data, err := os.ReadFile(filepath.Join("commands", name))
 		if err != nil {
 			t.Fatal(err)
@@ -94,6 +106,36 @@ func TestClaudeCommandsUseCalleeSkill(t *testing.T) {
 			t.Errorf("%s does not reference the Callee skill", name)
 		}
 	}
+
+	role, err := os.ReadFile(filepath.Join("commands", "role.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(role), "callee.subagent.prompt") {
+		t.Error("role command does not select MCP mode through prompt")
+	}
+
+	if strings.Contains(string(role), "role-list tool is available") {
+		t.Error("role command must not use role.list to select MCP mode")
+	}
+
+	if !strings.Contains(string(role), "`role:<role> <task>`") {
+		t.Error("role command does not translate Claude arguments to role syntax")
+	}
+
+	reset, err := os.ReadFile(filepath.Join("commands", "reset.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(reset), "`reset:<role>`") || !strings.Contains(string(reset), "Do not call an MCP tool") {
+		t.Error("reset command must not extend the MCP API")
+	}
+
+	if _, err := os.Stat(filepath.Join("commands", "subagent.md")); !os.IsNotExist(err) {
+		t.Error("legacy subagent command must not exist")
+	}
 }
 
 func TestMarketplaceCatalogsReferenceCalleePlugin(t *testing.T) {
@@ -101,6 +143,7 @@ func TestMarketplaceCatalogsReferenceCalleePlugin(t *testing.T) {
 		filepath.Join("..", "..", ".agents", "plugins", "marketplace.json"),
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
 	} {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -116,6 +159,31 @@ func TestMarketplaceCatalogsReferenceCalleePlugin(t *testing.T) {
 		if !strings.Contains(text, "\"callee\"") || !strings.Contains(text, "./plugins/callee") {
 			t.Errorf("%s does not reference the Callee plugin", path)
 		}
+	}
+}
+
+func TestCopilotPluginManifestUsesSharedSkillAndMCPConfig(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(".plugin", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var manifest struct {
+		Name       string `json:"name"`
+		Skills     string `json:"skills"`
+		MCPServers string `json:"mcpServers"`
+		Commands   any    `json:"commands"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if manifest.Name != "callee" || manifest.Skills != "./skills/" || manifest.MCPServers != "./.mcp.json" {
+		t.Fatalf("Copilot manifest = %#v", manifest)
+	}
+
+	if manifest.Commands != nil {
+		t.Error("Copilot plugin must not expose unnamespaced command files")
 	}
 }
 

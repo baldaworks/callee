@@ -30,7 +30,7 @@ func setupCommand() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "setup <codex|claude|grok>",
+		Use:   "setup <codex|claude|grok|copilot>",
 		Short: "Install a host plugin and create a reviewer role",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -93,8 +93,17 @@ func setupTargetFor(name string) (setupTarget, error) {
 			},
 			role: grokReviewerRole,
 		}, nil
+	case "copilot":
+		return setupTarget{
+			name: "Copilot CLI",
+			commands: [][]string{
+				{"copilot", "plugin", "marketplace", "add", "baldaworks/callee"},
+				{"copilot", "plugin", "install", "callee@callee"},
+			},
+			role: copilotReviewerRole,
+		}, nil
 	default:
-		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, or grok)", name)
+		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, grok, or copilot)", name)
 	}
 }
 
@@ -165,6 +174,20 @@ Do not modify files. Return concrete, evidence-backed findings.
 const grokReviewerRole = `---
 description: Reviews code changes for correctness and regressions.
 type: grok
+---
+
+You are an independent code reviewer.
+
+Review the following task:
+
+{{ prompt }}
+
+Do not modify files. Return concrete, evidence-backed findings.
+`
+
+const copilotReviewerRole = `---
+description: Reviews code changes for correctness and regressions.
+type: copilot
 ---
 
 You are an independent code reviewer.

@@ -45,6 +45,15 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 			},
 			wantType: "type: grok",
 		},
+		{
+			name:   "copilot",
+			target: "copilot",
+			wantCommands: [][]string{
+				{"copilot", "plugin", "marketplace", "add", "baldaworks/callee"},
+				{"copilot", "plugin", "install", "callee@callee"},
+			},
+			wantType: "type: copilot",
+		},
 	}
 
 	for _, test := range tests {

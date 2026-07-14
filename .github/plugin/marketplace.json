@@ -1,0 +1,26 @@
+{
+  "name": "callee",
+  "owner": {
+    "name": "Baldaworks"
+  },
+  "metadata": {
+    "description": "Callee roles for GitHub Copilot CLI.",
+    "version": "0.4.1"
+  },
+  "plugins": [
+    {
+      "name": "callee",
+      "description": "Run Callee roles as persistent MCP-backed subagents.",
+      "version": "0.4.1",
+      "source": "./plugins/callee",
+      "author": {
+        "name": "Baldaworks",
+        "url": "https://github.com/baldaworks"
+      },
+      "homepage": "https://github.com/baldaworks/callee",
+      "repository": "https://github.com/baldaworks/callee",
+      "license": "Apache-2.0",
+      "keywords": ["subagents", "mcp", "roles"]
+    }
+  ]
+}

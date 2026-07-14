@@ -1,0 +1,15 @@
+{
+  "name": "callee",
+  "version": "0.4.1",
+  "description": "Run Callee roles as MCP-backed subagents or through the CLI fallback.",
+  "author": {
+    "name": "Baldaworks",
+    "url": "https://github.com/baldaworks"
+  },
+  "homepage": "https://github.com/baldaworks/callee",
+  "repository": "https://github.com/baldaworks/callee",
+  "license": "Apache-2.0",
+  "keywords": ["subagents", "mcp", "roles"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

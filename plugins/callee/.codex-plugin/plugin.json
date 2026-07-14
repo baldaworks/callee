@@ -19,7 +19,7 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "$callee reviewer Review the current changes.",
+      "$callee role:reviewer Review the current changes.",
       "Show me how to configure Callee MCP in this project."
     ]
   },
