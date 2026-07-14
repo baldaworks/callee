@@ -27,8 +27,9 @@ From the repository you want to work in:
    npx --yes @baldaworks/callee@0.4.1 setup codex
    # or: npx --yes @baldaworks/callee@0.4.1 setup claude
    # or: npx --yes @baldaworks/callee@0.4.1 setup grok
-   # or: npx --yes @baldaworks/callee@0.4.1 setup copilot
    ```
+
+   For Copilot CLI, install the plugin manually as described below.
 
 2. Start a fresh host session.
 
@@ -58,9 +59,13 @@ From the repository you want to work in:
    /callee role:reviewer Review the current changes
    ```
 
-Later calls to the same role in the same host conversation continue its active
-Callee thread. To make the next call start fresh, reset the role first:
-`$callee reset:reviewer`, `/callee:reset reviewer`, or `/callee reset:reviewer`.
+When MCP is available, later calls to the same role in the same host
+conversation continue its active Callee thread. To make the next call start
+fresh, reset the role first: `$callee reset:reviewer`, `/callee:reset reviewer`,
+or `/callee reset:reviewer`.
+
+In the CLI fallback, every role invocation is one-shot: it always starts fresh,
+and `reset:<role>` has no persistent conversation to clear.
 
 The reviewer returns findings with severity, evidence, impact, and a suggested
 fix or test.
@@ -86,9 +91,10 @@ usage, discovery, and limitations.
 
 ### Installation and host plugins
 
-The quickstart above is the fastest path: `callee setup <host>` installs the
-matching host plugin and creates a reviewer role. Existing reviewer roles are
-left unchanged; pass `--force` to replace one deliberately.
+The quickstart above is the fastest path for Codex, Claude Code, and Grok
+Build: `callee setup <host>` installs the matching host plugin and creates a
+reviewer role. Existing reviewer roles are left unchanged; pass `--force` to
+replace one deliberately. Install the Copilot CLI plugin manually below.
 
 ```bash
 go install github.com/baldaworks/callee/cmd/callee@latest
