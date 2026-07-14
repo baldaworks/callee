@@ -1,0 +1,21 @@
+{
+  "name": "callee",
+  "owner": {
+    "name": "Baldaworks"
+  },
+  "metadata": {
+    "description": "Callee roles for Claude Code.",
+    "version": "0.3.0"
+  },
+  "plugins": [
+    {
+      "name": "callee",
+      "description": "Run Callee roles as persistent MCP-backed subagents.",
+      "version": "0.3.0",
+      "author": {
+        "name": "Baldaworks"
+      },
+      "source": "./plugins/callee"
+    }
+  ]
+}

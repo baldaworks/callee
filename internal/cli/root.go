@@ -3,9 +3,12 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/baldaworks/callee/internal/doctor"
@@ -16,7 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 var runDoctor = doctor.Run
 
@@ -99,6 +102,7 @@ func NewRootCommand() *cobra.Command {
 	_ = root.MarkFlagRequired("prompt")
 	root.AddCommand(mcpServerCommand(&rolesDir))
 	root.AddCommand(doctorCommand(&rolesDir))
+	root.AddCommand(roleCommand(&rolesDir))
 
 	return root
 }
@@ -136,6 +140,59 @@ func mcpServerCommand(rolesDir *string) *cobra.Command {
 
 		return runMCPServer(cmd.Context(), reg, Version)
 	}}
+}
+
+type roleListOutput struct {
+	Roles []roleListItem `json:"roles"`
+}
+
+type roleListItem struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+}
+
+func roleCommand(rolesDir *string) *cobra.Command {
+	cmd := &cobra.Command{Use: "role", Short: "Manage configured Callee roles"}
+	cmd.AddCommand(roleListCommand(rolesDir))
+
+	return cmd
+}
+
+func roleListCommand(rolesDir *string) *cobra.Command {
+	var jsonOutput bool
+
+	cmd := &cobra.Command{Use: "list", Short: "List configured Callee roles", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		reg, err := load(*rolesDir)
+		if err != nil {
+			return err
+		}
+
+		roles := reg.Roles()
+		if jsonOutput {
+			output := roleListOutput{Roles: make([]roleListItem, 0, len(roles))}
+			for _, r := range roles {
+				output.Roles = append(output.Roles, roleListItem{ID: r.ID, Description: r.Metadata.Description})
+			}
+
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(output)
+		}
+
+		out := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+		if _, err := fmt.Fprintln(out, "ID\tDESCRIPTION"); err != nil {
+			return err
+		}
+
+		for _, r := range roles {
+			if _, err := fmt.Fprintf(out, "%s\t%s\n", r.ID, strings.TrimSpace(r.Metadata.Description)); err != nil {
+				return err
+			}
+		}
+
+		return out.Flush()
+	}}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output roles as JSON")
+
+	return cmd
 }
 
 func isExpectedCancellation(ctx context.Context, err error) bool {

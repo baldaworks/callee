@@ -10,6 +10,44 @@ Callee combines Markdown instructions with flat runtime metadata. Roles use Code
 go install github.com/baldaworks/callee/cmd/callee@latest
 ```
 
+Or run the published CLI without installing Go:
+
+```bash
+npx --yes @baldaworks/callee@0.3.0 --version
+```
+
+## Agent plugins
+
+Callee is available as a Claude Code and Codex plugin. Both bundle a skill that
+uses Callee MCP when it is available and falls back to the npx CLI runner when
+it is not.
+
+Claude Code:
+
+```text
+/plugin marketplace add baldaworks/callee
+/plugin install callee@callee
+/reload-plugins
+```
+
+Run a role with `/callee:subagent <role> <task>`. Repeated requests for the
+same role in one parent conversation reuse its MCP thread; add `--new` to start
+another role conversation. Use `/callee:setup` for the MCP configuration of
+the current host.
+
+Codex:
+
+```bash
+codex plugin marketplace add baldaworks/callee --sparse .agents/plugins
+```
+
+Install the plugin from `/plugins`, then invoke `$callee:callee`. For a manual
+MCP setup, run:
+
+```bash
+codex mcp add callee -- npx --yes @baldaworks/callee@0.3.0 mcp-server
+```
+
 ## Role
 
 `~/.config/callee/roles/reviewer.md`:
@@ -39,6 +77,28 @@ callee --role reviewer --prompt "Review the current changes"
 ```
 
 Use `--roles-dir ./examples/roles` to load only a specific directory.
+
+## Role list
+
+List the configured role IDs and descriptions without starting an ACP runtime:
+
+```bash
+callee role list
+```
+
+Use `--json` for machine-readable output compatible with the MCP role-list
+response:
+
+```bash
+callee role list --json
+```
+
+As with other commands, `--roles-dir` loads roles only from the specified
+directory:
+
+```bash
+callee role list --roles-dir ./examples/roles
+```
 
 ## Doctor
 
