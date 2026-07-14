@@ -266,6 +266,7 @@ func TestCodexRoleSessionStatePassesModeToACPBridge(t *testing.T) {
 	r.Metadata.Mode = "review"
 
 	state := roleSessionState(r)
+
 	acpState, ok := state[acpagent.SessionStateKey].(map[string]any)
 	if !ok {
 		t.Fatalf("ACP state = %#v", state)
@@ -275,6 +276,7 @@ func TestCodexRoleSessionStatePassesModeToACPBridge(t *testing.T) {
 	if !ok {
 		t.Fatalf("session config values = %#v", acpState["config_values"])
 	}
+
 	if want := []acpagent.SessionConfigValue{acpagent.SelectSessionConfigValue("mode", "review")}; !reflect.DeepEqual(values, want) {
 		t.Fatalf("session config values = %#v, want %#v", values, want)
 	}

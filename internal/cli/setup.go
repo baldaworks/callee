@@ -12,7 +12,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const reviewerRolePath = ".callee/roles/reviewer.md"
+const (
+	reviewerRolePath = ".callee/roles/reviewer.md"
+	reviewerDirMode  = 0o755
+	reviewerFileMode = 0o644
+)
 
 type setupTarget struct {
 	name     string
@@ -45,6 +49,7 @@ func setupCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			if created {
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Created %s for %s.\n", reviewerRolePath, target.name)
 			} else {
@@ -88,6 +93,7 @@ func runSetupCommandDefault(ctx context.Context, stdout, stderr io.Writer, name 
 	command := exec.CommandContext(ctx, name, args...)
 	command.Stdout = stdout
 	command.Stderr = stderr
+
 	if err := command.Run(); err != nil {
 		return fmt.Errorf("run %s: %w", strings.Join(append([]string{name}, args...), " "), err)
 	}
@@ -105,10 +111,11 @@ func writeReviewerRole(content string, force bool) (bool, error) {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), reviewerDirMode); err != nil {
 		return false, fmt.Errorf("create reviewer role directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+
+	if err := os.WriteFile(path, []byte(content), reviewerFileMode); err != nil {
 		return false, fmt.Errorf("write reviewer role: %w", err)
 	}
 
