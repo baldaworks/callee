@@ -2,7 +2,7 @@
 
 Turn Markdown roles into callable ACP agents.
 
-Callee combines Markdown instructions with flat runtime metadata. Roles use Codex, Claude Code, OpenCode, Copilot, or a generic ACP executable. Run a role once from the CLI, or expose the same registry through one persistent MCP tool. A `role` plus `threadId` continues a conversation.
+Callee combines Markdown instructions with flat runtime metadata. Roles use Codex, Claude Code, OpenCode, Copilot, or a generic ACP executable. Run a role once from the CLI, or expose the same registry through two persistent MCP tools. An opaque Callee `threadId` continues a conversation.
 
 ## Installation
 
@@ -35,7 +35,7 @@ Do not modify files. Return concrete, evidence-backed findings.
 ## One-shot CLI
 
 ```bash
-callee exec --role reviewer --prompt "Review the current changes"
+callee --role reviewer --prompt "Review the current changes"
 ```
 
 Use `--roles-dir ./examples/roles` to load only a specific directory.
@@ -61,10 +61,10 @@ First call:
 {"role":"reviewer","prompt":"Review the current changes"}
 ```
 
-Follow-up:
+Follow-up with `callee-reply`:
 
 ```json
-{"role":"reviewer","threadId":"019bbb20-bff6-7130-83aa-bf45ab33250e","prompt":"Recheck the first finding."}
+{"threadId":"cal_01JXYZ123","prompt":"Recheck the first finding."}
 ```
 
 Both responses contain `structuredContent: { "threadId", "content" }` and legacy text `content`.

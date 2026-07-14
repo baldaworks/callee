@@ -30,21 +30,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 // NewRootCommand creates the Callee Cobra command tree.
 func NewRootCommand() *cobra.Command {
-	var rolesDir string
-	root := &cobra.Command{Use: "callee", Short: "Turn Markdown roles into callable ACP agents.", Version: Version, SilenceErrors: true, SilenceUsage: true}
-	root.PersistentFlags().StringVar(&rolesDir, "roles-dir", "", "load roles only from this directory")
-	root.AddCommand(execCommand(&rolesDir), mcpServerCommand(&rolesDir))
-	return root
-}
-
-func load(rolesDir string) (*registry.Registry, error) {
-	return registry.Load(registry.LoadOptions{RolesDir: rolesDir})
-}
-
-func execCommand(rolesDir *string) *cobra.Command {
-	var roleID, prompt string
-	cmd := &cobra.Command{Use: "exec", Short: "Execute a role once", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		reg, err := load(*rolesDir)
+	var rolesDir, roleID, prompt string
+	root := &cobra.Command{Use: "callee", Short: "Turn Markdown roles into callable ACP agents.", Version: Version, SilenceErrors: true, SilenceUsage: true, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		reg, err := load(rolesDir)
 		if err != nil {
 			return err
 		}
@@ -57,19 +45,24 @@ func execCommand(rolesDir *string) *cobra.Command {
 			return err
 		}
 		manager := runtime.NewManager(runtime.NormaFactory{})
-		defer func() { _ = manager.Close() }()
-		_, content, err := manager.Start(cmd.Context(), r, rendered)
+		content, err := manager.RunOnce(cmd.Context(), r, rendered)
 		if err != nil {
 			return err
 		}
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), content)
 		return err
 	}}
-	cmd.Flags().StringVar(&roleID, "role", "", "role ID")
-	cmd.Flags().StringVar(&prompt, "prompt", "", "initial prompt")
-	_ = cmd.MarkFlagRequired("role")
-	_ = cmd.MarkFlagRequired("prompt")
-	return cmd
+	root.PersistentFlags().StringVar(&rolesDir, "roles-dir", "", "load roles only from this directory")
+	root.Flags().StringVar(&roleID, "role", "", "role ID")
+	root.Flags().StringVar(&prompt, "prompt", "", "initial prompt")
+	_ = root.MarkFlagRequired("role")
+	_ = root.MarkFlagRequired("prompt")
+	root.AddCommand(mcpServerCommand(&rolesDir))
+	return root
+}
+
+func load(rolesDir string) (*registry.Registry, error) {
+	return registry.Load(registry.LoadOptions{RolesDir: rolesDir})
 }
 
 func mcpServerCommand(rolesDir *string) *cobra.Command {

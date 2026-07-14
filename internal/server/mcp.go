@@ -39,8 +39,8 @@ func New(reg *registry.Registry, manager *runtime.Manager) *MCP {
 func (s *MCP) StartDefinition() *mcp.Tool {
 	return &mcp.Tool{Name: "callee", Description: description(s.registry), InputSchema: map[string]any{
 		"type": "object", "properties": map[string]any{
-			"role":   map[string]any{"type": "string", "description": "Configured role to start.", "enum": s.registry.IDs()},
-			"prompt": map[string]any{"type": "string", "description": "Initial task for the role."},
+			"role":   map[string]any{"type": "string", "description": "Registered Callee role to invoke.", "enum": s.registry.IDs()},
+			"prompt": map[string]any{"type": "string", "description": "Task to send to the selected role."},
 		}, "required": []string{"role", "prompt"}, "additionalProperties": false,
 	}, OutputSchema: outputSchema()}
 }
@@ -49,15 +49,14 @@ func (s *MCP) StartDefinition() *mcp.Tool {
 func (s *MCP) ReplyDefinition() *mcp.Tool {
 	return &mcp.Tool{Name: "callee-reply", Description: replyDescription(s.registry), InputSchema: map[string]any{
 		"type": "object", "properties": map[string]any{
-			"role":     map[string]any{"type": "string", "description": "Configured role that owns the existing conversation.", "enum": s.registry.IDs()},
-			"threadId": map[string]any{"type": "string", "description": "Existing thread ID for this role."},
-			"prompt":   map[string]any{"type": "string", "description": "Follow-up prompt sent directly to the existing conversation."},
-		}, "required": []string{"role", "threadId", "prompt"}, "additionalProperties": false,
+			"threadId": map[string]any{"type": "string", "description": "Opaque thread ID previously returned by Callee."},
+			"prompt":   map[string]any{"type": "string", "description": "Follow-up prompt for the existing conversation."},
+		}, "required": []string{"threadId", "prompt"}, "additionalProperties": false,
 	}, OutputSchema: outputSchema()}
 }
 
 func outputSchema() map[string]any {
-	return map[string]any{"type": "object", "properties": map[string]any{"threadId": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}}, "required": []string{"threadId", "content"}}
+	return map[string]any{"type": "object", "properties": map[string]any{"threadId": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}}, "required": []string{"threadId", "content"}, "additionalProperties": false}
 }
 
 func description(reg *registry.Registry) string {
@@ -70,7 +69,7 @@ func description(reg *registry.Registry) string {
 }
 
 func replyDescription(reg *registry.Registry) string {
-	return "Continue an existing ACP agent role conversation. The role must match the role that created the thread.\n\n" + strings.TrimPrefix(description(reg), "Start a new ACP agent role conversation.\n\n")
+	return "Continue an existing ACP agent role conversation using the opaque thread ID returned by Callee.\n\n" + strings.TrimPrefix(description(reg), "Start a new ACP agent role conversation.\n\n")
 }
 
 // Install registers the Callee start and reply tools.
@@ -99,8 +98,8 @@ func (s *MCP) handleReply(ctx context.Context, request *mcp.CallToolRequest) (*m
 	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
 		return nil, fmt.Errorf("decode callee-reply tool input: %w", err)
 	}
-	if input.Role == "" || input.ThreadID == "" || input.Prompt == "" {
-		return s.error("role, threadId, and prompt are required"), nil
+	if input.ThreadID == "" || input.Prompt == "" || input.Role != "" {
+		return s.error("threadId and prompt are required"), nil
 	}
 	output, err := s.Reply(ctx, input)
 	if err != nil {
@@ -133,11 +132,7 @@ func (s *MCP) Start(ctx context.Context, input Input) (Output, error) {
 
 // Reply executes the existing-conversation tool logic.
 func (s *MCP) Reply(ctx context.Context, input Input) (Output, error) {
-	r, err := s.registry.Get(input.Role)
-	if err != nil {
-		return Output{}, err
-	}
-	content, err := s.manager.Reply(ctx, r, input.ThreadID, input.Prompt)
+	content, err := s.manager.Reply(ctx, input.ThreadID, input.Prompt)
 	return Output{ThreadID: input.ThreadID, Content: content}, err
 }
 

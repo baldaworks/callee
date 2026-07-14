@@ -3,6 +3,8 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/baldaworks/callee/internal/role"
@@ -64,14 +66,55 @@ func TestManagerReusesRoleRuntime(t *testing.T) {
 	if a == b || f.n != 1 {
 		t.Fatal(a, b, f.n)
 	}
-	if _, err := m.Reply(context.Background(), role.Role{ID: "other"}, a, "x"); err == nil {
-		t.Fatal("wrong role allowed")
+	if len(a) < 5 || a[:4] != "cal_" {
+		t.Fatal("thread ID is not opaque", a)
 	}
-	if _, err := m.Reply(context.Background(), r, a, "reply"); err != nil {
+	if _, err := m.Reply(context.Background(), a, "reply"); err != nil {
 		t.Fatal(err)
 	}
 	_ = m.Close()
 	if !f.conversations["reviewer"].closed {
 		t.Fatal("not closed")
+	}
+}
+
+type crashingConversation struct{ fakeConversation }
+
+func (c *crashingConversation) Reply(context.Context, string, string) (string, error) {
+	return "", io.EOF
+}
+
+type crashingFactory struct {
+	n            int
+	conversation *crashingConversation
+}
+
+func (f *crashingFactory) New(role.Role) (Conversation, error) {
+	f.n++
+	if f.conversation == nil {
+		f.conversation = &crashingConversation{}
+	}
+	return f.conversation, nil
+}
+
+func TestManagerInvalidatesThreadsAfterRuntimeCrash(t *testing.T) {
+	f := &crashingFactory{}
+	m := NewManager(f)
+	r := role.Role{ID: "reviewer"}
+	threadID, _, err := m.Start(context.Background(), r, "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Reply(context.Background(), threadID, "two"); err == nil {
+		t.Fatal("reply error = nil")
+	}
+	if _, err := m.Reply(context.Background(), threadID, "three"); err == nil || !strings.Contains(err.Error(), "no longer available") {
+		t.Fatal(err)
+	}
+	if _, _, err := m.Start(context.Background(), r, "four"); err != nil {
+		t.Fatal(err)
+	}
+	if f.n != 2 {
+		t.Fatalf("runtime starts = %d, want 2", f.n)
 	}
 }
