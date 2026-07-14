@@ -17,29 +17,42 @@ Roles are not prompts you need to recreate in every conversation. They are
 shared project tools: reviewable in pull requests, overridable per repository,
 and available to the agent already working on the task.
 
-## Get started with Codex
+## Get started
 
 From the repository you want to work in:
 
-```bash
-npx --yes @baldaworks/callee@0.4.1 setup codex
-```
+1. Install the host plugin and create `.callee/roles/reviewer.md`.
 
-Start a new Codex session, then run:
+   ```bash
+   npx --yes @baldaworks/callee@0.4.1 setup codex
+   # or: npx --yes @baldaworks/callee@0.4.1 setup claude
+   # or: npx --yes @baldaworks/callee@0.4.1 setup grok
+   ```
 
-```text
-$callee reviewer Review the current changes
-```
+2. Start a fresh host session.
 
-Callee creates `.callee/roles/reviewer.md`. The reviewer returns findings with
-severity, evidence, impact, and a suggested fix or test.
+3. Ask the reviewer to inspect the current change.
 
-For another host:
+   Codex:
 
-- Claude Code: `npx --yes @baldaworks/callee@0.4.1 setup claude`, then
-  `/callee:subagent reviewer …`
-- Grok Build: `npx --yes @baldaworks/callee@0.4.1 setup grok`, then
-  `/callee reviewer …`
+   ```text
+   $callee reviewer Review the current changes
+   ```
+
+   Claude Code:
+
+   ```text
+   /callee:subagent reviewer Review the current changes
+   ```
+
+   Grok Build:
+
+   ```text
+   /callee reviewer Review the current changes
+   ```
+
+The reviewer returns findings with severity, evidence, impact, and a suggested
+fix or test.
 
 ## Add specialists when you need them
 
