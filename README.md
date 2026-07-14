@@ -13,7 +13,7 @@ go install github.com/baldaworks/callee/cmd/callee@latest
 Or run the published CLI without installing Go:
 
 ```bash
-npx --yes @baldaworks/callee@0.3.0 --version
+npx --yes @baldaworks/callee@0.3.1 --version
 ```
 
 ## Agent plugins
@@ -45,7 +45,7 @@ Install the plugin from `/plugins`, then invoke `$callee:callee`. For a manual
 MCP setup, run:
 
 ```bash
-codex mcp add callee -- npx --yes @baldaworks/callee@0.3.0 mcp-server
+codex mcp add callee -- npx --yes @baldaworks/callee@0.3.1 mcp-server
 ```
 
 ## Role

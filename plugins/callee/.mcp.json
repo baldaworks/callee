@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "--yes",
-        "@baldaworks/callee@0.3.0",
+        "@baldaworks/callee@0.3.1",
         "mcp-server"
       ]
     }

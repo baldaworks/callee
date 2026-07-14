@@ -19,7 +19,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const Version = "0.3.0"
+const (
+	Version            = "0.3.1"
+	roleListTabPadding = 2
+)
 
 var runDoctor = doctor.Run
 
@@ -177,7 +180,7 @@ func roleListCommand(rolesDir *string) *cobra.Command {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(output)
 		}
 
-		out := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+		out := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, roleListTabPadding, ' ', 0)
 		if _, err := fmt.Fprintln(out, "ID\tDESCRIPTION"); err != nil {
 			return err
 		}

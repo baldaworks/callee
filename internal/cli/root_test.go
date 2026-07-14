@@ -82,6 +82,7 @@ func TestDoctorCommandLoadsRolesAndPassesTimeout(t *testing.T) {
 
 func TestRoleListCommand(t *testing.T) {
 	rolesDir := t.TempDir()
+
 	roles := map[string]string{
 		"reviewer.md": "---\ndescription: Reviews code changes.\ntype: codex\n---\nReview {{ prompt }}\n",
 		"explorer.md": "---\ndescription: >\n  Explores the codebase.\ntype: codex\n---\nExplore {{ prompt }}\n",
