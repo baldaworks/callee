@@ -53,7 +53,7 @@ Use `--roles-dir ./examples/roles` to load only a specific directory.
 }
 ```
 
-The server exposes exactly one tool, `callee`.
+The server exposes two tools: `callee` starts a conversation and `callee-reply` continues one.
 
 First call:
 

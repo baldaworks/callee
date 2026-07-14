@@ -12,20 +12,20 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Input is the sole Callee MCP tool input.
+// Input is a Callee MCP tool input.
 type Input struct {
 	Role     string `json:"role"`
 	Prompt   string `json:"prompt"`
 	ThreadID string `json:"threadId,omitempty"`
 }
 
-// Output is the sole Callee MCP tool output.
+// Output is a Callee MCP tool output.
 type Output struct {
 	ThreadID string `json:"threadId"`
 	Content  string `json:"content"`
 }
 
-// MCP serves the one-tool MCP surface.
+// MCP serves the Callee MCP tools.
 type MCP struct {
 	registry *registry.Registry
 	manager  *runtime.Manager
@@ -35,57 +35,93 @@ func New(reg *registry.Registry, manager *runtime.Manager) *MCP {
 	return &MCP{registry: reg, manager: manager}
 }
 
-// Definition returns the exact public tool definition.
-func (s *MCP) Definition() *mcp.Tool {
+// StartDefinition returns the tool definition for new role conversations.
+func (s *MCP) StartDefinition() *mcp.Tool {
 	return &mcp.Tool{Name: "callee", Description: description(s.registry), InputSchema: map[string]any{
 		"type": "object", "properties": map[string]any{
-			"role":     map[string]any{"type": "string", "description": "Configured role to start or continue.", "enum": s.registry.IDs()},
-			"prompt":   map[string]any{"type": "string", "description": "Initial task or follow-up prompt."},
-			"threadId": map[string]any{"type": "string", "description": "Existing thread ID for this role."},
+			"role":   map[string]any{"type": "string", "description": "Configured role to start.", "enum": s.registry.IDs()},
+			"prompt": map[string]any{"type": "string", "description": "Initial task for the role."},
 		}, "required": []string{"role", "prompt"}, "additionalProperties": false,
-	}, OutputSchema: map[string]any{"type": "object", "properties": map[string]any{"threadId": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}}, "required": []string{"threadId", "content"}}}
+	}, OutputSchema: outputSchema()}
+}
+
+// ReplyDefinition returns the tool definition for existing role conversations.
+func (s *MCP) ReplyDefinition() *mcp.Tool {
+	return &mcp.Tool{Name: "callee-reply", Description: replyDescription(s.registry), InputSchema: map[string]any{
+		"type": "object", "properties": map[string]any{
+			"role":     map[string]any{"type": "string", "description": "Configured role that owns the existing conversation.", "enum": s.registry.IDs()},
+			"threadId": map[string]any{"type": "string", "description": "Existing thread ID for this role."},
+			"prompt":   map[string]any{"type": "string", "description": "Follow-up prompt sent directly to the existing conversation."},
+		}, "required": []string{"role", "threadId", "prompt"}, "additionalProperties": false,
+	}, OutputSchema: outputSchema()}
+}
+
+func outputSchema() map[string]any {
+	return map[string]any{"type": "object", "properties": map[string]any{"threadId": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}}, "required": []string{"threadId", "content"}}
 }
 
 func description(reg *registry.Registry) string {
 	var b strings.Builder
-	b.WriteString("Start or continue an ACP agent role.\n\nAvailable roles:")
+	b.WriteString("Start a new ACP agent role conversation.\n\nAvailable roles:")
 	for _, r := range reg.Roles() {
 		fmt.Fprintf(&b, "\n- %s — %s", r.ID, r.Metadata.Description)
 	}
 	return b.String()
 }
 
-// Install registers exactly one MCP tool.
-func (s *MCP) Install(m *mcp.Server) { m.AddTool(s.Definition(), s.handle) }
+func replyDescription(reg *registry.Registry) string {
+	return "Continue an existing ACP agent role conversation. The role must match the role that created the thread.\n\n" + strings.TrimPrefix(description(reg), "Start a new ACP agent role conversation.\n\n")
+}
 
-func (s *MCP) handle(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// Install registers the Callee start and reply tools.
+func (s *MCP) Install(m *mcp.Server) {
+	m.AddTool(s.StartDefinition(), s.handleStart)
+	m.AddTool(s.ReplyDefinition(), s.handleReply)
+}
+
+func (s *MCP) handleStart(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var input Input
 	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
 		return nil, fmt.Errorf("decode callee tool input: %w", err)
 	}
-	if input.Role == "" || input.Prompt == "" {
+	if input.Role == "" || input.Prompt == "" || input.ThreadID != "" {
 		return s.error("role and prompt are required"), nil
 	}
-	output, err := s.Call(ctx, input)
+	output, err := s.Start(ctx, input)
 	if err != nil {
 		return s.error(err.Error()), nil
 	}
-	return &mcp.CallToolResult{StructuredContent: output, Content: []mcp.Content{&mcp.TextContent{Text: output.Content}}}, nil
+	return result(output), nil
+}
+
+func (s *MCP) handleReply(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var input Input
+	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
+		return nil, fmt.Errorf("decode callee-reply tool input: %w", err)
+	}
+	if input.Role == "" || input.ThreadID == "" || input.Prompt == "" {
+		return s.error("role, threadId, and prompt are required"), nil
+	}
+	output, err := s.Reply(ctx, input)
+	if err != nil {
+		return s.error(err.Error()), nil
+	}
+	return result(output), nil
+}
+
+func result(output Output) *mcp.CallToolResult {
+	return &mcp.CallToolResult{StructuredContent: output, Content: []mcp.Content{&mcp.TextContent{Text: output.Content}}}
 }
 
 func (s *MCP) error(message string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message}}}
 }
 
-// Call executes the tool logic and is used by integration-style tests.
-func (s *MCP) Call(ctx context.Context, input Input) (Output, error) {
+// Start executes the new-conversation tool logic.
+func (s *MCP) Start(ctx context.Context, input Input) (Output, error) {
 	r, err := s.registry.Get(input.Role)
 	if err != nil {
 		return Output{}, err
-	}
-	if input.ThreadID != "" {
-		content, err := s.manager.Reply(ctx, r, input.ThreadID, input.Prompt)
-		return Output{ThreadID: input.ThreadID, Content: content}, err
 	}
 	rendered, err := r.Render(input.Prompt)
 	if err != nil {
@@ -93,6 +129,16 @@ func (s *MCP) Call(ctx context.Context, input Input) (Output, error) {
 	}
 	id, content, err := s.manager.Start(ctx, r, rendered)
 	return Output{ThreadID: id, Content: content}, err
+}
+
+// Reply executes the existing-conversation tool logic.
+func (s *MCP) Reply(ctx context.Context, input Input) (Output, error) {
+	r, err := s.registry.Get(input.Role)
+	if err != nil {
+		return Output{}, err
+	}
+	content, err := s.manager.Reply(ctx, r, input.ThreadID, input.Prompt)
+	return Output{ThreadID: input.ThreadID, Content: content}, err
 }
 
 // RunStdio serves standard MCP over stdio.
