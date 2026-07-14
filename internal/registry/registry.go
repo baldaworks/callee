@@ -19,8 +19,10 @@ func New(roles []role.Role) (*Registry, error) {
 		if _, exists := r.roles[item.ID]; exists {
 			return nil, fmt.Errorf("duplicate role %q", item.ID)
 		}
+
 		r.roles[item.ID] = item
 	}
+
 	return r, nil
 }
 
@@ -29,8 +31,10 @@ func (r *Registry) Get(id string) (role.Role, error) {
 	item, ok := r.roles[id]
 	if !ok {
 		available := strings.Join(r.IDs(), ", ")
+
 		return role.Role{}, fmt.Errorf("role %q was not found; available roles: %s", id, available)
 	}
+
 	return item, nil
 }
 
@@ -40,16 +44,20 @@ func (r *Registry) IDs() []string {
 	for id := range r.roles {
 		ids = append(ids, id)
 	}
+
 	sort.Strings(ids)
+
 	return ids
 }
 
 // Roles returns roles sorted by ID.
 func (r *Registry) Roles() []role.Role {
 	ids := r.IDs()
+
 	items := make([]role.Role, 0, len(ids))
 	for _, id := range ids {
 		items = append(items, r.roles[id])
 	}
+
 	return items
 }

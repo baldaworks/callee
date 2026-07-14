@@ -1,0 +1,13 @@
+# Binaries and assets
+bin/
+*.exe
+*.png
+*.jpg
+*.pdf
+
+# Large generated files
+*.generated.go
+vendor/
+
+# Logs
+*.log

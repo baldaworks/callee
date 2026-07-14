@@ -62,9 +62,11 @@ func outputSchema() map[string]any {
 func description(reg *registry.Registry) string {
 	var b strings.Builder
 	b.WriteString("Start a new ACP agent role conversation.\n\nAvailable roles:")
+
 	for _, r := range reg.Roles() {
 		fmt.Fprintf(&b, "\n- %s — %s", r.ID, r.Metadata.Description)
 	}
+
 	return b.String()
 }
 
@@ -78,42 +80,8 @@ func (s *MCP) Install(m *mcp.Server) {
 	m.AddTool(s.ReplyDefinition(), s.handleReply)
 }
 
-func (s *MCP) handleStart(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var input Input
-	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
-		return nil, fmt.Errorf("decode callee tool input: %w", err)
-	}
-	if input.Role == "" || input.Prompt == "" || input.ThreadID != "" {
-		return s.error("role and prompt are required"), nil
-	}
-	output, err := s.Start(ctx, input)
-	if err != nil {
-		return s.error(err.Error()), nil
-	}
-	return result(output), nil
-}
-
-func (s *MCP) handleReply(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var input Input
-	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
-		return nil, fmt.Errorf("decode callee-reply tool input: %w", err)
-	}
-	if input.ThreadID == "" || input.Prompt == "" || input.Role != "" {
-		return s.error("threadId and prompt are required"), nil
-	}
-	output, err := s.Reply(ctx, input)
-	if err != nil {
-		return s.error(err.Error()), nil
-	}
-	return result(output), nil
-}
-
 func result(output Output) *mcp.CallToolResult {
 	return &mcp.CallToolResult{StructuredContent: output, Content: []mcp.Content{&mcp.TextContent{Text: output.Content}}}
-}
-
-func (s *MCP) error(message string) *mcp.CallToolResult {
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message}}}
 }
 
 // Start executes the new-conversation tool logic.
@@ -122,17 +90,21 @@ func (s *MCP) Start(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
+
 	rendered, err := r.Render(input.Prompt)
 	if err != nil {
 		return Output{}, err
 	}
+
 	id, content, err := s.manager.Start(ctx, r, rendered)
+
 	return Output{ThreadID: id, Content: content}, err
 }
 
 // Reply executes the existing-conversation tool logic.
 func (s *MCP) Reply(ctx context.Context, input Input) (Output, error) {
 	content, err := s.manager.Reply(ctx, input.ThreadID, input.Prompt)
+
 	return Output{ThreadID: input.ThreadID, Content: content}, err
 }
 
@@ -140,5 +112,46 @@ func (s *MCP) Reply(ctx context.Context, input Input) (Output, error) {
 func (s *MCP) RunStdio(ctx context.Context, version string) error {
 	m := mcp.NewServer(&mcp.Implementation{Name: "callee", Version: version}, nil)
 	s.Install(m)
+
 	return m.Run(ctx, &mcp.StdioTransport{})
+}
+
+func (s *MCP) handleStart(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var input Input
+	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
+		return nil, fmt.Errorf("decode callee tool input: %w", err)
+	}
+
+	if input.Role == "" || input.Prompt == "" || input.ThreadID != "" {
+		return s.error("role and prompt are required"), nil
+	}
+
+	output, err := s.Start(ctx, input)
+	if err != nil {
+		return s.error(err.Error()), nil
+	}
+
+	return result(output), nil
+}
+
+func (s *MCP) handleReply(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var input Input
+	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
+		return nil, fmt.Errorf("decode callee-reply tool input: %w", err)
+	}
+
+	if input.ThreadID == "" || input.Prompt == "" || input.Role != "" {
+		return s.error("threadId and prompt are required"), nil
+	}
+
+	output, err := s.Reply(ctx, input)
+	if err != nil {
+		return s.error(err.Error()), nil
+	}
+
+	return result(output), nil
+}
+
+func (s *MCP) error(message string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message}}}
 }

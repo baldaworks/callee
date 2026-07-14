@@ -1,0 +1,19 @@
+version: "2"
+
+linters:
+  default: fast
+  disable:
+    - wsl
+    - depguard
+    - gomodguard
+    - testpackage
+  enable:
+    - wsl_v5
+  settings:
+    cyclop:
+      max-complexity: 20
+    funlen:
+      lines: 120
+      statements: 60
+    lll:
+      line-length: 260

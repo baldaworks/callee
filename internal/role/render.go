@@ -15,9 +15,11 @@ func validateTemplate(id, body string) error {
 			return fmt.Errorf("role %q: unsupported template expression %q", id, match[0])
 		}
 	}
+
 	if len(matches) != 1 || strings.Count(body, "{{ prompt }}") != 1 {
 		return fmt.Errorf("role %q: template must contain \"{{ prompt }}\" exactly once", id)
 	}
+
 	return nil
 }
 
@@ -26,5 +28,6 @@ func (r Role) Render(prompt string) (string, error) {
 	if err := validateTemplate(r.ID, r.Template); err != nil {
 		return "", err
 	}
+
 	return strings.Replace(r.Template, "{{ prompt }}", prompt, 1), nil
 }

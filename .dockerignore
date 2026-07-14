@@ -1,0 +1,14 @@
+.git
+.github/
+.gitignore
+.idea/
+.vscode/
+*.swp
+*.swo
+.cache/
+coverage.out
+.env
+.env.*
+!.env.example
+bin/
+dist/

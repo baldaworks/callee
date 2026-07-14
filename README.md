@@ -40,6 +40,27 @@ callee --role reviewer --prompt "Review the current changes"
 
 Use `--roles-dir ./examples/roles` to load only a specific directory.
 
+## Doctor
+
+Check that every loaded role can start and initialize its ACP runtime without
+sending a model prompt:
+
+```bash
+callee doctor
+```
+
+Provider processes are checked sequentially with a 60 second timeout per
+provider. Roles with the same `type`, resolved command, and extra arguments
+share one check; Callee still reports an outcome for every role. Use
+`--timeout` to override it and `--roles-dir` to check only one role directory:
+
+```bash
+callee doctor --roles-dir ./examples/roles --timeout 90s
+```
+
+`doctor` reports every failed role and exits non-zero if any runtime cannot be
+initialized. It closes each successfully initialized runtime before continuing.
+
 ## MCP server
 
 ```json
@@ -68,6 +89,10 @@ Follow-up with `callee-reply`:
 ```
 
 Both responses contain `structuredContent: { "threadId", "content" }` and legacy text `content`.
+
+Within one MCP server process, roles sharing the same `type`, resolved command,
+and `extra_args` share one ACP provider process. Each `callee` call creates an
+independent ACP session with that role's model, mode, reasoning, and prompt.
 
 ## Frontmatter reference
 

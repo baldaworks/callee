@@ -1,0 +1,40 @@
+# Go build artifacts
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+
+# Go test and coverage outputs
+*.test
+coverage.out
+cover.out
+*.coverprofile
+
+# Go/tool caches
+.cache/
+.gocache/
+.gomodcache/
+
+# IDE/editor files
+.idea/
+*.iml
+.vscode/
+.fleet/
+.zed/
+*.swp
+*.swo
+*~
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
