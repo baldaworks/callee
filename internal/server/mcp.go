@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	promptTool   = "callee.subagent.prompt"
-	replyTool    = "callee.subagent.reply"
-	roleListTool = "callee.role.list"
+	promptTool   = "subagent.prompt"
+	replyTool    = "subagent.reply"
+	roleListTool = "role.list"
 )
 
 // Input is a Callee MCP tool input.

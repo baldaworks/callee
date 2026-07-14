@@ -33,7 +33,7 @@ func TestMCPConfigUsesPublishedCalleeRunner(t *testing.T) {
 		t.Fatalf("command = %q, want npx", server.Command)
 	}
 
-	want := []string{"--yes", "@baldaworks/callee@0.3.1", "mcp-server"}
+	want := []string{"--yes", "@baldaworks/callee@0.4.0", "mcp-server"}
 	if strings.Join(server.Args, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("args = %#v, want %#v", server.Args, want)
 	}
@@ -51,7 +51,7 @@ func TestSkillDescribesMCPAndCLIModes(t *testing.T) {
 		"callee.role.list",
 		"callee.subagent.prompt",
 		"callee.subagent.reply",
-		"@baldaworks/callee@0.3.1",
+		"@baldaworks/callee@0.4.0",
 		"--new",
 	} {
 		if !strings.Contains(text, want) {

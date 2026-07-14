@@ -119,7 +119,7 @@ func TestListRoles(t *testing.T) {
 	}
 }
 
-func TestInstallPublishesOnlyNamespacedTools(t *testing.T) {
+func TestInstallPublishesOnlyUnprefixedTools(t *testing.T) {
 	r, err := registry.New([]role.Role{
 		{ID: "reviewer", Metadata: role.Metadata{Description: "Reviews code", Type: "codex"}, Template: "{{ prompt }}"},
 	})
@@ -155,7 +155,11 @@ func TestInstallPublishesOnlyNamespacedTools(t *testing.T) {
 		got[tool.Name] = true
 	}
 
-	want := map[string]bool{promptTool: true, replyTool: true, roleListTool: true}
+	want := map[string]bool{
+		"subagent.prompt": true,
+		"subagent.reply":  true,
+		"role.list":       true,
+	}
 	if len(got) != len(want) {
 		t.Fatalf("published tools = %#v, want %#v", got, want)
 	}
@@ -166,7 +170,7 @@ func TestInstallPublishesOnlyNamespacedTools(t *testing.T) {
 		}
 	}
 
-	if got["callee"] || got["callee-reply"] {
+	if got["callee"] || got["callee-reply"] || got["callee.role.list"] || got["callee.subagent.prompt"] || got["callee.subagent.reply"] {
 		t.Errorf("legacy tools remain published: %#v", got)
 	}
 }

@@ -18,7 +18,7 @@ First discover roles. In MCP mode, call `callee.role.list` with `{}`. In CLI
 fallback mode, show the role list when the user needs it:
 
 ```bash
-npx --yes @baldaworks/callee@0.3.1 role list
+npx --yes @baldaworks/callee@0.4.0 role list
 ```
 
 In CLI mode, let the role runner report an unknown role and its available IDs.
@@ -46,7 +46,7 @@ Announce that MCP is unavailable and that the CLI run cannot be continued.
 Run one role invocation only:
 
 ```bash
-npx --yes @baldaworks/callee@0.3.1 --role "<role>" --prompt "<task>"
+npx --yes @baldaworks/callee@0.4.0 --role "<role>" --prompt "<task>"
 ```
 
 Do not launch `mcp-server` from fallback mode and do not retain a thread ledger
@@ -59,7 +59,7 @@ reload the plugin and verify that Callee appears in the host's MCP tool list.
 For a manual Codex setup, provide:
 
 ```bash
-codex mcp add callee -- npx --yes @baldaworks/callee@0.3.1 mcp-server
+codex mcp add callee -- npx --yes @baldaworks/callee@0.4.0 mcp-server
 ```
 
 For a manual Claude Code project setup, provide this `.mcp.json` entry:
@@ -69,7 +69,7 @@ For a manual Claude Code project setup, provide this `.mcp.json` entry:
   "mcpServers": {
     "callee": {
       "command": "npx",
-      "args": ["--yes", "@baldaworks/callee@0.3.1", "mcp-server"]
+      "args": ["--yes", "@baldaworks/callee@0.4.0", "mcp-server"]
     }
   }
 }

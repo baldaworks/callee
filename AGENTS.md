@@ -1,6 +1,6 @@
 # Callee agent guidance
 
-- Preserve the three-tool MCP surface: `callee.subagent.prompt` starts conversations, `callee.subagent.reply` continues them, and `callee.role.list` lists roles.
+- Preserve the three-tool raw MCP surface: `subagent.prompt` starts conversations, `subagent.reply` continues them, and `role.list` lists roles. The plugin mounts the server as `callee`, so hosts expose these as `callee.subagent.prompt`, `callee.subagent.reply`, and `callee.role.list`.
 - Preserve flat role frontmatter. Do not add nested provider configuration.
 - Do not add Gemini support.
 - Do not add MCP forwarding without an explicit product decision.
