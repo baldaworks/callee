@@ -30,6 +30,27 @@ From the repository you want to work in:
    # or: npx --yes @baldaworks/callee@0.5.0 setup copilot
    ```
 
+   For Codex, this creates the following project-local reviewer. The other
+   setup targets use their matching `type` with the same review contract.
+
+   ```md
+   ---
+   description: Reviews code changes for correctness and regressions.
+   type: codex
+   model: gpt-5-codex
+   reasoning: high
+   mode: review
+   ---
+
+   You are an independent code reviewer.
+
+   Review the following task:
+
+   {{ prompt }}
+
+   Do not modify files. Return concrete, evidence-backed findings.
+   ```
+
 2. Start a fresh host session.
 
 3. Ask the reviewer to inspect the current change.
@@ -237,25 +258,9 @@ defaults rather than adding an unsupported field to `.mcp.json`.
 
 ### Role format
 
-`~/.config/callee/roles/reviewer.md`:
-
-```md
----
-description: Reviews code changes for correctness and regressions.
-type: codex
-model: gpt-5-codex
-reasoning: high
-mode: review
----
-
-You are an independent code reviewer.
-
-## Task
-
-{{ prompt }}
-
-Do not modify files. Return concrete, evidence-backed findings.
-```
+A role is a Markdown file with flat YAML frontmatter. The reviewer in the
+quickstart is a complete example; keep it project-local in
+`.callee/roles/reviewer.md` or override it with a user-level role.
 
 To adapt the reporting contract for your project, start from the
 [`custom reviewer`](examples/roles/custom-reviewer.md) template.
