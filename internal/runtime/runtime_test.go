@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -257,6 +258,25 @@ func TestRoleSessionState(t *testing.T) {
 	config := codex["config"].(map[string]any)
 	if got, want := config["model_reasoning_effort"], "high"; got != want {
 		t.Fatalf("reasoning effort = %q, want %q", got, want)
+	}
+}
+
+func TestCodexRoleSessionStatePassesModeToACPBridge(t *testing.T) {
+	r := testRole("reviewer", "codex")
+	r.Metadata.Mode = "review"
+
+	state := roleSessionState(r)
+	acpState, ok := state[acpagent.SessionStateKey].(map[string]any)
+	if !ok {
+		t.Fatalf("ACP state = %#v", state)
+	}
+
+	values, ok := acpState["config_values"].([]acpagent.SessionConfigValue)
+	if !ok {
+		t.Fatalf("session config values = %#v", acpState["config_values"])
+	}
+	if want := []acpagent.SessionConfigValue{acpagent.SelectSessionConfigValue("mode", "review")}; !reflect.DeepEqual(values, want) {
+		t.Fatalf("session config values = %#v, want %#v", values, want)
 	}
 }
 
