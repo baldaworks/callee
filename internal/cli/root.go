@@ -22,7 +22,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	cmd.SetErr(stderr)
 	cmd.SetContext(ctx)
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(stderr, "Error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 1
 	}
 	return 0
@@ -57,7 +57,7 @@ func execCommand(rolesDir *string) *cobra.Command {
 			return err
 		}
 		manager := runtime.NewManager(runtime.NormaFactory{})
-		defer manager.Close()
+		defer func() { _ = manager.Close() }()
 		_, content, err := manager.Start(cmd.Context(), r, rendered)
 		if err != nil {
 			return err
@@ -79,7 +79,7 @@ func mcpServerCommand(rolesDir *string) *cobra.Command {
 			return err
 		}
 		manager := runtime.NewManager(runtime.NormaFactory{})
-		defer manager.Close()
+		defer func() { _ = manager.Close() }()
 		return server.New(reg, manager).RunStdio(cmd.Context(), Version)
 	}}
 }
