@@ -1,77 +1,50 @@
 # Callee
 
-## Versioned Markdown specialist roles for AI coding agents
+## Versioned Markdown roles for AI coding agents
 
-Callee gives developers and teams using Claude Code, Codex, Grok Build,
-OpenCode, or Copilot a project-local library of specialist roles they can call
-as subagents. Define a reviewer, explorer, architect, implementer, or tester
-once in Markdown; keep it with the repository; and reuse it whenever the work
-needs that perspective.
+Callee lets developers and teams keep reusable specialist roles beside their
+code and run them as subagents. Roles are project-local Markdown files: review
+them in pull requests, override them per repository, and use them from the
+coding agent already working on the task.
+
+Built for Codex, Claude Code, Grok Build, OpenCode, and Copilot.
 
 ```text
 .callee/roles/reviewer.md  →  host plugin / MCP  →  reviewer subagent
 ```
 
-## The wedge: roles belong in the repository
+Roles are not prompts you need to recreate in every conversation. They are
+shared project tools: reviewable in pull requests, overridable per repository,
+and available to the agent already working on the task.
 
-A pasted prompt is a one-off conversation detail. A Callee role is a reusable,
-reviewable project artifact with an explicit runtime. The same flat Markdown
-format works across specialist workflows; the host discovers and dispatches
-roles through its plugin and MCP surface.
-
-- Version control roles alongside code, and override shared roles per project.
-- Use one role library for review, exploration, design, implementation, and
-  testing instead of rebuilding prompts in every chat.
-- Keep follow-ups scoped honestly: a `threadId` continues only within the same
-  active Callee MCP server process, never across restarts or sessions.
-
-## Quickstart: ask a reviewer in 3 steps
+## Get started with Codex
 
 From the repository you want to work in:
 
-1. Install the host plugin and create `.callee/roles/reviewer.md`.
-
-   ```bash
-   npx --yes @baldaworks/callee@0.4.1 setup codex
-   # or: npx --yes @baldaworks/callee@0.4.1 setup claude
-   # or: npx --yes @baldaworks/callee@0.4.1 setup grok
-   ```
-
-2. Start a fresh host session so it loads the plugin and its MCP configuration.
-
-3. Ask the host to review the current change.
-
-   Claude Code:
-
-   ```text
-   /callee:subagent reviewer Review the current changes
-   ```
-
-   Codex:
-
-   ```text
-   $callee reviewer Review the current changes
-   ```
-
-   Grok Build:
-
-   ```text
-   /callee reviewer Review the current changes
-   ```
-
-The reviewer returns findings in a useful handoff shape:
-
-```text
-<severity> — <finding summary>
-evidence: <file:line and observed behavior>
-impact: <why the behavior matters>
-suggested fix: <concrete code or test change>
+```bash
+npx --yes @baldaworks/callee@0.4.1 setup codex
 ```
 
-## Start with a reviewer; grow into a team
+Start a new Codex session, then run:
 
-The [`reviewer`](examples/roles/reviewer.md) is the fastest first role. Add a
-specialist when the workflow calls for it:
+```text
+$callee reviewer Review the current changes
+```
+
+Callee creates `.callee/roles/reviewer.md`. The reviewer returns findings with
+severity, evidence, impact, and a suggested fix or test.
+
+For another host:
+
+- Claude Code: `npx --yes @baldaworks/callee@0.4.1 setup claude`, then
+  `/callee:subagent reviewer …`
+- Grok Build: `npx --yes @baldaworks/callee@0.4.1 setup grok`, then
+  `/callee reviewer …`
+
+## Add specialists when you need them
+
+Start with the [`reviewer`](examples/roles/reviewer.md). Add a specialist for a
+specific kind of work:
 
 - [`explorer`](examples/roles/explorer.md) maps relevant code paths without
   changing files.
@@ -81,11 +54,6 @@ specialist when the workflow calls for it:
   runs relevant validation.
 - [`tester`](examples/roles/tester.md) identifies missing coverage and concrete
   test cases.
-- [`custom reviewer`](examples/roles/custom-reviewer.md) is a starting point
-  for a project-specific review contract.
-
-See the [`Grok reviewer`](examples/roles/grok-reviewer.md) template when your
-project uses the Grok Build runtime.
 
 ## Reference
 
@@ -108,7 +76,7 @@ Or run the published CLI without installing Go:
 npx --yes @baldaworks/callee@0.4.1 --version
 ```
 
-Callee is available as a Claude Code, Codex, and Grok Build plugin. Each bundles a skill that
+Callee is available as a Codex, Claude Code, and Grok Build plugin. Each bundles a skill that
 uses Callee MCP when it is available and falls back to the npx CLI runner when
 it is not.
 
@@ -116,19 +84,6 @@ it is not.
 
 Use these commands when you want to install the plugin or configure MCP without
 creating the sample role.
-
-##### Claude Code
-
-```text
-/plugin marketplace add baldaworks/callee
-/plugin install callee@callee
-/reload-plugins
-```
-
-Run a role with `/callee:subagent <role> <task>`. Repeated requests for the
-same role in one parent conversation reuse its MCP thread; add `--new` to start
-another role conversation. Use `/callee:setup` for the MCP configuration of
-the current host.
 
 ##### Codex
 
@@ -149,6 +104,19 @@ For a manual MCP setup, run:
 ```bash
 codex mcp add callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
 ```
+
+##### Claude Code
+
+```text
+/plugin marketplace add baldaworks/callee
+/plugin install callee@callee
+/reload-plugins
+```
+
+Run a role with `/callee:subagent <role> <task>`. Repeated requests for the
+same role in one parent conversation reuse its MCP thread; add `--new` to start
+another role conversation. Use `/callee:setup` for the MCP configuration of
+the current host.
 
 ##### Grok Build
 
@@ -194,6 +162,9 @@ You are an independent code reviewer.
 Do not modify files. Return concrete, evidence-backed findings.
 ```
 
+To adapt the reporting contract for your project, start from the
+[`custom reviewer`](examples/roles/custom-reviewer.md) template.
+
 ### One-shot CLI
 
 ```bash
@@ -202,9 +173,10 @@ callee --role reviewer --prompt "Review the current changes"
 
 Use `--roles-dir ./examples/roles` to load only a specific directory.
 
-### Role list
+### Inspect roles
 
-List the configured role IDs and descriptions without starting an ACP runtime:
+Use the role list when you want to browse configured role IDs and descriptions;
+it is not required before starting a known role:
 
 ```bash
 callee role list
@@ -261,15 +233,21 @@ initialized. It closes each successfully initialized runtime before continuing.
 With the `callee` server name in the configuration above, hosts expose three
 tools:
 
-- `callee.role.list` returns the available role IDs and descriptions.
 - `callee.subagent.prompt` starts a conversation.
 - `callee.subagent.reply` continues a conversation.
+- `callee.role.list` returns the available role IDs and descriptions.
 
 The raw MCP tool names are `role.list`, `subagent.prompt`, and
 `subagent.reply`; the host prefixes them with the configured server name. This
 avoids displaying a duplicate `callee.callee` namespace in host tool calls.
 
-List roles before selecting one:
+Start a known role directly:
+
+```json
+{"role":"reviewer","prompt":"Review the current changes"}
+```
+
+Inspect roles only when you need to browse the library:
 
 ```json
 {}
@@ -279,12 +257,6 @@ The response contains:
 
 ```json
 {"roles":[{"id":"reviewer","description":"Reviews code changes for correctness and regressions."}]}
-```
-
-First call:
-
-```json
-{"role":"reviewer","prompt":"Review the current changes"}
 ```
 
 Follow-up with `callee.subagent.reply`:

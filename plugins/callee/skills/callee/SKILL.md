@@ -11,8 +11,8 @@ user-invocable: true
 Use the host's Callee skill command with `<role> <task> [--new]`. The first
 argument is the Callee role ID; all remaining text is its task.
 
-Run Callee roles through MCP whenever the `callee.role.list` tool is available.
-Use the CLI fallback only when that MCP tool is unavailable or fails.
+Run Callee roles through MCP whenever `callee.subagent.prompt` is available.
+Use the CLI fallback only when that tool is unavailable or fails.
 
 ## Dispatch
 
@@ -20,8 +20,10 @@ Interpret the first token of a role request as the role ID and the remaining tex
 Treat `--new` as a request to start an independent conversation; remove it before sending the task.
 Role IDs can include `/` but cannot include spaces.
 
-First discover roles. In MCP mode, call `callee.role.list` with `{}`. In CLI
-fallback mode, show the role list when the user needs it:
+When the user supplies a role ID, dispatch it directly. Call
+`callee.role.list` only when the user asks what roles exist, needs help choosing
+one, or supplies no role ID. In CLI fallback mode, use the role list for the
+same purpose:
 
 ```bash
 npx --yes @baldaworks/callee@0.4.1 role list

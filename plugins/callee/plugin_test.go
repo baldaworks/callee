@@ -55,10 +55,20 @@ func TestSkillDescribesMCPAndCLIModes(t *testing.T) {
 		"@baldaworks/callee@0.4.1",
 		"--new",
 		"<role> <task> [--new]",
+		"When the user supplies a role ID, dispatch it directly.",
+		"only when the user asks what roles exist",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill is missing %q", want)
 		}
+	}
+
+	if strings.Contains(text, "First discover roles") {
+		t.Error("skill must not list roles before dispatching a known role")
+	}
+
+	if strings.Contains(text, "whenever the `callee.role.list` tool is available") {
+		t.Error("skill must use the prompt tool to select MCP mode")
 	}
 }
 
