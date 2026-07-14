@@ -16,8 +16,11 @@ Use one of these actions:
 Role IDs can include `/` but cannot include spaces. The `role:` prefix is part
 of the invocation syntax, not part of the role ID.
 
-Run Callee roles through MCP whenever `callee.subagent.prompt` is available.
-Use the CLI fallback only when that tool is unavailable or fails.
+Run Callee roles through MCP whenever `callee.role` is available. Use the CLI
+fallback only when that tool is unavailable before dispatch, such as when it is
+not registered or its MCP server cannot start. Do not retry through the CLI
+after an MCP tool call starts and then errors, times out, or returns an invalid
+result.
 
 ## Dispatch
 
@@ -32,7 +35,7 @@ needs help choosing one. In CLI fallback mode, use the role list for the same
 purpose:
 
 ```bash
-npx --yes @baldaworks/callee@0.4.1 role list
+npx --yes @baldaworks/callee@0.5.0 role list
 ```
 
 For an unknown role in CLI mode, let the role runner report the available IDs.
@@ -42,11 +45,11 @@ For an unknown role in CLI mode, let the role runner report the available IDs.
 Maintain the active Callee thread in the current parent conversation for each
 role ID. Do not persist it outside this conversation.
 
-- For `role:<role-id>` with no saved thread, call
-  `callee.subagent.prompt` with `{"role":"<role>","prompt":"<task>"}`.
+- For `role:<role-id>` with no saved thread, call `callee.role` with
+  `{"role":"<role>","prompt":"<task>"}`.
 - Save the returned `threadId` as that role's active thread and return the
   returned content.
-- For `role:<role-id>` with a saved thread, call `callee.subagent.reply` with
+- For `role:<role-id>` with a saved thread, call `callee.role.reply` with
   `{"threadId":"<saved thread ID>","prompt":"<task>"}` and return its content.
 - If reply reports that the thread is unavailable, remove the saved entry, say
   that the prior Callee conversation was lost, and start a new prompt using only
@@ -64,7 +67,7 @@ Announce that MCP is unavailable and that the CLI run cannot be continued.
 For `role:<role-id>`, run one role invocation only:
 
 ```bash
-npx --yes @baldaworks/callee@0.4.1 --role "<role>" --prompt "<task>"
+npx --yes @baldaworks/callee@0.5.0 --role "<role>" --prompt "<task>"
 ```
 
 For `reset:<role-id>`, report that CLI mode has no persistent Callee
@@ -78,7 +81,7 @@ reload the plugin and verify that Callee appears in the host's MCP tool list.
 For a manual Codex setup, provide:
 
 ```bash
-codex mcp add callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
+codex mcp add callee -- npx --yes @baldaworks/callee@0.5.0 mcp-server
 ```
 
 For a manual Claude Code project setup, provide this `.mcp.json` entry:
@@ -88,7 +91,7 @@ For a manual Claude Code project setup, provide this `.mcp.json` entry:
   "mcpServers": {
     "callee": {
       "command": "npx",
-      "args": ["--yes", "@baldaworks/callee@0.4.1", "mcp-server"]
+      "args": ["--yes", "@baldaworks/callee@0.5.0", "mcp-server"]
     }
   }
 }
@@ -97,7 +100,7 @@ For a manual Claude Code project setup, provide this `.mcp.json` entry:
 For a manual Grok Build project setup, provide:
 
 ```bash
-grok mcp add --scope project callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
+grok mcp add --scope project callee -- npx --yes @baldaworks/callee@0.5.0 mcp-server
 ```
 
 Do not add MCP forwarding, provider configuration, Gemini support, or nested

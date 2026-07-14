@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "callee",
-      "description": "Run Callee roles as persistent MCP-backed subagents.",
-      "version": "0.4.1",
+      "description": "Run Callee roles as stateful MCP-backed subagents within the current host session.",
+      "version": "0.5.0",
       "source": "./plugins/callee",
       "homepage": "https://github.com/baldaworks/callee",
       "keywords": ["subagents", "mcp", "roles"]

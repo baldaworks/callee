@@ -39,7 +39,7 @@ func TestToolCall(t *testing.T) {
 	s := New(r, runtime.NewManager(factory{f}))
 
 	start, reply, list := s.StartDefinition(), s.ReplyDefinition(), s.RoleListDefinition()
-	if start.Name != promptTool || reply.Name != replyTool || list.Name != roleListTool {
+	if start.Name != roleTool || reply.Name != roleReplyTool || list.Name != roleListTool {
 		t.Fatal(start.Name, reply.Name, list.Name)
 	}
 
@@ -156,9 +156,9 @@ func TestInstallPublishesOnlyUnprefixedTools(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"subagent.prompt": true,
-		"subagent.reply":  true,
-		"role.list":       true,
+		"role":       true,
+		"role.reply": true,
+		"role.list":  true,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("published tools = %#v, want %#v", got, want)
@@ -170,7 +170,7 @@ func TestInstallPublishesOnlyUnprefixedTools(t *testing.T) {
 		}
 	}
 
-	if got["callee"] || got["callee-reply"] || got["callee.role.list"] || got["callee.subagent.prompt"] || got["callee.subagent.reply"] {
+	if got["callee"] || got["callee-reply"] || got["callee.role"] || got["callee.role.reply"] || got["callee.role.list"] || got["subagent.prompt"] || got["subagent.reply"] {
 		t.Errorf("legacy tools remain published: %#v", got)
 	}
 }

@@ -11,6 +11,6 @@ $ARGUMENTS
 ```
 
 The first argument is the Callee role ID and the remaining text is its task.
-Use MCP mode when Callee's `callee.subagent.prompt` tool is available.
+Use MCP mode when Callee's `callee.role` tool is available.
 Otherwise use the skill's npx CLI fallback. Return the role's content and
 identify whether the result came from MCP or CLI mode.

@@ -24,12 +24,11 @@ From the repository you want to work in:
 1. Install the host plugin and create `.callee/roles/reviewer.md`.
 
    ```bash
-   npx --yes @baldaworks/callee@0.4.1 setup codex
-   # or: npx --yes @baldaworks/callee@0.4.1 setup claude
-   # or: npx --yes @baldaworks/callee@0.4.1 setup grok
+   npx --yes @baldaworks/callee@0.5.0 setup codex
+   # or: npx --yes @baldaworks/callee@0.5.0 setup claude
+   # or: npx --yes @baldaworks/callee@0.5.0 setup grok
+   # or: npx --yes @baldaworks/callee@0.5.0 setup copilot
    ```
-
-   For Copilot CLI, install the plugin manually as described below.
 
 2. Start a fresh host session.
 
@@ -91,10 +90,10 @@ usage, discovery, and limitations.
 
 ### Installation and host plugins
 
-The quickstart above is the fastest path for Codex, Claude Code, and Grok
-Build: `callee setup <host>` installs the matching host plugin and creates a
+The quickstart above is the fastest path: `callee setup <host>` installs the
+matching Codex, Claude Code, Grok Build, or Copilot CLI plugin and creates a
 reviewer role. Existing reviewer roles are left unchanged; pass `--force` to
-replace one deliberately. Install the Copilot CLI plugin manually below.
+replace one deliberately.
 
 ```bash
 go install github.com/baldaworks/callee/cmd/callee@latest
@@ -103,7 +102,7 @@ go install github.com/baldaworks/callee/cmd/callee@latest
 Or run the published CLI without installing Go:
 
 ```bash
-npx --yes @baldaworks/callee@0.4.1 --version
+npx --yes @baldaworks/callee@0.5.0 --version
 ```
 
 Callee is available as a Codex, Claude Code, Grok Build, and Copilot CLI
@@ -132,7 +131,7 @@ $callee role:reviewer Review the current changes
 For a manual MCP setup, run:
 
 ```bash
-codex mcp add callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
+codex mcp add callee -- npx --yes @baldaworks/callee@0.5.0 mcp-server
 ```
 
 ##### Claude Code
@@ -167,7 +166,7 @@ Use `/callee reset:<role>` when the next request should start fresh.
 The plugin bundles the MCP server. For a project-local manual configuration:
 
 ```bash
-grok mcp add --scope project callee -- npx --yes @baldaworks/callee@0.4.1 mcp-server
+grok mcp add --scope project callee -- npx --yes @baldaworks/callee@0.5.0 mcp-server
 ```
 
 The runtime itself needs a local `grok login` session or `XAI_API_KEY`.
@@ -191,6 +190,46 @@ Use `/callee reset:<role>` when the next request should start fresh.
 `reset` only forgets the plugin's active thread for that role in the current
 host conversation. It does not close the old ACP session, which remains
 process-local until the MCP server exits.
+
+#### Manual MCP timeouts
+
+The bundled plugin configuration intentionally has no timeout: the supported
+hosts do not share one portable setting. These limits apply only when you
+configure Callee MCP manually; they do not change `callee doctor --timeout`.
+
+For Codex, add the server to `~/.codex/config.toml` with a one-hour tool-call
+timeout. The plugin-provided server does not expose this setting:
+
+```toml
+[mcp_servers.callee]
+command = "npx"
+args = ["--yes", "@baldaworks/callee@0.5.0", "mcp-server"]
+startup_timeout_sec = 10
+tool_timeout_sec = 3600
+```
+
+For Claude Code, set the per-server timeout in a manual `.mcp.json` entry:
+
+```json
+{
+  "mcpServers": {
+    "callee": {
+      "command": "npx",
+      "args": ["--yes", "@baldaworks/callee@0.5.0", "mcp-server"],
+      "timeout": 3600000
+    }
+  }
+}
+```
+
+For Copilot CLI, use `--timeout` in milliseconds when adding a manual server:
+
+```bash
+copilot mcp add --timeout 3600000 callee -- npx --yes @baldaworks/callee@0.5.0 mcp-server
+```
+
+Grok Build has no verified timeout override for this configuration; use its host
+defaults rather than adding an unsupported field to `.mcp.json`.
 
 ### Role format
 
@@ -259,8 +298,9 @@ callee doctor
 
 Provider processes are checked sequentially with a 60 second timeout per
 provider. Roles with the same `type`, resolved command, and extra arguments
-share one check; Callee still reports an outcome for every role. Use
-`--timeout` to override it and `--roles-dir` to check only one role directory:
+share one check; Callee still reports an outcome for every role. This controls
+only ACP runtime initialization, not MCP tool calls. Use `--timeout` to override
+it and `--roles-dir` to check only one role directory:
 
 ```bash
 callee doctor --roles-dir ./examples/roles --timeout 90s
@@ -285,13 +325,13 @@ initialized. It closes each successfully initialized runtime before continuing.
 With the `callee` server name in the configuration above, hosts expose three
 tools:
 
-- `callee.subagent.prompt` starts a conversation.
-- `callee.subagent.reply` continues a conversation.
+- `callee.role` starts a conversation.
+- `callee.role.reply` continues a conversation.
 - `callee.role.list` returns the available role IDs and descriptions.
 
-The raw MCP tool names are `role.list`, `subagent.prompt`, and
-`subagent.reply`; the host prefixes them with the configured server name. This
-avoids displaying a duplicate `callee.callee` namespace in host tool calls.
+The raw MCP tool names are `role`, `role.reply`, and `role.list`; the host
+prefixes them with the configured server name. This avoids displaying a
+duplicate `callee.callee` namespace in host tool calls.
 
 Start a known role directly:
 
@@ -311,7 +351,7 @@ The response contains:
 {"roles":[{"id":"reviewer","description":"Reviews code changes for correctness and regressions."}]}
 ```
 
-Follow-up with `callee.subagent.reply`:
+Follow-up with `callee.role.reply`:
 
 ```json
 {"threadId":"cal_01JXYZ123","prompt":"Recheck the first finding."}
@@ -321,7 +361,7 @@ Both responses contain `structuredContent: { "threadId", "content" }` and legacy
 
 Within one MCP server process, roles sharing the same `type`, resolved command,
 and `extra_args` share one ACP provider process. Each
-`callee.subagent.prompt` call creates an independent ACP session with that
+`callee.role` call creates an independent ACP session with that
 role's model, mode, reasoning, and prompt.
 
 ### Frontmatter reference

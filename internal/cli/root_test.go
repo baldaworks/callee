@@ -37,6 +37,12 @@ func TestLoggingLevel(t *testing.T) {
 	}
 }
 
+func TestVersionMatchesNextRelease(t *testing.T) {
+	if Version != "0.5.0" {
+		t.Fatalf("Version = %q, want 0.5.0", Version)
+	}
+}
+
 func TestDoctorCommandLoadsRolesAndPassesTimeout(t *testing.T) {
 	rolesDir := t.TempDir()
 	rolePath := filepath.Join(rolesDir, "reviewer.md")

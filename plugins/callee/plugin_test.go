@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const releaseVersion = "0.5.0"
+
 func TestMCPConfigUsesPublishedCalleeRunner(t *testing.T) {
 	data, err := os.ReadFile(".mcp.json")
 	if err != nil {
@@ -33,7 +35,7 @@ func TestMCPConfigUsesPublishedCalleeRunner(t *testing.T) {
 		t.Fatalf("command = %q, want npx", server.Command)
 	}
 
-	want := []string{"--yes", "@baldaworks/callee@0.4.1", "mcp-server"}
+	want := []string{"--yes", "@baldaworks/callee@" + releaseVersion, "mcp-server"}
 	if strings.Join(server.Args, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("args = %#v, want %#v", server.Args, want)
 	}
@@ -49,10 +51,10 @@ func TestSkillDescribesMCPAndCLIModes(t *testing.T) {
 	for _, want := range []string{
 		"name: callee",
 		"user-invocable: true",
+		"callee.role",
+		"callee.role.reply",
 		"callee.role.list",
-		"callee.subagent.prompt",
-		"callee.subagent.reply",
-		"@baldaworks/callee@0.4.1",
+		"@baldaworks/callee@" + releaseVersion,
 		"role:<role-id> <task>",
 		"reset:<role-id>",
 		"For `role:<role-id>`, dispatch the supplied role directly.",
@@ -68,7 +70,20 @@ func TestSkillDescribesMCPAndCLIModes(t *testing.T) {
 	}
 
 	if strings.Contains(text, "whenever the `callee.role.list` tool is available") {
-		t.Error("skill must use the prompt tool to select MCP mode")
+		t.Error("skill must use the role tool to select MCP mode")
+	}
+
+	if strings.Contains(text, "unavailable or fails") {
+		t.Error("skill must not fall back after an MCP call failure")
+	}
+
+	for _, want := range []string{
+		"unavailable before dispatch",
+		"Do not retry through the CLI\nafter an MCP tool call starts",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("skill is missing safe fallback policy %q", want)
+		}
 	}
 
 	if strings.Contains(text, "--new") {
@@ -112,7 +127,7 @@ func TestClaudeCommandsUseCalleeSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(string(role), "callee.subagent.prompt") {
+	if !strings.Contains(string(role), "callee.role") {
 		t.Error("role command does not select MCP mode through prompt")
 	}
 
@@ -135,6 +150,87 @@ func TestClaudeCommandsUseCalleeSkill(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join("commands", "subagent.md")); !os.IsNotExist(err) {
 		t.Error("legacy subagent command must not exist")
+	}
+}
+
+func TestDistributionMetadataMatchesRelease(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "..", "README.md"),
+		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
+		filepath.Join(".claude-plugin", "plugin.json"),
+		filepath.Join(".codex-plugin", "plugin.json"),
+		filepath.Join(".grok-plugin", "plugin.json"),
+		filepath.Join(".plugin", "plugin.json"),
+		".mcp.json",
+		filepath.Join("skills", "callee", "SKILL.md"),
+	}
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		text := string(data)
+		if strings.Contains(text, "0.4.1") {
+			t.Errorf("%s still refers to 0.4.1", path)
+		}
+
+		if !strings.Contains(text, releaseVersion) {
+			t.Errorf("%s does not refer to %s", path, releaseVersion)
+		}
+	}
+
+	for _, path := range []string{
+		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
+		filepath.Join(".codex-plugin", "plugin.json"),
+		filepath.Join(".grok-plugin", "plugin.json"),
+		filepath.Join(".plugin", "plugin.json"),
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !strings.Contains(string(data), `"license": "MIT"`) {
+			t.Errorf("%s does not declare the MIT license", path)
+		}
+	}
+
+	for _, path := range []string{
+		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
+		filepath.Join(".codex-plugin", "plugin.json"),
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if strings.Contains(string(data), "persistent MCP") {
+			t.Errorf("%s overpromises persistence", path)
+		}
+	}
+}
+
+func TestREADMEDocumentsOneHourManualMCPTimeouts(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"tool_timeout_sec = 3600",
+		`"timeout": 3600000`,
+		"copilot mcp add --timeout 3600000 callee",
+		"plugin-provided server does not expose this setting",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("README is missing %q", want)
+		}
 	}
 }
 

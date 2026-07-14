@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	promptTool   = "subagent.prompt"
-	replyTool    = "subagent.reply"
-	roleListTool = "role.list"
+	roleTool      = "role"
+	roleReplyTool = "role.reply"
+	roleListTool  = "role.list"
 )
 
 // Input is a Callee MCP tool input.
@@ -54,7 +54,7 @@ func New(reg *registry.Registry, manager *runtime.Manager) *MCP {
 
 // StartDefinition returns the tool definition for new role conversations.
 func (s *MCP) StartDefinition() *mcp.Tool {
-	return &mcp.Tool{Name: promptTool, Description: description(s.registry), InputSchema: map[string]any{
+	return &mcp.Tool{Name: roleTool, Description: description(s.registry), InputSchema: map[string]any{
 		"type": "object", "properties": map[string]any{
 			"role":   map[string]any{"type": "string", "description": "Registered Callee role to invoke.", "enum": s.registry.IDs()},
 			"prompt": map[string]any{"type": "string", "description": "Task to send to the selected role."},
@@ -64,7 +64,7 @@ func (s *MCP) StartDefinition() *mcp.Tool {
 
 // ReplyDefinition returns the tool definition for existing role conversations.
 func (s *MCP) ReplyDefinition() *mcp.Tool {
-	return &mcp.Tool{Name: replyTool, Description: replyDescription(s.registry), InputSchema: map[string]any{
+	return &mcp.Tool{Name: roleReplyTool, Description: replyDescription(s.registry), InputSchema: map[string]any{
 		"type": "object", "properties": map[string]any{
 			"threadId": map[string]any{"type": "string", "description": "Opaque thread ID previously returned by Callee."},
 			"prompt":   map[string]any{"type": "string", "description": "Follow-up prompt for the existing conversation."},
@@ -181,7 +181,7 @@ func (s *MCP) RunStdio(ctx context.Context, version string) error {
 func (s *MCP) handleStart(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var input Input
 	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
-		return nil, fmt.Errorf("decode %s tool input: %w", promptTool, err)
+		return nil, fmt.Errorf("decode %s tool input: %w", roleTool, err)
 	}
 
 	if input.Role == "" || input.Prompt == "" || input.ThreadID != "" {
@@ -199,7 +199,7 @@ func (s *MCP) handleStart(ctx context.Context, request *mcp.CallToolRequest) (*m
 func (s *MCP) handleReply(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var input Input
 	if err := json.Unmarshal(request.Params.Arguments, &input); err != nil {
-		return nil, fmt.Errorf("decode %s tool input: %w", replyTool, err)
+		return nil, fmt.Errorf("decode %s tool input: %w", roleReplyTool, err)
 	}
 
 	if input.ThreadID == "" || input.Prompt == "" || input.Role != "" {
