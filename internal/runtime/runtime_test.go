@@ -11,9 +11,7 @@ import (
 func TestNormalize(t *testing.T) {
 	for _, kind := range role.SupportedTypes() {
 		metadata := role.Metadata{Description: "x", Type: kind, Model: "m", Reasoning: "high", Mode: "review", ExtraArgs: []string{"--stdio"}}
-		if kind == "generic_acp" {
-			metadata.Path = "/bin/agent"
-		}
+		metadata.Cmd = "/bin/agent"
 		r := role.Role{ID: kind, Metadata: metadata, Template: "{{ prompt }}"}
 		cfg, err := Normalize(r)
 		if err != nil {

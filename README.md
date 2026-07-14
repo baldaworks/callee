@@ -35,7 +35,7 @@ Do not modify files. Return concrete, evidence-backed findings.
 ## One-shot CLI
 
 ```bash
-callee --role reviewer --prompt "Review the current changes"
+callee exec --role reviewer --prompt "Review the current changes"
 ```
 
 Use `--roles-dir ./examples/roles` to load only a specific directory.
@@ -75,7 +75,7 @@ Both responses contain `structuredContent: { "threadId", "content" }` and legacy
 |---|---:|---|
 | `description` | yes | Role description shown in MCP |
 | `type` | yes | Built-in Callee runtime type |
-| `path` | no | Executable override |
+| `cmd` | no | Executable override |
 | `model` | no | Model identifier |
 | `reasoning` | no | Norma Runtime `reasoning_effort` |
 | `mode` | no | ACP session mode |
@@ -89,7 +89,7 @@ Supported types: `codex`, `claude`, `opencode`, `copilot`, `generic_acp`. `gener
 ---
 description: Runs a custom ACP-compatible reviewer.
 type: generic_acp
-path: /usr/local/bin/company-review-agent
+cmd: /usr/local/bin/company-review-agent
 model: reviewer-v2
 reasoning: high
 mode: review

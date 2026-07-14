@@ -17,7 +17,7 @@ func TestParseValidation(t *testing.T) {
 	for _, kind := range SupportedTypes() {
 		body := strings.Replace(valid, "type: codex", "type: "+kind, 1)
 		if kind == "generic_acp" {
-			body = strings.Replace(body, "type: generic_acp", "type: generic_acp\npath: /bin/agent", 1)
+			body = strings.Replace(body, "type: generic_acp", "type: generic_acp\ncmd: /bin/agent", 1)
 		}
 		_, err := Parse(kind, []byte(body))
 		if err != nil {
@@ -29,7 +29,7 @@ func TestParseValidation(t *testing.T) {
 		"gemini": "---\ndescription: x\ntype: gemini\n---\n{{ prompt }}", "unknown": "---\ndescription: x\ntype: codex\nprovider: x\n---\n{{ prompt }}",
 		"empty": "---\ndescription: x\ntype: codex\n---\n", "missing expression": "---\ndescription: x\ntype: codex\n---\nhello",
 		"duplicate": "---\ndescription: x\ntype: codex\n---\n{{ prompt }} {{ prompt }}", "other expression": "---\ndescription: x\ntype: codex\n---\n{{ name }}",
-		"generic path": "---\ndescription: x\ntype: generic_acp\n---\n{{ prompt }}",
+		"generic cmd": "---\ndescription: x\ntype: generic_acp\n---\n{{ prompt }}",
 	} {
 		if _, err := Parse(name, []byte(body)); err == nil {
 			t.Errorf("%s: expected error", name)

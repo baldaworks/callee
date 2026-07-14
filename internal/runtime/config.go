@@ -19,8 +19,8 @@ func Normalize(r role.Role) (agentconfig.Config, error) {
 		Model: r.Metadata.Model, ReasoningEffort: r.Metadata.Reasoning,
 		Mode: r.Metadata.Mode, ExtraArgs: append([]string(nil), r.Metadata.ExtraArgs...),
 	}
-	if path := strings.TrimSpace(r.Metadata.Path); path != "" && runtimeType == agentconfig.AgentTypeGenericACP {
-		block.Cmd = []string{path}
+	if command := strings.TrimSpace(r.Metadata.Cmd); command != "" {
+		block.Cmd = []string{command}
 	}
 	cfg := agentconfig.Config{Type: runtimeType}
 	switch runtimeType {

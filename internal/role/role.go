@@ -10,7 +10,7 @@ import (
 type Metadata struct {
 	Description string   `yaml:"description"`
 	Type        string   `yaml:"type"`
-	Path        string   `yaml:"path"`
+	Cmd         string   `yaml:"cmd"`
 	Model       string   `yaml:"model"`
 	Reasoning   string   `yaml:"reasoning"`
 	Mode        string   `yaml:"mode"`
@@ -54,8 +54,8 @@ func (r Role) Validate() error {
 	if _, ok := RuntimeType(r.Metadata.Type); !ok {
 		return fmt.Errorf("role %q: unsupported type %q", r.ID, r.Metadata.Type)
 	}
-	if r.Metadata.Type == "generic_acp" && strings.TrimSpace(r.Metadata.Path) == "" {
-		return fmt.Errorf("role %q: type \"generic_acp\" requires a non-empty path", r.ID)
+	if r.Metadata.Type == "generic_acp" && strings.TrimSpace(r.Metadata.Cmd) == "" {
+		return fmt.Errorf("role %q: type \"generic_acp\" requires a non-empty cmd", r.ID)
 	}
 	if strings.TrimSpace(r.Template) == "" {
 		return fmt.Errorf("role %q: template body must not be empty", r.ID)
