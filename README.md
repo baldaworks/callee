@@ -318,9 +318,6 @@ codex plugin marketplace add baldaworks/callee \
 codex plugin add callee@callee
 ```
 
-Rerun `setup codex` to migrate an existing pre-0.8.0 marketplace snapshot. It
-replaces the old sparse registration before installing the plugin again.
-
 #### Claude Code
 
 ```text
