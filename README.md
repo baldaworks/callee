@@ -1,37 +1,53 @@
 # Callee
 
+[![Test](https://github.com/baldaworks/callee/actions/workflows/test.yml/badge.svg)](https://github.com/baldaworks/callee/actions/workflows/test.yml)
+[![Lint](https://github.com/baldaworks/callee/actions/workflows/lint.yml/badge.svg)](https://github.com/baldaworks/callee/actions/workflows/lint.yml)
+[![Security](https://github.com/baldaworks/callee/actions/workflows/security.yml/badge.svg)](https://github.com/baldaworks/callee/actions/workflows/security.yml)
+[![Latest release](https://img.shields.io/github/v/release/baldaworks/callee)](https://github.com/baldaworks/callee/releases/latest)
+[![npm version](https://img.shields.io/npm/v/%40baldaworks%2Fcallee)](https://www.npmjs.com/package/@baldaworks/callee)
+[![License: MIT](https://img.shields.io/github/license/baldaworks/callee)](LICENSE)
+
 ## Provider-aware subagent roles, described in Markdown
 
-Callee lets developers and teams keep provider-aware specialist subagent roles
-beside their code. Each project-local Markdown file defines role behavior and
-declares its runtime provider through flat frontmatter; review roles in pull
-requests and override them per repository.
+Callee gives users of agent harnesses a project-local way to define specialist
+roles. Each Markdown file contains the role instructions and declares its
+runtime provider through flat YAML frontmatter, so roles can be reviewed in
+pull requests, shared with the repository, and overridden per project.
 
-Built for Codex, Claude Code, Grok Build, Copilot CLI, and OpenCode.
+Use the same CLI-backed workflow from **Codex, Claude Code, Grok Build, Copilot
+CLI, and OpenCode**. Callee ships as a native Go executable; the host plugins
+and skills remain thin wrappers around that CLI.
 
-```text
-.callee/roles/*.md  →  CLI  →  capability-based workflow
+Set up the integration for your host:
+
+```bash
+npx --yes @baldaworks/callee@latest setup codex
 ```
 
-The core CLI keeps no durable conversation store, mappings, or bindings. The
-host plugin can retain active work only within its current conversation, then
-routes a follow-up naturally when it still has that context.
+Or install the native command directly:
 
-## Get started
+```bash
+go install github.com/baldaworks/callee/cmd/callee@latest
+```
 
-From the repository you want to work in, install a host plugin and create
-`.callee/roles/reviewer.md`:
+**Contents:** [Quick start](#quick-start) ·
+[The wedge](#the-wedge-roles-that-ship-with-the-code) ·
+[How Callee works](#how-callee-works) · [Distribution](#distribution) ·
+[Tradeoffs and limitations](#tradeoffs-and-limitations) ·
+[Command line](#command-line) · [Host integrations](#host-integrations) ·
+[Roles](#roles) · [Role discovery](#role-discovery) · [License](#license)
+
+## Quick start
+
+From the repository where you want to use Callee, install the integration for
+your agent harness and create `.callee/roles/reviewer.md`:
 
 ```bash
 npx --yes @baldaworks/callee@0.8.1 setup codex
-# or: npx --yes @baldaworks/callee@0.8.1 setup claude
-# or: npx --yes @baldaworks/callee@0.8.1 setup grok
-# or: npx --yes @baldaworks/callee@0.8.1 setup copilot
-# or: npx --yes @baldaworks/callee@0.8.1 setup opencode
+# Replace codex with claude, grok, copilot, or opencode.
 ```
 
-For Codex, this creates the following project-local reviewer. The other setup
-targets use their matching `type` with the same review contract.
+This creates a project-local reviewer role for the selected host:
 
 ```md
 ---
@@ -55,22 +71,121 @@ Start a fresh host session and describe the outcome you want. Hosts that add a
 plugin namespace use the short skill IDs; hosts that expose skill IDs directly
 use the `callee-` prefix:
 
-| Host | Run roles | Create a role |
-| --- | --- | --- |
-| Codex | `$callee:run-role Review the current changes.` | `$callee:create-role Create a Go code-review role.` |
-| Claude Code | `/callee:run-role Review the current changes.` | `/callee:create-role Create a Go code-review role.` |
-| Grok Build | `/callee-run-role Review the current changes.` | `/callee-create-role Create a Go code-review role.` |
-| Copilot CLI | `/callee-run-role Review the current changes.` | `/callee-create-role Create a Go code-review role.` |
-| OpenCode | `$callee-run-role Review the current changes.` | `$callee-create-role Create a Go code-review role.` |
+- **Codex**
+  - Run: `$callee:run-role Review the current changes.`
+  - Create: `$callee:create-role Create a Go code-review role.`
+- **Claude Code**
+  - Run: `/callee:run-role Review the current changes.`
+  - Create: `/callee:create-role Create a Go code-review role.`
+- **Grok Build**
+  - Run: `/callee-run-role Review the current changes.`
+  - Create: `/callee-create-role Create a Go code-review role.`
+- **Copilot CLI**
+  - Run: `/callee-run-role Review the current changes.`
+  - Create: `/callee-create-role Create a Go code-review role.`
+- **OpenCode**
+  - Run: `$callee-run-role Review the current changes.`
+  - Create: `$callee-create-role Create a Go code-review role.`
 
 The run-role skill discovers the role catalog for a new task, matches its
 descriptions to the requested work, and can combine independent and dependent
 stages. The create-role skill authors a new role from a PromptKit template. A
-user can naturally name a role as a
-required first stage; the plugin resolves it from the catalog and asks for
-clarification instead of substituting an ambiguous name. It keeps role IDs and
-conversation handles internal. The editable reviewer created by setup is a
-sample, not a special routing rule.
+user can naturally name a role as a required first stage; the plugin resolves
+it from the catalog and asks for clarification instead of substituting an
+ambiguous name. It keeps role IDs and conversation handles internal. The
+editable reviewer created by setup is a sample, not a special routing rule.
+
+## The wedge: roles that ship with the code
+
+Agent harnesses are good at running agents, but specialist instructions often
+live in personal configuration, copied prompts, or host-specific formats.
+Callee's entry point is narrower: put a reviewable Markdown role in the
+repository and invoke it through the harness your team already uses.
+
+That gives a project one versioned role contract without turning Callee into a
+hosted platform. Callee does not operate a server, a durable orchestrator, or a
+conversation database. It resolves the selected role, starts the corresponding
+provider runtime through [Norma Runtime](https://github.com/normahq/runtime),
+returns the result, and exits.
+
+## How Callee works
+
+```text
+.callee/roles/*.md
+        │
+        ▼
+   callee prompt  ──▶  Norma Runtime  ──▶  provider CLI
+        ▲                                      │
+        └──────── result on stdout ◀───────────┘
+```
+
+The role file supplies instructions, flat provider metadata, and optional
+runtime parameters. Every `callee prompt` invocation creates and closes its
+runtime; Callee has no background process or local thread store. Diagnostics
+go to stderr, leaving role output on stdout for scripts and host integrations.
+
+Providers own their opaque thread handles. To continue a conversation from the
+CLI, the caller must retain the returned handle and pass it back with
+`--thread-id`.
+
+## Distribution
+
+Callee is written in Go and released as one native **Callee executable per
+target platform**, with CGO disabled. The configured release targets are:
+
+| Operating system | Architectures |
+| --- | --- |
+| macOS | AMD64, ARM64 |
+| Linux | AMD64, ARM64 |
+| Windows | AMD64 |
+
+There are two installation paths:
+
+- `go install github.com/baldaworks/callee/cmd/callee@latest` compiles and
+  installs the command with the Go toolchain.
+- `npx --yes @baldaworks/callee@latest ...` obtains and runs the published npm
+  distribution. Node.js is required for this `npx` path, not for an already
+  installed native Callee executable.
+
+“Single binary” describes the Callee CLI, not the complete agent stack. The
+binary does **not** bundle provider executables, provider credentials, or
+hosted model access. Install and authenticate the provider CLI required by each
+role separately.
+
+## Tradeoffs and limitations
+
+### Pros
+
+- Roles are project-local Markdown that can be reviewed and versioned with the
+  code they support.
+- One CLI contract works across five supported agent harness integrations.
+- The directly installed Callee executable itself needs no Callee server or
+  Node.js runtime.
+- Flat frontmatter keeps provider selection explicit and easy to inspect.
+- The complete pinned PromptKit catalog is embedded for offline role authoring.
+
+### Cons
+
+- Each provider CLI must be installed, authenticated, and maintained outside
+  Callee.
+- Every prompt starts and closes a provider runtime instead of reusing a
+  persistent Callee process.
+- Installation and invocation syntax differs slightly between host plugin
+  systems.
+- Provider-aware roles intentionally contain runtime-specific metadata rather
+  than pretending every provider has identical capabilities.
+
+### Limitations
+
+- Callee has no server transport, durable thread store, role/thread mapping, or
+  handle binding.
+- Direct CLI continuation works only when the caller supplies the opaque
+  provider handle with `--thread-id`.
+- Plugin workflow context lasts only for the current host conversation.
+- A provider that cannot resume a supplied thread may return a replacement
+  thread with `"resumed": false`.
+- Compatibility is limited to the explicitly listed runtime types and host
+  integrations; Callee does not claim universal harness support.
 
 ## Command line
 
@@ -80,10 +195,10 @@ Install the binary:
 go install github.com/baldaworks/callee/cmd/callee@latest
 ```
 
-Or run the published command directly:
+Or run the published command directly through npm:
 
 ```bash
-npx --yes @baldaworks/callee@0.8.1 --version
+npx --yes @baldaworks/callee@latest --version
 ```
 
 Prompt a role:
@@ -209,7 +324,7 @@ For Claude Code:
 For OpenCode, install the project-local skills and commands:
 
 ```bash
-npx --yes @baldaworks/callee@0.8.1 setup opencode
+npx --yes @baldaworks/callee@latest setup opencode
 ```
 
 OpenCode then supports natural-language skill use such as `$callee-run-role
@@ -231,7 +346,7 @@ top-level `params` description map must appear in the body at least once;
 undeclared mustache fragments remain ordinary Markdown.
 
 | Field | Required | Meaning |
-|---|---:|---|
+| --- | ---: | --- |
 | `description` | yes | Role description shown by `callee role list` |
 | `type` | yes | Built-in Callee runtime type |
 | `cmd` | no | Executable override |
@@ -239,7 +354,7 @@ undeclared mustache fragments remain ordinary Markdown.
 | `reasoning` | no | Norma Runtime `reasoning_effort` |
 | `mode` | no | Runtime session mode |
 | `extra_args` | no | Arguments appended by Norma Runtime |
-| `params` | no | Runtime parameter names mapped to human-readable descriptions |
+| `params` | no | Runtime parameter descriptions |
 
 Supported types: `codex`, `claude`, `opencode`, `copilot`, `grok`, and
 `generic_acp`. `generic_acp` requires `cmd`.
@@ -311,9 +426,8 @@ Callee loads user roles first from `$XDG_CONFIG_HOME/callee/roles` (or
 roles override user roles with the same path-relative ID. Nested files use
 slash-separated IDs, such as `code/explorer`.
 
-## Current limitations
+## License
 
-Each CLI prompt creates and closes its runtime. Direct CLI continuation is
-available only when the caller explicitly supplies an opaque thread handle with
-`--thread-id`. Plugin workflow context is limited to the current host
-conversation.
+Callee is released under the [MIT License](LICENSE). You may use, copy, modify,
+distribute, sublicense, and sell the software subject to the license notice and
+terms. The software is provided without warranty.
