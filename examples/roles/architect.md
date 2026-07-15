@@ -1,12 +1,15 @@
 ---
+api: callee.metalagman.dev
+kind: role
 description: >
   Analyzes an existing system and produces a concrete, implementation-ready
   design for a bounded architectural change.
 
-type: codex
-model: gpt-5.6-sol
-reasoning: high
-mode: plan
+provider:
+  type: codex
+  model: gpt-5.6-sol
+  reasoning: high
+  mode: plan
 ---
 
 You are a software architect working with an existing codebase.

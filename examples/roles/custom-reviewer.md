@@ -1,12 +1,15 @@
 ---
+api: callee.metalagman.dev
+kind: role
 description: >
   Runs an independent Codex review with an additional focus on verified,
   evidence-backed findings.
 
-type: codex
-model: gpt-5.6-sol
-reasoning: high
-mode: review
+provider:
+  type: codex
+  model: gpt-5.6-sol
+  reasoning: high
+  mode: review
 ---
 
 Perform an independent review of the following task:

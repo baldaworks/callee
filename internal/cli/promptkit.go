@@ -82,14 +82,18 @@ func promptKitRoleCreateCommand() *cobra.Command {
 			}
 
 			metadata := role.Metadata{
+				API:         role.CurrentAPI,
+				Kind:        role.RoleKind,
 				Description: description,
-				Type:        roleType,
-				Cmd:         runtimeCommand,
-				Model:       model,
-				Reasoning:   reasoning,
-				Mode:        mode,
-				ExtraArgs:   extraArgs,
-				Params:      runtimeParams,
+				Provider: role.Provider{
+					Type:      roleType,
+					Cmd:       runtimeCommand,
+					Model:     model,
+					Reasoning: reasoning,
+					Mode:      mode,
+					ExtraArgs: extraArgs,
+				},
+				Params: runtimeParams,
 			}
 			body := promptKitRoleBody(promptParam, runtimeParams, assembled.Markdown)
 

@@ -1,4 +1,4 @@
-// Package runtime adapts Callee roles to Norma Runtime for one-shot execution.
+// Package runtime adapts Callee roles to Norma Runtime ACP conversations.
 package runtime
 
 import (
@@ -48,7 +48,7 @@ func ProviderFor(r role.Role) (Provider, error) {
 		return Provider{}, fmt.Errorf("validate provider for role %q: %w", r.ID, err)
 	}
 
-	return Provider{typeName: r.Metadata.Type, command: command, config: providerConfig}, nil
+	return Provider{typeName: r.Metadata.Provider.Type, command: command, config: providerConfig}, nil
 }
 
 func providerKey(typeName string, command []string) string {
@@ -57,16 +57,20 @@ func providerKey(typeName string, command []string) string {
 
 // Normalize returns the official Norma Runtime configuration for a role.
 func Normalize(r role.Role) (agentconfig.Config, error) {
-	runtimeType, ok := role.RuntimeType(r.Metadata.Type)
+	provider := r.Metadata.Provider
+
+	runtimeType, ok := role.RuntimeType(provider.Type)
 	if !ok {
-		return agentconfig.Config{}, fmt.Errorf("role %q: unsupported type %q", r.ID, r.Metadata.Type)
+		return agentconfig.Config{}, fmt.Errorf("role %q: unsupported provider.type %q", r.ID, provider.Type)
 	}
 
 	block := &agentconfig.ACPConfig{
-		Model: r.Metadata.Model, ReasoningEffort: r.Metadata.Reasoning,
-		Mode: r.Metadata.Mode, ExtraArgs: append([]string(nil), r.Metadata.ExtraArgs...),
+		Model:           provider.Model,
+		ReasoningEffort: provider.Reasoning,
+		Mode:            provider.Mode,
+		ExtraArgs:       append([]string(nil), provider.ExtraArgs...),
 	}
-	if command := strings.TrimSpace(r.Metadata.Cmd); command != "" {
+	if command := strings.TrimSpace(provider.Cmd); command != "" {
 		block.Cmd = []string{command}
 	}
 

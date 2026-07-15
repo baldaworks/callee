@@ -4,12 +4,13 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseValidation(t *testing.T) {
-	valid := "---\ndescription: test\ntype: codex\nextra_args: [--debug]\n---\nTask: {{ prompt }}\n"
+	valid := "---\ndescription: test\nprovider:\n  type: codex\n  extra_args: [--debug]\n---\nTask: {{ prompt }}\n"
 
-	r, err := Parse("reviewer", []byte(valid))
+	r, err := parseTestRole("reviewer", []byte(valid))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +19,7 @@ func TestParseValidation(t *testing.T) {
 		t.Fatal("prompt was interpreted")
 	}
 
-	literal, err := Parse("literal", []byte("---\ndescription: literal example\ntype: codex\n---\nKeep `{{example}}` literal and run {{ prompt }}"))
+	literal, err := parseTestRole("literal", []byte("---\ndescription: literal example\nprovider:\n  type: codex\n---\nKeep `{{example}}` literal and run {{ prompt }}"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,32 +31,111 @@ func TestParseValidation(t *testing.T) {
 	for _, kind := range SupportedTypes() {
 		body := strings.Replace(valid, "type: codex", "type: "+kind, 1)
 		if kind == "generic_acp" {
-			body = strings.Replace(body, "type: generic_acp", "type: generic_acp\ncmd: /bin/agent", 1)
+			body = strings.Replace(body, "type: generic_acp", "type: generic_acp\n  cmd: /bin/agent", 1)
 		}
 
-		_, err := Parse(kind, []byte(body))
+		_, err := parseTestRole(kind, []byte(body))
 		if err != nil {
 			t.Errorf("%s: %v", kind, err)
 		}
 	}
 
 	for name, body := range map[string]string{
-		"missing description": "---\ntype: codex\n---\n{{ prompt }}", "missing type": "---\ndescription: x\n---\n{{ prompt }}",
-		"gemini": "---\ndescription: x\ntype: gemini\n---\n{{ prompt }}", "unknown": "---\ndescription: x\ntype: codex\nprovider: x\n---\n{{ prompt }}",
-		"empty": "---\ndescription: x\ntype: codex\n---\n", "missing expression": "---\ndescription: x\ntype: codex\n---\nhello",
-		"duplicate": "---\ndescription: x\ntype: codex\n---\n{{ prompt }} {{ prompt }}", "other expression": "---\ndescription: x\ntype: codex\n---\n{{ name }}",
-		"generic cmd": "---\ndescription: x\ntype: generic_acp\n---\n{{ prompt }}",
+		"missing description": "---\nprovider:\n  type: codex\n---\n{{ prompt }}", "missing type": "---\ndescription: x\nprovider: {}\n---\n{{ prompt }}",
+		"gemini": "---\ndescription: x\nprovider:\n  type: gemini\n---\n{{ prompt }}", "unknown": "---\ndescription: x\nprovider:\n  type: codex\n  unknown: x\n---\n{{ prompt }}",
+		"empty": "---\ndescription: x\nprovider:\n  type: codex\n---\n", "missing expression": "---\ndescription: x\nprovider:\n  type: codex\n---\nhello",
+		"duplicate": "---\ndescription: x\nprovider:\n  type: codex\n---\n{{ prompt }} {{ prompt }}", "other expression": "---\ndescription: x\nprovider:\n  type: codex\n---\n{{ name }}",
+		"generic cmd": "---\ndescription: x\nprovider:\n  type: generic_acp\n---\n{{ prompt }}",
 	} {
-		if _, err := Parse(name, []byte(body)); err == nil {
+		if _, err := parseTestRole(name, []byte(body)); err == nil {
 			t.Errorf("%s: expected error", name)
 		}
 	}
 }
 
-func TestRenderParametersInOnePass(t *testing.T) {
-	data := []byte("---\ndescription: reviewer\ntype: codex\nparams:\n  audience: Intended readers\n  context: Relevant context\n---\n{{ prompt }}\nAudience: {{ audience }}\nAgain: {{audience}}\nContext: {{ context }}\nLiteral: {{ example }}")
+func TestParseResourceMetadataAndProviderOptions(t *testing.T) {
+	data := []byte("---\ndescription: interactive reviewer\nprovider:\n  type: codex\n  repl: true\n  timeout: 20m\n---\n{{ prompt }}")
 
-	r, err := Parse("reviewer", data)
+	parsed, err := parseTestRole("reviewer", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if parsed.API() != CurrentAPI || parsed.Kind() != RoleKind {
+		t.Fatalf("resource identity = %q/%q", parsed.API(), parsed.Kind())
+	}
+
+	if !parsed.Metadata.Provider.REPL {
+		t.Fatal("provider.repl = false, want true")
+	}
+
+	if got := parsed.PromptTimeout(15 * time.Minute); got != 20*time.Minute {
+		t.Fatalf("PromptTimeout() = %s, want 20m", got)
+	}
+}
+
+func TestParseAcceptsPositiveProviderTimeouts(t *testing.T) {
+	for _, timeout := range []string{"15m", "90s", "1h30m", "500ms", "1ns"} {
+		t.Run(timeout, func(t *testing.T) {
+			body := "---\ndescription: x\nprovider:\n  type: codex\n  timeout: " + timeout + "\n---\n{{ prompt }}"
+			if _, err := parseTestRole("reviewer", []byte(body)); err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestParseRejectsBreakingSchemaAndInvalidResourceFields(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "flat provider", body: "description: x\ntype: codex", want: "unknown frontmatter field type"},
+		{name: "mixed provider", body: "description: x\ntype: codex\nprovider:\n  type: codex", want: "unknown frontmatter field type"},
+		{name: "top-level timeout", body: "description: x\ntimeout: 15m\nprovider:\n  type: codex", want: "field timeout"},
+		{name: "nested api", body: "description: x\nprovider:\n  type: codex\n  api: example.dev", want: "field api"},
+		{name: "nested kind", body: "description: x\nprovider:\n  type: codex\n  kind: role", want: "field kind"},
+		{name: "blank api", body: "api: ' '\ndescription: x\nprovider:\n  type: codex", want: "field \"api\" must not be empty"},
+		{name: "blank kind", body: "kind: ''\ndescription: x\nprovider:\n  type: codex", want: "field \"kind\" must not be empty"},
+		{name: "unsupported api", body: "api: example.dev\ndescription: x\nprovider:\n  type: codex", want: "unsupported api"},
+		{name: "unsupported kind", body: "kind: workflow\ndescription: x\nprovider:\n  type: codex", want: "unsupported kind"},
+		{name: "unknown provider field", body: "description: x\nprovider:\n  type: codex\n  temperature: 1", want: "field temperature"},
+		{name: "blank timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: ''", want: "provider.timeout\" must not be empty"},
+		{name: "non-string timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: 15", want: "provider.timeout\" must be a string"},
+		{name: "boolean timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: true", want: "provider.timeout\" must be a string"},
+		{name: "sequence timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: [15m]", want: "cannot unmarshal"},
+		{name: "mapping timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: {value: 15m}", want: "cannot unmarshal"},
+		{name: "invalid timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: soon", want: "not a valid duration"},
+		{name: "whitespace timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: ' 15m '", want: "not a valid duration"},
+		{name: "overflow timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: 999999999999999999999h", want: "not a valid duration"},
+		{name: "zero timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: 0s", want: "must be greater than zero"},
+		{name: "negative timeout", body: "description: x\nprovider:\n  type: codex\n  timeout: -1s", want: "must be greater than zero"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseTestRole(test.name, []byte("---\n"+test.body+"\n---\n{{ prompt }}"))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Parse() error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestParseUsesLoaderKindDefault(t *testing.T) {
+	data := []byte("---\ndescription: x\nprovider:\n  type: codex\n---\n{{ prompt }}")
+
+	_, err := Parse("reviewer", data, Defaults{API: CurrentAPI, Kind: "workflow"})
+	if err == nil || !strings.Contains(err.Error(), "unsupported kind \"workflow\"") {
+		t.Fatalf("Parse() error = %v, want loader kind validation", err)
+	}
+}
+
+func TestRenderParametersInOnePass(t *testing.T) {
+	data := []byte("---\ndescription: reviewer\nprovider:\n  type: codex\nparams:\n  audience: Intended readers\n  context: Relevant context\n---\n{{ prompt }}\nAudience: {{ audience }}\nAgain: {{audience}}\nContext: {{ context }}\nLiteral: {{ example }}")
+
+	r, err := parseTestRole("reviewer", data)
 	if err != nil {
 		t.Fatalf("Parse(reviewer) returned unexpected error: %v", err)
 	}
@@ -85,8 +165,10 @@ func TestRenderParameterErrors(t *testing.T) {
 	r := Role{
 		ID: "reviewer",
 		Metadata: Metadata{
+			API:         CurrentAPI,
+			Kind:        RoleKind,
 			Description: "reviewer",
-			Type:        "codex",
+			Provider:    Provider{Type: "codex"},
 			Params:      map[string]string{"audience": "Intended readers"},
 		},
 		Template: "{{ prompt }} {{ audience }}",
@@ -126,7 +208,7 @@ func TestParameterValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			r := Role{ID: test.name, Metadata: Metadata{Description: "test", Type: "codex", Params: test.params}, Template: test.template}
+			r := Role{ID: test.name, Metadata: Metadata{API: CurrentAPI, Kind: RoleKind, Description: "test", Provider: Provider{Type: "codex"}, Params: test.params}, Template: test.template}
 			if err := r.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Errorf("Role.Validate() error = %v, want containing %q", err, test.want)
 			}
@@ -148,19 +230,19 @@ func TestRuntimeType(t *testing.T) {
 }
 
 func TestMarshalMarkdownOmitsEmptyOptionalMetadata(t *testing.T) {
-	item := Role{ID: "reviewer", Metadata: Metadata{Description: "Reviews changes.", Type: "codex"}, Template: "Review {{ prompt }}"}
+	item := Role{ID: "reviewer", Metadata: Metadata{API: CurrentAPI, Kind: RoleKind, Description: "Reviews changes.", Provider: Provider{Type: "codex"}}, Template: "Review {{ prompt }}"}
 
 	data, err := item.MarshalMarkdown()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := "---\ndescription: Reviews changes.\ntype: codex\n---\n\nReview {{ prompt }}\n"
+	want := "---\napi: callee.metalagman.dev\nkind: role\ndescription: Reviews changes.\nprovider:\n    type: codex\n---\n\nReview {{ prompt }}\n"
 	if got := string(data); got != want {
 		t.Fatalf("Markdown = %q, want %q", got, want)
 	}
 
-	parsed, err := Parse("reviewer", data)
+	parsed, err := parseTestRole("reviewer", data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,8 +260,10 @@ func TestMarshalMarkdownIncludesParameterDescriptions(t *testing.T) {
 	item := Role{
 		ID: "reviewer",
 		Metadata: Metadata{
+			API:         CurrentAPI,
+			Kind:        RoleKind,
 			Description: "Reviews changes.",
-			Type:        "codex",
+			Provider:    Provider{Type: "codex"},
 			Params:      map[string]string{"audience": "Intended readers"},
 		},
 		Template: "Review {{ prompt }} for {{ audience }}",
@@ -194,7 +278,7 @@ func TestMarshalMarkdownIncludesParameterDescriptions(t *testing.T) {
 		t.Errorf("Role.MarshalMarkdown() output does not contain params:\n%s", data)
 	}
 
-	parsed, err := Parse("reviewer", data)
+	parsed, err := parseTestRole("reviewer", data)
 	if err != nil {
 		t.Fatalf("Parse(marshaled role) returned unexpected error: %v", err)
 	}
@@ -202,4 +286,8 @@ func TestMarshalMarkdownIncludesParameterDescriptions(t *testing.T) {
 	if !reflect.DeepEqual(parsed.Metadata.Params, item.Metadata.Params) {
 		t.Errorf("parsed params = %#v, want %#v", parsed.Metadata.Params, item.Metadata.Params)
 	}
+}
+
+func parseTestRole(id string, data []byte) (Role, error) {
+	return Parse(id, data, Defaults{API: CurrentAPI, Kind: RoleKind})
 }

@@ -25,14 +25,24 @@ type roleListItem struct {
 
 type roleViewOutput struct {
 	ID          string            `json:"id"`
+	API         string            `json:"api"`
+	Kind        string            `json:"kind"`
 	Description string            `json:"description"`
-	Type        string            `json:"type"`
-	Cmd         string            `json:"cmd,omitempty"`
-	Model       string            `json:"model,omitempty"`
-	Reasoning   string            `json:"reasoning,omitempty"`
-	Mode        string            `json:"mode,omitempty"`
-	ExtraArgs   []string          `json:"extraArgs,omitempty"`
+	Provider    roleProviderView  `json:"provider"`
 	Params      map[string]string `json:"params"`
+}
+
+type roleProviderView struct {
+	Type             string   `json:"type"`
+	Cmd              string   `json:"cmd,omitempty"`
+	Model            string   `json:"model,omitempty"`
+	Reasoning        string   `json:"reasoning,omitempty"`
+	Mode             string   `json:"mode,omitempty"`
+	ExtraArgs        []string `json:"extraArgs,omitempty"`
+	REPL             bool     `json:"repl"`
+	Timeout          string   `json:"timeout,omitempty"`
+	EffectiveTimeout string   `json:"effectiveTimeout"`
+	TimeoutSource    string   `json:"timeoutSource"`
 }
 
 func roleCommand(rolesDir *string) *cobra.Command {
@@ -165,35 +175,53 @@ func normalizedParams(params map[string]string) map[string]string {
 }
 
 func newRoleViewOutput(configuredRole role.Role) roleViewOutput {
+	provider := configuredRole.Metadata.Provider
+	effectiveTimeout, timeoutSource := roleTimeoutDetails(configuredRole)
+
 	return roleViewOutput{
 		ID:          configuredRole.ID,
+		API:         configuredRole.API(),
+		Kind:        configuredRole.Kind(),
 		Description: strings.TrimSpace(configuredRole.Metadata.Description),
-		Type:        configuredRole.Metadata.Type,
-		Cmd:         configuredRole.Metadata.Cmd,
-		Model:       configuredRole.Metadata.Model,
-		Reasoning:   configuredRole.Metadata.Reasoning,
-		Mode:        configuredRole.Metadata.Mode,
-		ExtraArgs:   configuredRole.Metadata.ExtraArgs,
-		Params:      normalizedParams(configuredRole.Metadata.Params),
+		Provider: roleProviderView{
+			Type:             provider.Type,
+			Cmd:              provider.Cmd,
+			Model:            provider.Model,
+			Reasoning:        provider.Reasoning,
+			Mode:             provider.Mode,
+			ExtraArgs:        provider.ExtraArgs,
+			REPL:             provider.REPL,
+			Timeout:          provider.Timeout,
+			EffectiveTimeout: effectiveTimeout,
+			TimeoutSource:    timeoutSource,
+		},
+		Params: normalizedParams(configuredRole.Metadata.Params),
 	}
 }
 
 func writeRoleView(cmd *cobra.Command, configuredRole role.Role) error {
 	metadata := configuredRole.Metadata
+	provider := metadata.Provider
+	effectiveTimeout, timeoutSource := roleTimeoutDetails(configuredRole)
+
 	lines := []string{
 		"ID: " + configuredRole.ID,
+		"API: " + configuredRole.API(),
+		"Kind: " + configuredRole.Kind(),
 		"Description: " + strings.TrimSpace(metadata.Description),
-		"Type: " + metadata.Type,
+		"Provider type: " + provider.Type,
+		"REPL: " + fmt.Sprint(provider.REPL),
+		"Timeout: " + effectiveTimeout + " (" + timeoutSource + ")",
 	}
 
 	optionalFields := []struct {
 		label string
 		value string
 	}{
-		{label: "Command", value: metadata.Cmd},
-		{label: "Model", value: metadata.Model},
-		{label: "Reasoning", value: metadata.Reasoning},
-		{label: "Mode", value: metadata.Mode},
+		{label: "Command", value: provider.Cmd},
+		{label: "Model", value: provider.Model},
+		{label: "Reasoning", value: provider.Reasoning},
+		{label: "Mode", value: provider.Mode},
 	}
 	for _, field := range optionalFields {
 		if field.value != "" {
@@ -201,8 +229,8 @@ func writeRoleView(cmd *cobra.Command, configuredRole role.Role) error {
 		}
 	}
 
-	if len(metadata.ExtraArgs) > 0 {
-		lines = append(lines, fmt.Sprintf("Extra args: %q", metadata.ExtraArgs))
+	if len(provider.ExtraArgs) > 0 {
+		lines = append(lines, fmt.Sprintf("Extra args: %q", provider.ExtraArgs))
 	}
 
 	if len(metadata.Params) == 0 {
@@ -217,4 +245,12 @@ func writeRoleView(cmd *cobra.Command, configuredRole role.Role) error {
 	_, err := fmt.Fprintln(cmd.OutOrStdout(), strings.Join(lines, "\n"))
 
 	return err
+}
+
+func roleTimeoutDetails(configuredRole role.Role) (string, string) {
+	if configuredRole.Metadata.Provider.Timeout != "" {
+		return configuredRole.Metadata.Provider.Timeout, "provider"
+	}
+
+	return defaultPromptTimeoutText, "cli default"
 }

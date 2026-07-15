@@ -24,8 +24,9 @@ import (
 
 // NormaFactory builds ACP agents through Norma Runtime.
 type NormaFactory struct {
-	Stderr          io.Writer
-	JSONDiagnostics bool
+	Stderr            io.Writer
+	JSONDiagnostics   bool
+	PermissionHandler acpagent.PermissionHandler
 }
 
 var buildNormaAgent = buildNormaAgentDefault
@@ -35,7 +36,7 @@ const sessionConfigCapacity = 3
 func (f NormaFactory) New(ctx context.Context, provider Provider) (Conversation, error) {
 	stderr, flush := f.diagnosticsWriter()
 
-	ag, closer, err := buildNormaAgent(ctx, provider, stderr)
+	ag, closer, err := buildNormaAgent(ctx, provider, stderr, f.PermissionHandler)
 	if err != nil {
 		if flushErr := flush(); flushErr != nil {
 			return nil, errors.Join(err, flushErr)
@@ -46,15 +47,16 @@ func (f NormaFactory) New(ctx context.Context, provider Provider) (Conversation,
 
 	conversation, err := newNormaConversation(ag, closer, flush)
 	if err != nil {
+		var cleanupErr error
 		if closer != nil {
-			_ = closer.Close()
+			cleanupErr = closer.Close()
 		}
 
 		if flushErr := flush(); flushErr != nil {
-			return nil, errors.Join(err, flushErr)
+			cleanupErr = errors.Join(cleanupErr, flushErr)
 		}
 
-		return nil, err
+		return nil, errors.Join(err, cleanupErr)
 	}
 
 	return conversation, nil
@@ -70,7 +72,7 @@ func (f NormaFactory) Check(ctx context.Context, r role.Role) error {
 
 	stderr, flush := f.diagnosticsWriter()
 
-	_, closer, err := buildNormaAgent(ctx, provider, stderr)
+	_, closer, err := buildNormaAgent(ctx, provider, stderr, f.PermissionHandler)
 	if err != nil {
 		if flushErr := flush(); flushErr != nil {
 			return errors.Join(err, flushErr)
@@ -110,7 +112,7 @@ func (f NormaFactory) diagnosticsWriter() (io.Writer, func() error) {
 	return writer, writer.Flush
 }
 
-func buildNormaAgentDefault(ctx context.Context, provider Provider, stderr io.Writer) (agent.Agent, interface{ Close() error }, error) {
+func buildNormaAgentDefault(ctx context.Context, provider Provider, stderr io.Writer, permissionHandler acpagent.PermissionHandler) (agent.Agent, interface{ Close() error }, error) {
 	log.Debug().Str("provider", provider.Type()).Msg("normalizing provider runtime configuration")
 
 	cwd, err := os.Getwd()
@@ -125,10 +127,20 @@ func buildNormaAgentDefault(ctx context.Context, provider Provider, stderr io.Wr
 		}
 	}
 
-	factory := agentfactory.New(map[string]agentconfig.Config{provider.Key(): provider.config}, mcpregistry.New(nil), agentfactory.WithStderrWriter(stderr))
+	options := []agentfactory.Option{agentfactory.WithStderrWriter(stderr)}
+	if permissionHandler != nil {
+		options = append(options, agentfactory.WithPermissionHandler(permissionHandler))
+	}
+
+	factory := agentfactory.New(map[string]agentconfig.Config{provider.Key(): provider.config}, mcpregistry.New(nil), options...)
 	log.Debug().Str("provider", provider.Type()).Msg("initializing ACP runtime")
 
-	ag, err := factory.Build(ctx, agentfactory.BuildRequest{AgentID: provider.Key(), Name: provider.Type(), Description: provider.Type(), WorkingDirectory: cwd})
+	ag, err := factory.Build(ctx, agentfactory.BuildRequest{
+		AgentID:          provider.Key(),
+		Name:             provider.Type(),
+		Description:      provider.Type(),
+		WorkingDirectory: cwd,
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("start provider %q runtime: %w", provider.Type(), err)
 	}
@@ -141,10 +153,11 @@ func buildNormaAgentDefault(ctx context.Context, provider Provider, stderr io.Wr
 }
 
 type normaConversation struct {
-	runner   *runner.Runner
-	sessions session.Service
-	closer   interface{ Close() error }
-	flush    func() error
+	runner    *runner.Runner
+	sessions  session.Service
+	closer    interface{ Close() error }
+	flush     func() error
+	sessionID string
 }
 
 func newNormaConversation(ag agent.Agent, closer interface{ Close() error }, flush func() error) (Conversation, error) {
@@ -159,17 +172,25 @@ func newNormaConversation(ag agent.Agent, closer interface{ Close() error }, flu
 }
 
 func (n *normaConversation) Run(ctx context.Context, r role.Role, prompt, threadID string) (Result, error) {
-	created, err := n.sessions.Create(ctx, &session.CreateRequest{AppName: "callee", UserID: "callee", State: roleSessionState(r, threadID)})
+	if n.sessionID == "" {
+		created, err := n.sessions.Create(ctx, &session.CreateRequest{
+			AppName: "callee",
+			UserID:  "callee",
+			State:   roleSessionState(r, threadID),
+		})
+		if err != nil {
+			return Result{}, err
+		}
+
+		n.sessionID = created.Session.ID()
+	}
+
+	content, err := n.turn(ctx, n.sessionID, prompt)
 	if err != nil {
 		return Result{}, err
 	}
 
-	content, err := n.turn(ctx, created.Session.ID(), prompt)
-	if err != nil {
-		return Result{}, err
-	}
-
-	remoteThreadID, err := n.acpThreadID(ctx, created.Session.ID())
+	remoteThreadID, err := n.acpThreadID(ctx, n.sessionID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -179,15 +200,17 @@ func (n *normaConversation) Run(ctx context.Context, r role.Role, prompt, thread
 
 func roleSessionState(r role.Role, threadID string) map[string]any {
 	configValues := make([]acpagent.SessionConfigValue, 0, sessionConfigCapacity)
-	if model := strings.TrimSpace(r.Metadata.Model); model != "" {
+	provider := r.Metadata.Provider
+
+	if model := strings.TrimSpace(provider.Model); model != "" {
 		configValues = append(configValues, acpagent.SelectSessionConfigValue("model", model))
 	}
 
-	if mode := strings.TrimSpace(r.Metadata.Mode); mode != "" {
+	if mode := strings.TrimSpace(provider.Mode); mode != "" {
 		configValues = append(configValues, acpagent.SelectSessionConfigValue("mode", mode))
 	}
 
-	if reasoning := strings.TrimSpace(r.Metadata.Reasoning); reasoning != "" {
+	if reasoning := strings.TrimSpace(provider.Reasoning); reasoning != "" {
 		configValues = append(configValues, acpagent.SelectSessionConfigValue("reasoning_effort", reasoning))
 	}
 
@@ -243,6 +266,7 @@ func (n *normaConversation) acpThreadID(ctx context.Context, id string) (string,
 
 	return threadID, nil
 }
+
 func (n *normaConversation) turn(ctx context.Context, id, prompt string) (string, error) {
 	var final string
 

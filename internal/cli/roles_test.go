@@ -11,13 +11,16 @@ import (
 const viewRoleMarkdown = `---
 description: |
   Reviews changes carefully.
-type: generic_acp
-cmd: review-agent
-model: review-model
-reasoning: high
-mode: read-only
-extra_args:
-  - --strict
+provider:
+  type: generic_acp
+  cmd: review-agent
+  model: review-model
+  reasoning: high
+  mode: read-only
+  extra_args:
+    - --strict
+  repl: true
+  timeout: 20m
 params:
   audience: Intended readers
   focus: What to review
@@ -37,8 +40,12 @@ func TestRoleViewCommand(t *testing.T) {
 			name: "human",
 			args: []string{"role", "view", "reviewer", "--roles-dir", rolesDir},
 			want: "ID: reviewer\n" +
+				"API: callee.metalagman.dev\n" +
+				"Kind: role\n" +
 				"Description: Reviews changes carefully.\n" +
-				"Type: generic_acp\n" +
+				"Provider type: generic_acp\n" +
+				"REPL: true\n" +
+				"Timeout: 20m (provider)\n" +
 				"Command: review-agent\n" +
 				"Model: review-model\n" +
 				"Reasoning: high\n" +
@@ -51,9 +58,9 @@ func TestRoleViewCommand(t *testing.T) {
 		{
 			name: "json",
 			args: []string{"role", "view", "reviewer", "--roles-dir", rolesDir, "--json"},
-			want: "{\"id\":\"reviewer\",\"description\":\"Reviews changes carefully.\",\"type\":\"generic_acp\"," +
-				"\"cmd\":\"review-agent\",\"model\":\"review-model\",\"reasoning\":\"high\",\"mode\":\"read-only\"," +
-				"\"extraArgs\":[\"--strict\"],\"params\":{\"audience\":\"Intended readers\",\"focus\":\"What to review\"}}\n",
+			want: "{\"id\":\"reviewer\",\"api\":\"callee.metalagman.dev\",\"kind\":\"role\",\"description\":\"Reviews changes carefully.\"," +
+				"\"provider\":{\"type\":\"generic_acp\",\"cmd\":\"review-agent\",\"model\":\"review-model\",\"reasoning\":\"high\",\"mode\":\"read-only\"," +
+				"\"extraArgs\":[\"--strict\"],\"repl\":true,\"timeout\":\"20m\",\"effectiveTimeout\":\"20m\",\"timeoutSource\":\"provider\"},\"params\":{\"audience\":\"Intended readers\",\"focus\":\"What to review\"}}\n",
 		},
 	}
 	for _, test := range tests {
@@ -90,15 +97,20 @@ func TestRoleViewMarkdownReturnsNormalizedRole(t *testing.T) {
 	}
 
 	want := "---\n" +
+		"api: callee.metalagman.dev\n" +
+		"kind: role\n" +
 		"description: |\n" +
 		"    Reviews changes carefully.\n" +
-		"type: generic_acp\n" +
-		"cmd: review-agent\n" +
-		"model: review-model\n" +
-		"reasoning: high\n" +
-		"mode: read-only\n" +
-		"extra_args:\n" +
-		"    - --strict\n" +
+		"provider:\n" +
+		"    type: generic_acp\n" +
+		"    cmd: review-agent\n" +
+		"    model: review-model\n" +
+		"    reasoning: high\n" +
+		"    mode: read-only\n" +
+		"    extra_args:\n" +
+		"        - --strict\n" +
+		"    repl: true\n" +
+		"    timeout: 20m\n" +
 		"params:\n" +
 		"    audience: Intended readers\n" +
 		"    focus: What to review\n" +
@@ -160,7 +172,7 @@ func TestRoleViewWithoutOptionalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := stdout.String(), "ID: reviewer\nDescription: test reviewer\nType: codex\nParameters: none\n"; got != want {
+	if got, want := stdout.String(), "ID: reviewer\nAPI: callee.metalagman.dev\nKind: role\nDescription: test reviewer\nProvider type: codex\nREPL: false\nTimeout: 15m (cli default)\nParameters: none\n"; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }

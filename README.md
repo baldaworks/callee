@@ -11,7 +11,7 @@
 
 Callee gives users of agent harnesses a project-local way to define specialist
 roles. Each Markdown file contains the role instructions and declares its
-runtime provider through flat YAML frontmatter, so roles can be reviewed in
+runtime provider through strict YAML frontmatter, so roles can be reviewed in
 pull requests, shared with the repository, and overridden per project.
 
 Use the same CLI-backed workflow from **Codex, Claude Code, Grok Build, Copilot
@@ -43,7 +43,7 @@ From the repository where you want to use Callee, install the integration for
 your agent harness and create `.callee/roles/reviewer.md`:
 
 ```bash
-npx --yes @baldaworks/callee@0.8.1 setup codex
+npx --yes @baldaworks/callee@0.9.0 setup codex
 # Replace codex with claude, grok, copilot, or opencode.
 ```
 
@@ -51,11 +51,14 @@ This creates a project-local reviewer role for the selected host:
 
 ```md
 ---
+api: callee.metalagman.dev
+kind: role
 description: Reviews code changes for correctness and regressions.
-type: codex
-model: gpt-5-codex
-reasoning: high
-mode: review
+provider:
+  type: codex
+  model: gpt-5-codex
+  reasoning: high
+  mode: review
 ---
 
 You are an independent code reviewer.
@@ -119,7 +122,7 @@ returns the result, and exits.
         └──────── result on stdout ◀───────────┘
 ```
 
-The role file supplies instructions, flat provider metadata, and optional
+The role file supplies instructions, nested provider metadata, and optional
 runtime parameters. Every `callee prompt` invocation creates and closes its
 runtime; Callee has no background process or local thread store. Diagnostics
 go to stderr, leaving role output on stdout for scripts and host integrations.
@@ -227,8 +230,15 @@ callee prompt --role reviewer \
 
 Use `--roles-dir ./examples/roles` to load only a specific directory.
 
-`prompt` has a 10 minute timeout covering runtime startup and the prompt. Override
-it with `--timeout`, for example `--timeout 90s`.
+`prompt` has a 15 minute default timeout. A role may override it with
+`provider.timeout`; an explicit `--timeout` takes precedence over both. For a
+one-shot role the budget covers runtime startup and the prompt together.
+
+Set `provider.repl: true` to keep one provider process and one local session
+open for line-oriented follow-up prompts. The startup and each active turn get
+their own timeout budget; time spent waiting for the next input line is not
+timed. Blank lines are ignored, and `exit`, `quit`, or EOF closes the runtime.
+REPL roles use human-readable output and do not support `--json`.
 
 ### Continue a thread
 
@@ -340,20 +350,26 @@ an [`explorer`](examples/roles/explorer.md),
 [`implementer`](examples/roles/implementer.md), and
 [`tester`](examples/roles/tester.md).
 
-A role is Markdown with flat provider fields in YAML frontmatter. The Markdown
+A role is Markdown with provider fields nested under `provider` in YAML
+frontmatter. `api` and `kind` may be omitted because the roles-directory loader
+supplies `callee.metalagman.dev` and `role`. The Markdown
 body must contain exactly one `{{ prompt }}`. Each name in the optional
 top-level `params` description map must appear in the body at least once;
 undeclared mustache fragments remain ordinary Markdown.
 
 | Field | Required | Meaning |
 | --- | ---: | --- |
+| `api` | no | API identity; defaults from the loader context |
+| `kind` | no | Resource kind; `roles` directories default it to `role` |
 | `description` | yes | Role description shown by `callee role list` |
-| `type` | yes | Built-in Callee runtime type |
-| `cmd` | no | Executable override |
-| `model` | no | Model identifier |
-| `reasoning` | no | Norma Runtime `reasoning_effort` |
-| `mode` | no | Runtime session mode |
-| `extra_args` | no | Arguments appended by Norma Runtime |
+| `provider.type` | yes | Built-in Callee runtime type |
+| `provider.cmd` | no | Executable override |
+| `provider.model` | no | Model identifier |
+| `provider.reasoning` | no | Norma Runtime `reasoning_effort` |
+| `provider.mode` | no | Runtime session mode |
+| `provider.extra_args` | no | Arguments appended by Norma Runtime |
+| `provider.repl` | no | Enables the interactive line-oriented REPL; defaults to `false` |
+| `provider.timeout` | no | Positive Go duration used unless `--timeout` is explicit |
 | `params` | no | Runtime parameter descriptions |
 
 Supported types: `codex`, `claude`, `opencode`, `copilot`, `grok`, and
@@ -361,14 +377,19 @@ Supported types: `codex`, `claude`, `opencode`, `copilot`, `grok`, and
 
 ```md
 ---
+api: callee.metalagman.dev
+kind: role
 description: Runs a custom ACP-compatible reviewer.
-type: generic_acp
-cmd: /usr/local/bin/company-review-agent
-model: reviewer-v2
-reasoning: high
-mode: review
-extra_args:
-  - --stdio
+provider:
+  type: generic_acp
+  cmd: /usr/local/bin/company-review-agent
+  model: reviewer-v2
+  reasoning: high
+  mode: review
+  extra_args:
+    - --stdio
+  repl: true
+  timeout: 20m
 ---
 
 Review the following task:

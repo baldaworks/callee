@@ -95,5 +95,5 @@ func TestRunSharesProviderChecks(t *testing.T) {
 }
 
 func testRole(id, kind string) role.Role {
-	return role.Role{ID: id, Metadata: role.Metadata{Description: id, Type: kind}, Template: "{{ prompt }}"}
+	return role.Role{ID: id, Metadata: role.Metadata{API: role.CurrentAPI, Kind: role.RoleKind, Description: id, Provider: role.Provider{Type: kind}}, Template: "{{ prompt }}"}
 }

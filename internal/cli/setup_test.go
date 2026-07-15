@@ -28,7 +28,7 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"codex", "plugin", "marketplace", "add", "baldaworks/callee", "--sparse", ".agents/plugins", "--sparse", "plugins/callee"},
 				{"codex", "plugin", "add", "callee@callee"},
 			},
-			wantType: "type: codex",
+			wantType: "  type: codex",
 		},
 		{
 			name:   "claude",
@@ -37,7 +37,7 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"claude", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"claude", "plugin", "install", "callee@callee", "--scope", "project"},
 			},
-			wantType: "type: claude",
+			wantType: "  type: claude",
 		},
 		{
 			name:   "grok",
@@ -46,7 +46,7 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"grok", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"grok", "plugin", "install", "callee@callee", "--trust"},
 			},
-			wantType: "type: grok",
+			wantType: "  type: grok",
 		},
 		{
 			name:   "copilot",
@@ -55,12 +55,12 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"copilot", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"copilot", "plugin", "install", "callee@callee"},
 			},
-			wantType: "type: copilot",
+			wantType: "  type: copilot",
 		},
 		{
 			name:     "opencode",
 			target:   "opencode",
-			wantType: "type: opencode",
+			wantType: "  type: opencode",
 		},
 	}
 
@@ -99,8 +99,10 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !strings.Contains(string(role), test.wantType) || !strings.Contains(string(role), "{{ prompt }}") {
-				t.Fatalf("reviewer role = %q", role)
+			for _, want := range []string{"api: callee.metalagman.dev", "kind: role", "provider:\n", test.wantType, "{{ prompt }}"} {
+				if !strings.Contains(string(role), want) {
+					t.Fatalf("reviewer role does not contain %q: %q", want, role)
+				}
 			}
 
 			if !strings.Contains(stdout.String(), "Created "+reviewerRolePath) {

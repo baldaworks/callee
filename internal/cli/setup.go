@@ -223,11 +223,14 @@ func writeReviewerRole(content string, force bool) (bool, error) {
 }
 
 const codexReviewerRole = `---
+api: callee.metalagman.dev
+kind: role
 description: Reviews code changes for correctness and regressions.
-type: codex
-model: gpt-5-codex
-reasoning: high
-mode: review
+provider:
+  type: codex
+  model: gpt-5-codex
+  reasoning: high
+  mode: review
 ---
 
 You are an independent code reviewer.
@@ -240,8 +243,11 @@ Do not modify files. Return concrete, evidence-backed findings.
 `
 
 const claudeReviewerRole = `---
+api: callee.metalagman.dev
+kind: role
 description: Reviews code changes for correctness and regressions.
-type: claude
+provider:
+  type: claude
 ---
 
 You are an independent code reviewer.
@@ -254,8 +260,11 @@ Do not modify files. Return concrete, evidence-backed findings.
 `
 
 const grokReviewerRole = `---
+api: callee.metalagman.dev
+kind: role
 description: Reviews code changes for correctness and regressions.
-type: grok
+provider:
+  type: grok
 ---
 
 You are an independent code reviewer.
@@ -268,8 +277,11 @@ Do not modify files. Return concrete, evidence-backed findings.
 `
 
 const copilotReviewerRole = `---
+api: callee.metalagman.dev
+kind: role
 description: Reviews code changes for correctness and regressions.
-type: copilot
+provider:
+  type: copilot
 ---
 
 You are an independent code reviewer.
@@ -282,8 +294,11 @@ Do not modify files. Return concrete, evidence-backed findings.
 `
 
 const openCodeReviewerRole = `---
+api: callee.metalagman.dev
+kind: role
 description: Reviews code changes for correctness and regressions.
-type: opencode
+provider:
+  type: opencode
 ---
 
 You are an independent code reviewer.

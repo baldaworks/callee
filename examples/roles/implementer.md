@@ -1,12 +1,15 @@
 ---
+api: callee.metalagman.dev
+kind: role
 description: >
   Implements a bounded code change, preserves existing behavior outside
   the requested scope, and runs relevant validation.
 
-type: codex
-model: gpt-5.6-sol
-reasoning: high
-mode: code
+provider:
+  type: codex
+  model: gpt-5.6-sol
+  reasoning: high
+  mode: code
 ---
 
 You are an implementation agent.

@@ -86,9 +86,21 @@ func TestPromptKitRoleCreate(t *testing.T) {
 		t.Fatalf("os.ReadFile(generated role) returned unexpected error: %v", err)
 	}
 
-	generated, err := role.Parse("reviewer", data)
+	generated, err := role.Parse("reviewer", data, role.Defaults{API: role.CurrentAPI, Kind: role.RoleKind})
 	if err != nil {
 		t.Fatalf("role.Parse(generated role) returned unexpected error: %v", err)
+	}
+
+	if generated.API() != role.CurrentAPI || generated.Kind() != role.RoleKind {
+		t.Fatalf("generated identity = %q/%q", generated.API(), generated.Kind())
+	}
+
+	wantProvider := role.Provider{
+		Type: "codex", Model: "gpt-5-codex", Reasoning: "high",
+		Mode: "review", ExtraArgs: []string{"--sandbox"},
+	}
+	if !reflect.DeepEqual(generated.Metadata.Provider, wantProvider) {
+		t.Fatalf("generated provider = %#v, want %#v", generated.Metadata.Provider, wantProvider)
 	}
 
 	wantParams := map[string]string{
@@ -265,7 +277,7 @@ func TestEveryPromptKitTemplateCompilesToRole(t *testing.T) {
 
 			generated := role.Role{
 				ID:       template.Name,
-				Metadata: role.Metadata{Description: template.Description, Type: "codex", Params: params},
+				Metadata: role.Metadata{API: role.CurrentAPI, Kind: role.RoleKind, Description: template.Description, Provider: role.Provider{Type: "codex"}, Params: params},
 				Template: promptKitRoleBody(promptParam, params, assembled.Markdown),
 			}
 			if err := generated.Validate(); err != nil {

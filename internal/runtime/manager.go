@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/baldaworks/callee/internal/role"
@@ -26,31 +27,37 @@ type Factory interface {
 	New(ctx context.Context, provider Provider) (Conversation, error)
 }
 
-// RunOnce executes a role and closes its runtime before returning.
-func RunOnce(ctx context.Context, factory Factory, r role.Role, prompt, threadID string) (Result, error) {
-	log.Debug().Str("role", r.ID).Str("type", r.Metadata.Type).Msg("starting one-shot role runtime")
-
+// Open starts one role runtime. The caller must close the returned conversation.
+func Open(ctx context.Context, factory Factory, r role.Role) (Conversation, error) {
 	provider, err := ProviderFor(r)
 	if err != nil {
-		return Result{}, fmt.Errorf("start role %q runtime: %w", r.ID, err)
+		return nil, fmt.Errorf("start role %q runtime: %w", r.ID, err)
 	}
 
 	rt, err := factory.New(ctx, provider)
 	if err != nil {
-		return Result{}, fmt.Errorf("start role %q runtime: %w", r.ID, err)
+		return nil, fmt.Errorf("start role %q runtime: %w", r.ID, err)
+	}
+
+	return rt, nil
+}
+
+// RunOnce executes a role and closes its runtime before returning.
+func RunOnce(ctx context.Context, factory Factory, r role.Role, prompt, threadID string) (result Result, resultErr error) {
+	log.Debug().Str("role", r.ID).Str("type", r.Metadata.Provider.Type).Msg("starting one-shot role runtime")
+
+	rt, err := Open(ctx, factory, r)
+	if err != nil {
+		return Result{}, err
 	}
 
 	defer func() {
 		if closeErr := rt.Close(); closeErr != nil {
-			log.Debug().Err(closeErr).Str("role", r.ID).Msg("close one-shot role runtime failed")
-
-			return
+			resultErr = errors.Join(resultErr, fmt.Errorf("close role %q runtime: %w", r.ID, closeErr))
 		}
-
-		log.Debug().Str("role", r.ID).Msg("closed one-shot role runtime")
 	}()
 
-	result, err := rt.Run(ctx, r, prompt, threadID)
+	result, err = rt.Run(ctx, r, prompt, threadID)
 	if err != nil {
 		return Result{}, fmt.Errorf("role %q: %w", r.ID, err)
 	}

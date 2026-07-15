@@ -11,7 +11,7 @@ Use the same Callee command launcher for the whole workflow:
 
 1. Try `callee --version`. If it succeeds, use `callee` for every command.
 2. If `callee` is not available, use
-   `npx --yes @baldaworks/callee@0.8.1` as the command prefix.
+   `npx --yes @baldaworks/callee@0.9.0` as the command prefix.
 3. If the fallback fails because the host blocks network or npm cache access,
    including `EAI_AGAIN` or `EROFS`, request the required approval and retry
    the exact command. Do not interpret a failed command as an empty catalog.
@@ -74,8 +74,9 @@ and leave `project_name`, `audience`, and `context` as runtime parameters unless
 the user explicitly fixes them.
 
 If the template has a configurable persona, select it at creation time with
-`--persona`. Never expose persona as a runtime role parameter. Keep Callee
-metadata flat. Do not add nested provider configuration or Gemini support.
+`--persona`. Never expose persona as a runtime role parameter. Generated roles
+use `api: callee.metalagman.dev`, `kind: role`, and a nested `provider` section;
+the top-level `params` map remains separate. Do not add Gemini support.
 
 ## Create the role
 
@@ -92,7 +93,7 @@ callee promptkit role create "<role-id>" \
 
 When requested, adjust PromptKit composition with `--persona`, repeated
 `--protocol`, repeated `--taxonomy`, and either `--format` or `--no-format`.
-These change PromptKit components, not Callee's flat role metadata.
+These change PromptKit components, not Callee's provider metadata.
 
 Add only user-supplied optional runtime values: `--model`, `--reasoning`,
 `--mode`, `--cmd`, and repeated `--extra-arg`.

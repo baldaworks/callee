@@ -97,7 +97,7 @@ func loadDirectory(dir string) (map[string]role.Role, error) {
 			return err
 		}
 
-		item, err := role.Parse(id, data)
+		item, err := role.Parse(id, data, role.Defaults{API: role.CurrentAPI, Kind: role.RoleKind})
 		if err != nil {
 			return fmt.Errorf("parse %q: %w", path, err)
 		}

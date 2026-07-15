@@ -4,17 +4,34 @@ package role
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
-// Metadata is the intentionally flat role frontmatter schema.
+const (
+	// CurrentAPI is the API understood by this Callee release.
+	CurrentAPI = "callee.metalagman.dev"
+	// RoleKind identifies resources loaded from a roles directory.
+	RoleKind = "role"
+)
+
+// Provider configures the ACP provider used by a role.
+type Provider struct {
+	Type      string   `yaml:"type"`
+	Cmd       string   `yaml:"cmd,omitempty"`
+	Model     string   `yaml:"model,omitempty"`
+	Reasoning string   `yaml:"reasoning,omitempty"`
+	Mode      string   `yaml:"mode,omitempty"`
+	ExtraArgs []string `yaml:"extra_args,omitempty"`
+	REPL      bool     `yaml:"repl,omitempty"`
+	Timeout   string   `yaml:"timeout,omitempty"`
+}
+
+// Metadata is the role frontmatter schema.
 type Metadata struct {
+	API         string            `yaml:"api,omitempty"`
+	Kind        string            `yaml:"kind,omitempty"`
 	Description string            `yaml:"description"`
-	Type        string            `yaml:"type"`
-	Cmd         string            `yaml:"cmd,omitempty"`
-	Model       string            `yaml:"model,omitempty"`
-	Reasoning   string            `yaml:"reasoning,omitempty"`
-	Mode        string            `yaml:"mode,omitempty"`
-	ExtraArgs   []string          `yaml:"extra_args,omitempty"`
+	Provider    Provider          `yaml:"provider"`
 	Params      map[string]string `yaml:"params,omitempty"`
 }
 
@@ -48,20 +65,54 @@ func SupportedTypes() []string {
 
 // Validate validates role metadata and the prompt template.
 func (r Role) Validate() error {
+	if strings.TrimSpace(r.Metadata.API) == "" {
+		return fmt.Errorf("role %q: missing api context", r.ID)
+	}
+
+	if api := r.API(); api != CurrentAPI {
+		return fmt.Errorf("role %q: unsupported api %q", r.ID, api)
+	}
+
+	if strings.TrimSpace(r.Metadata.Kind) == "" {
+		return fmt.Errorf("role %q: missing kind context", r.ID)
+	}
+
+	if kind := r.Kind(); kind != RoleKind {
+		return fmt.Errorf("role %q: unsupported kind %q", r.ID, kind)
+	}
+
 	if strings.TrimSpace(r.Metadata.Description) == "" {
 		return fmt.Errorf("role %q: missing required frontmatter field \"description\"", r.ID)
 	}
 
-	if strings.TrimSpace(r.Metadata.Type) == "" {
-		return fmt.Errorf("role %q: missing required frontmatter field \"type\"", r.ID)
+	provider := r.Metadata.Provider
+	if strings.TrimSpace(provider.Type) == "" {
+		return fmt.Errorf("role %q: missing required frontmatter field \"provider.type\"", r.ID)
 	}
 
-	if _, ok := RuntimeType(r.Metadata.Type); !ok {
-		return fmt.Errorf("role %q: unsupported type %q", r.ID, r.Metadata.Type)
+	if _, ok := RuntimeType(provider.Type); !ok {
+		return fmt.Errorf("role %q: unsupported provider.type %q", r.ID, provider.Type)
 	}
 
-	if r.Metadata.Type == "generic_acp" && strings.TrimSpace(r.Metadata.Cmd) == "" {
-		return fmt.Errorf("role %q: type \"generic_acp\" requires a non-empty cmd", r.ID)
+	if provider.Type == "generic_acp" && strings.TrimSpace(provider.Cmd) == "" {
+		return fmt.Errorf("role %q: provider.type \"generic_acp\" requires a non-empty provider.cmd", r.ID)
+	}
+
+	for index, arg := range provider.ExtraArgs {
+		if strings.TrimSpace(arg) == "" {
+			return fmt.Errorf("role %q: provider.extra_args[%d] must not be empty", r.ID, index)
+		}
+	}
+
+	if provider.Timeout != "" {
+		value, err := time.ParseDuration(provider.Timeout)
+		if err != nil {
+			return fmt.Errorf("role %q: provider.timeout %q is not a valid duration: %w", r.ID, provider.Timeout, err)
+		}
+
+		if value <= 0 {
+			return fmt.Errorf("role %q: provider.timeout must be greater than zero", r.ID)
+		}
 	}
 
 	if strings.TrimSpace(r.Template) == "" {
@@ -69,4 +120,28 @@ func (r Role) Validate() error {
 	}
 
 	return validateTemplate(r.ID, r.Template, r.Metadata.Params)
+}
+
+// API returns the role's effective API.
+func (r Role) API() string {
+	return strings.TrimSpace(r.Metadata.API)
+}
+
+// Kind returns the role's effective resource kind.
+func (r Role) Kind() string {
+	return strings.TrimSpace(r.Metadata.Kind)
+}
+
+// PromptTimeout returns the provider override or the supplied CLI default.
+func (r Role) PromptTimeout(defaultValue time.Duration) time.Duration {
+	if r.Metadata.Provider.Timeout == "" {
+		return defaultValue
+	}
+
+	value, err := time.ParseDuration(r.Metadata.Provider.Timeout)
+	if err != nil {
+		return defaultValue
+	}
+
+	return value
 }

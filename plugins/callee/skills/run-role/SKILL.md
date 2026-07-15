@@ -11,7 +11,7 @@ Use the same Callee command launcher for the whole workflow:
 
 1. Try `callee --version`. If it succeeds, use `callee` for every command.
 2. If `callee` is not available, use
-   `npx --yes @baldaworks/callee@0.8.1` as the command prefix.
+   `npx --yes @baldaworks/callee@0.9.0` as the command prefix.
 3. If the fallback fails because the host blocks network or npm cache access,
    including `EAI_AGAIN` or `EROFS`, request the required approval and retry
    the exact command. Do not interpret a failed command as an empty catalog.
@@ -36,9 +36,12 @@ callee role list --json
 The catalog includes every role's description and a `params` object containing
 every parameter name and description. Select capabilities by their stated
 purpose, not by a hard-coded role name. Keep role IDs internal to the dispatch.
-Use `role view "<selected-role-id>" --json` only when provider metadata is
-needed for diagnostics, or `--markdown` when the normalized role definition is
-needed. Do not add a redundant view call during ordinary routing.
+After selecting a role, inspect it with `role view "<selected-role-id>" --json`.
+Do not dispatch roles whose `provider.repl` is true: the skill's structured
+one-shot protocol is non-interactive and REPL roles reject `--json`. For a
+naturally named REPL role, report that it must be run interactively; otherwise
+choose a matching one-shot role. Use `--markdown` only when the normalized role
+definition is needed.
 
 - When the user naturally names a role, resolve that mention against the
   catalog. Prefer a case-insensitive role ID match after ignoring surrounding
@@ -89,8 +92,15 @@ handle internally:
 
 ```bash
 callee prompt --role "<selected-role-id>" \
-  --thread-id "<opaque-thread-handle>" --message "<stage task>" --json
+  --thread-id "<opaque-thread-handle>" --message "<stage task>" \
+  --json
 ```
+
+Do not pass `--timeout` on the first attempt. Callee uses `provider.timeout`
+when the role declares it and otherwise uses the CLI default of 15 minutes. If
+the first attempt ends specifically because its timeout expired, retry the same
+stage with an explicit, larger `--timeout`. Preserve the existing thread handle
+for a continued stage; repeat all required inputs when retrying a fresh stage.
 
 Do not pass `--param` or `--param-file` when continuing a thread. Parameters
 initialize the role context only when the thread starts; follow-ups are sent as
@@ -123,6 +133,6 @@ install a host integration and create an editable starter role, run:
 callee setup <codex|claude|grok|copilot|opencode>
 ```
 
-Keep provider fields flat. A top-level `params` description map is allowed; do
-not add nested provider configuration, Gemini support, or a persistent Callee
+Keep provider fields under the role's `provider` section. A top-level `params`
+description map is allowed; do not add Gemini support or a persistent Callee
 role-session store.

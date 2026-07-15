@@ -15,7 +15,7 @@ func writeRole(t *testing.T, dir, name, description string) {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(p, []byte("---\ndescription: "+description+"\ntype: codex\n---\n{{ prompt }}"), 0644); err != nil {
+	if err := os.WriteFile(p, []byte("---\ndescription: "+description+"\nprovider:\n  type: codex\n---\n{{ prompt }}"), 0644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -38,6 +38,12 @@ func TestLoadDirectories(t *testing.T) {
 
 	if !reflect.DeepEqual(r.IDs(), []string{"code/explorer", "reviewer"}) {
 		t.Fatal(r.IDs())
+	}
+
+	for _, configuredRole := range r.Roles() {
+		if configuredRole.API() != "callee.metalagman.dev" || configuredRole.Kind() != "role" {
+			t.Fatalf("role %q identity = %q/%q", configuredRole.ID, configuredRole.API(), configuredRole.Kind())
+		}
 	}
 
 	r, err = Load(LoadOptions{RolesDir: explicit, UserDir: user, ProjectDir: project})

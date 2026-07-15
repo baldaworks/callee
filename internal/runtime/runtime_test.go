@@ -6,18 +6,22 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"iter"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/baldaworks/callee/internal/role"
+	acp "github.com/coder/acp-go-sdk"
 	acpagent "github.com/normahq/go-adk-acpagent/v2"
 	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/session"
+	"google.golang.org/genai"
 )
 
 func TestNormalize(t *testing.T) {
 	for _, kind := range role.SupportedTypes() {
-		metadata := role.Metadata{Description: "x", Type: kind, Model: "m", Reasoning: "high", Mode: "review", ExtraArgs: []string{"--stdio"}, Cmd: "/bin/agent"}
+		metadata := role.Metadata{API: role.CurrentAPI, Kind: role.RoleKind, Description: "x", Provider: role.Provider{Type: kind, Model: "m", Reasoning: "high", Mode: "review", ExtraArgs: []string{"--stdio"}, Cmd: "/bin/agent"}}
 		r := role.Role{ID: kind, Metadata: metadata, Template: "{{ prompt }}"}
 
 		cfg, err := Normalize(r)
@@ -39,6 +43,7 @@ type fakeConversation struct {
 	closed    bool
 	result    Result
 	err       error
+	closeErr  error
 }
 
 func (f *fakeConversation) Run(_ context.Context, r role.Role, prompt, threadID string) (Result, error) {
@@ -52,7 +57,7 @@ func (f *fakeConversation) Run(_ context.Context, r role.Role, prompt, threadID 
 func (f *fakeConversation) Close() error {
 	f.closed = true
 
-	return nil
+	return f.closeErr
 }
 
 type fakeFactory struct {
@@ -119,6 +124,16 @@ func TestRunOnceReturnsFactoryError(t *testing.T) {
 	}
 }
 
+func TestRunOnceReturnsCloseError(t *testing.T) {
+	wantErr := errors.New("close failed")
+	conversation := &fakeConversation{result: Result{Content: "done"}, closeErr: wantErr}
+
+	_, err := RunOnce(context.Background(), &fakeFactory{conversation: conversation}, testRole("reviewer", "codex"), "review", "")
+	if err == nil || !errors.Is(err, wantErr) {
+		t.Fatalf("RunOnce() error = %v, want close error", err)
+	}
+}
+
 type closeTracker struct{ closed bool }
 
 func (c *closeTracker) Close() error {
@@ -133,9 +148,16 @@ func TestNormaFactoryCheckClosesRuntime(t *testing.T) {
 	t.Cleanup(func() { buildNormaAgent = original })
 
 	closer := &closeTracker{}
-	buildNormaAgent = func(ctx context.Context, provider Provider, _ io.Writer) (agent.Agent, interface{ Close() error }, error) {
+	permissionHandler := func(_ context.Context, request acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+		return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeSelected(request.Options[0].OptionId)}, nil
+	}
+	buildNormaAgent = func(ctx context.Context, provider Provider, _ io.Writer, gotPermissionHandler acpagent.PermissionHandler) (agent.Agent, interface{ Close() error }, error) {
 		if provider.Type() != "codex" {
 			t.Fatalf("provider type = %q, want codex", provider.Type())
+		}
+
+		if gotPermissionHandler == nil {
+			t.Fatal("permission handler was not passed to Norma Runtime")
 		}
 
 		if _, ok := ctx.Deadline(); !ok {
@@ -148,7 +170,7 @@ func TestNormaFactoryCheckClosesRuntime(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	if err := (NormaFactory{}).Check(ctx, testRole("reviewer", "codex")); err != nil {
+	if err := (NormaFactory{PermissionHandler: permissionHandler}).Check(ctx, testRole("reviewer", "codex")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -164,7 +186,7 @@ func TestNormaFactoryWrapsProviderDiagnosticsAsJSON(t *testing.T) {
 
 	var output bytes.Buffer
 
-	buildNormaAgent = func(_ context.Context, _ Provider, stderr io.Writer) (agent.Agent, interface{ Close() error }, error) {
+	buildNormaAgent = func(_ context.Context, _ Provider, stderr io.Writer, _ acpagent.PermissionHandler) (agent.Agent, interface{ Close() error }, error) {
 		if _, err := io.WriteString(stderr, "provider started\npartial"); err != nil {
 			t.Fatal(err)
 		}
@@ -205,7 +227,7 @@ func TestNormaFactoryPassesProviderDiagnosticsThroughWithoutJSON(t *testing.T) {
 
 	var output bytes.Buffer
 
-	buildNormaAgent = func(_ context.Context, _ Provider, stderr io.Writer) (agent.Agent, interface{ Close() error }, error) {
+	buildNormaAgent = func(_ context.Context, _ Provider, stderr io.Writer, _ acpagent.PermissionHandler) (agent.Agent, interface{ Close() error }, error) {
 		if _, err := io.WriteString(stderr, "provider started\n"); err != nil {
 			t.Fatal(err)
 		}
@@ -224,9 +246,9 @@ func TestNormaFactoryPassesProviderDiagnosticsThroughWithoutJSON(t *testing.T) {
 
 func TestRoleSessionState(t *testing.T) {
 	r := testRole("reviewer", "codex")
-	r.Metadata.Model = "gpt-5.6-sol"
-	r.Metadata.Mode = "review"
-	r.Metadata.Reasoning = "high"
+	r.Metadata.Provider.Model = "gpt-5.6-sol"
+	r.Metadata.Provider.Mode = "review"
+	r.Metadata.Provider.Reasoning = "high"
 	state := roleSessionState(r, "")
 
 	acpState, ok := state[acpagent.SessionStateKey].(map[string]any)
@@ -253,11 +275,58 @@ func TestRoleSessionState(t *testing.T) {
 	}
 }
 
+func TestNormaConversationReusesADKSessionAcrossTurns(t *testing.T) {
+	var sessionIDs []string
+
+	ag, err := agent.New(agent.Config{
+		Name:        "test-agent",
+		Description: "test agent",
+		Run: func(ctx agent.InvocationContext) iter.Seq2[*session.Event, error] {
+			return func(yield func(*session.Event, error) bool) {
+				sessionIDs = append(sessionIDs, ctx.Session().ID())
+
+				event := session.NewEvent(ctx, ctx.InvocationID())
+				event.Author = "test-agent"
+				event.Content = genai.NewContentFromText("done", genai.RoleModel)
+				event.TurnComplete = true
+				event.Actions.StateDelta = map[string]any{
+					acpagent.SessionStateKey: map[string]any{"session_id": "provider-thread"},
+				}
+				yield(event, nil)
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conversation, err := newNormaConversation(ag, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := testRole("reviewer", "codex")
+	for _, prompt := range []string{"first", "second"} {
+		result, err := conversation.Run(context.Background(), r, prompt, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if result.ThreadID != "provider-thread" || result.Content != "done" {
+			t.Fatalf("result = %#v", result)
+		}
+	}
+
+	if len(sessionIDs) != 2 || sessionIDs[0] != sessionIDs[1] {
+		t.Fatalf("session IDs = %#v, want one reused ADK session", sessionIDs)
+	}
+}
+
 func TestGrokRoleSessionStateUsesOnlyACPConfigValues(t *testing.T) {
 	r := testRole("reviewer", "grok")
-	r.Metadata.Model = "grok-4.5"
-	r.Metadata.Mode = "plan"
-	r.Metadata.Reasoning = "high"
+	r.Metadata.Provider.Model = "grok-4.5"
+	r.Metadata.Provider.Mode = "plan"
+	r.Metadata.Provider.Reasoning = "high"
 
 	state := roleSessionState(r, "")
 
@@ -280,7 +349,7 @@ func TestGrokRoleSessionStateUsesOnlyACPConfigValues(t *testing.T) {
 
 func TestCodexRoleSessionStatePassesModeToACPBridge(t *testing.T) {
 	r := testRole("reviewer", "codex")
-	r.Metadata.Mode = "review"
+	r.Metadata.Provider.Mode = "review"
 	state := roleSessionState(r, "")
 
 	acpState, ok := state[acpagent.SessionStateKey].(map[string]any)
@@ -341,5 +410,5 @@ func TestGrokProviderUsesRuntimeCommand(t *testing.T) {
 }
 
 func testRole(id, kind string) role.Role {
-	return role.Role{ID: id, Metadata: role.Metadata{Description: id, Type: kind}, Template: "{{ prompt }}"}
+	return role.Role{ID: id, Metadata: role.Metadata{API: role.CurrentAPI, Kind: role.RoleKind, Description: id, Provider: role.Provider{Type: kind}}, Template: "{{ prompt }}"}
 }

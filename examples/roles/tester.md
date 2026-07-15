@@ -1,12 +1,15 @@
 ---
+api: callee.metalagman.dev
+kind: role
 description: >
   Examines an implementation from a testing perspective, identifies missing
   coverage, and proposes concrete test cases for important behavior.
 
-type: codex
-model: gpt-5.6-sol
-reasoning: medium
-mode: review
+provider:
+  type: codex
+  model: gpt-5.6-sol
+  reasoning: medium
+  mode: review
 ---
 
 You are a test engineer.

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const releaseVersion = "0.8.1"
+const releaseVersion = "0.9.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "run-role", "SKILL.md"))
@@ -29,7 +29,13 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"supply every parameter declared by the selected role",
 		"Do not pass `--param` or `--param-file` when continuing a thread.",
 		"setup <codex|claude|grok|copilot|opencode>",
-		"--thread-id \"<opaque-thread-handle>\" --message \"<stage task>\" --json",
+		"--thread-id \"<opaque-thread-handle>\" --message \"<stage task>\"",
+		"Do not pass `--timeout` on the first attempt.",
+		"Callee uses `provider.timeout`",
+		"otherwise uses the CLI default of 15 minutes.",
+		"first attempt ends specifically because its timeout expired, retry the same",
+		"stage with an explicit, larger `--timeout`.",
+		"Do not dispatch roles whose `provider.repl` is true",
 		"Run independent discovery or review stages in parallel.",
 		"When the user naturally names a role, resolve that mention against the",
 		"Run that role as the required first stage. Do not silently substitute a",
@@ -57,6 +63,10 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 
 	if !strings.Contains(text, "--param \"<name>=<value>\" --json") {
 		t.Fatal("every internal prompt must use JSON output")
+	}
+
+	if strings.Contains(text, "--timeout 15m") {
+		t.Fatal("skill overrides the role and CLI timeout on its first attempt")
 	}
 }
 
@@ -90,7 +100,7 @@ func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
 		"--taxonomy",
 		"--no-format",
 		"default or infer a type.",
-		"metadata flat.",
+		"nested `provider` section",
 		"--dry-run",
 	} {
 		if !strings.Contains(text, want) {

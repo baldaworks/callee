@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +19,7 @@ import (
 	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/role"
 	"github.com/baldaworks/callee/internal/runtime"
+	acp "github.com/coder/acp-go-sdk"
 )
 
 func TestLoggingLevel(t *testing.T) {
@@ -41,8 +45,8 @@ func TestLoggingLevel(t *testing.T) {
 }
 
 func TestVersionMatchesNextRelease(t *testing.T) {
-	if Version != "0.8.1" {
-		t.Fatalf("Version = %q, want 0.8.1", Version)
+	if Version != "0.9.0" {
+		t.Fatalf("Version = %q, want 0.9.0", Version)
 	}
 }
 
@@ -65,7 +69,7 @@ func TestDoctorCommandLoadsRolesAndPassesTimeout(t *testing.T) {
 	rolesDir := t.TempDir()
 	rolePath := filepath.Join(rolesDir, "reviewer.md")
 
-	roleBody := "---\ndescription: test reviewer\ntype: codex\n---\nReview: {{ prompt }}\n"
+	roleBody := "---\ndescription: test reviewer\nprovider:\n  type: codex\n---\nReview: {{ prompt }}\n"
 	if err := os.WriteFile(rolePath, []byte(roleBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -108,8 +112,8 @@ func TestRoleListCommand(t *testing.T) {
 	rolesDir := t.TempDir()
 
 	roles := map[string]string{
-		"reviewer.md": "---\ndescription: Reviews code changes.\ntype: codex\nparams:\n  focus: What to review\n---\nReview {{ prompt }} for {{ focus }}\n",
-		"explorer.md": "---\ndescription: >\n  Explores the codebase.\ntype: codex\n---\nExplore {{ prompt }}\n",
+		"reviewer.md": "---\ndescription: Reviews code changes.\nprovider:\n  type: codex\nparams:\n  focus: What to review\n---\nReview {{ prompt }} for {{ focus }}\n",
+		"explorer.md": "---\ndescription: >\n  Explores the codebase.\nprovider:\n  type: codex\n---\nExplore {{ prompt }}\n",
 	}
 	for name, body := range roles {
 		if err := os.WriteFile(filepath.Join(rolesDir, name), []byte(body), 0o600); err != nil {
@@ -479,7 +483,7 @@ func TestRoleListJSONIncludesParameterDescriptions(t *testing.T) {
 }
 
 func TestPromptCommandTextOutputAndExplicitTimeout(t *testing.T) {
-	rolesDir := writePromptRole(t)
+	rolesDir := writeRoleWithProvider(t, "  type: codex\n  timeout: 30s\n")
 	original := runRole
 
 	t.Cleanup(func() { runRole = original })
@@ -508,6 +512,242 @@ func TestPromptCommandTextOutputAndExplicitTimeout(t *testing.T) {
 	}
 }
 
+func TestPromptCommandUsesProviderTimeout(t *testing.T) {
+	rolesDir := writeRoleWithProvider(t, "  type: codex\n  timeout: 3s\n")
+	original := runRole
+
+	t.Cleanup(func() { runRole = original })
+
+	runRole = func(ctx context.Context, _ runtime.Factory, _ role.Role, _ string, _ string) (runtime.Result, error) {
+		deadline, ok := ctx.Deadline()
+
+		remaining := time.Until(deadline)
+		if !ok || remaining < 2*time.Second || remaining > 3*time.Second {
+			t.Fatalf("prompt deadline = %v, remaining = %s", ok, remaining)
+		}
+
+		return runtime.Result{Content: "done"}, nil
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type replConversation struct {
+	prompts   []string
+	threadIDs []string
+	timeouts  []time.Duration
+	closed    bool
+	runErr    error
+	closeErr  error
+}
+
+func (c *replConversation) Run(ctx context.Context, _ role.Role, prompt, threadID string) (runtime.Result, error) {
+	c.prompts = append(c.prompts, prompt)
+	c.threadIDs = append(c.threadIDs, threadID)
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return runtime.Result{}, errors.New("turn context has no deadline")
+	}
+
+	c.timeouts = append(c.timeouts, time.Until(deadline))
+	if c.runErr != nil {
+		return runtime.Result{}, c.runErr
+	}
+
+	return runtime.Result{ThreadID: "thread-1", Content: fmt.Sprintf("response %d", len(c.prompts))}, nil
+}
+
+func (c *replConversation) Close() error {
+	c.closed = true
+
+	return c.closeErr
+}
+
+func TestPromptCommandRunsOptInREPLWithOneConversation(t *testing.T) {
+	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n  timeout: 3s\n")
+	conversation := &replConversation{}
+	original := openRole
+
+	t.Cleanup(func() { openRole = original })
+
+	openRole = func(ctx context.Context, _ runtime.Factory, configuredRole role.Role) (runtime.Conversation, error) {
+		if ctx.Err() != nil {
+			t.Fatalf("runtime lifetime context is already cancelled: %v", ctx.Err())
+		}
+
+		if !configuredRole.Metadata.Provider.REPL {
+			t.Fatal("provider.repl = false")
+		}
+
+		return conversation, nil
+	}
+
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.SetIn(strings.NewReader("follow up\n\nquit\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "initial", "--thread-id", "thread-old"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if !conversation.closed {
+		t.Fatal("REPL conversation was not closed")
+	}
+
+	if got, want := conversation.prompts, []string{"initial", "follow up"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("prompts = %#v, want %#v", got, want)
+	}
+
+	if got, want := conversation.threadIDs, []string{"thread-old", ""}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("thread IDs = %#v, want %#v", got, want)
+	}
+
+	for _, remaining := range conversation.timeouts {
+		if remaining < 2*time.Second || remaining > 3*time.Second {
+			t.Fatalf("turn timeout = %s, want independent 3s budget", remaining)
+		}
+	}
+
+	if got, want := stdout.String(), "response 1\n> response 2\n> > "; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestPromptCommandRejectsJSONForREPLRole(t *testing.T) {
+	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n")
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--json"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--json is not supported") {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestPromptCommandClosesREPLAfterTurnAndCloseErrors(t *testing.T) {
+	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n")
+	turnErr := errors.New("turn failed")
+	closeErr := errors.New("close failed")
+	conversation := &replConversation{runErr: turnErr, closeErr: closeErr}
+	original := openRole
+
+	t.Cleanup(func() { openRole = original })
+
+	openRole = func(context.Context, runtime.Factory, role.Role) (runtime.Conversation, error) {
+		return conversation, nil
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+
+	err := cmd.Execute()
+	if !errors.Is(err, turnErr) || !errors.Is(err, closeErr) {
+		t.Fatalf("Execute() error = %v, want turn and close errors", err)
+	}
+
+	if !conversation.closed {
+		t.Fatal("REPL conversation was not closed")
+	}
+}
+
+func TestPromptCommandTimesOutREPLStartup(t *testing.T) {
+	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n  timeout: 20ms\n")
+	original := openRole
+
+	t.Cleanup(func() { openRole = original })
+
+	stopped := make(chan struct{})
+	openRole = func(ctx context.Context, _ runtime.Factory, _ role.Role) (runtime.Conversation, error) {
+		defer close(stopped)
+
+		<-ctx.Done()
+
+		return nil, ctx.Err()
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+
+	err := cmd.Execute()
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Execute() error = %v, want deadline exceeded", err)
+	}
+
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("runtime startup did not stop after timeout")
+	}
+}
+
+func TestPermissionHandlerSelectsOrCancels(t *testing.T) {
+	request := acp.RequestPermissionRequest{Options: []acp.PermissionOption{
+		{Name: "Allow once", Kind: acp.PermissionOptionKindAllowOnce, OptionId: "allow"},
+		{Name: "Reject", Kind: acp.PermissionOptionKindRejectOnce, OptionId: "reject"},
+	}}
+
+	for _, test := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "selected", input: "2\n", want: "reject"},
+		{name: "invalid", input: "nope\n"},
+		{name: "out of range", input: "3\n"},
+		{name: "EOF"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+
+			response, err := permissionHandler(bufio.NewReader(strings.NewReader(test.input)), &output)(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if test.want == "" {
+				if response.Outcome.Cancelled == nil {
+					t.Fatalf("outcome = %#v, want cancelled", response.Outcome)
+				}
+			} else if response.Outcome.Selected == nil || string(response.Outcome.Selected.OptionId) != test.want {
+				t.Fatalf("outcome = %#v, want selected %q", response.Outcome, test.want)
+			}
+
+			for _, want := range []string{"1) Allow once [allow_once]", "2) Reject [reject_once]", "Select: "} {
+				if !strings.Contains(output.String(), want) {
+					t.Errorf("permission output missing %q: %s", want, output.String())
+				}
+			}
+		})
+	}
+}
+
+func TestPermissionHandlerHonorsTurnTimeout(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer writer.Close()
+	defer reader.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	request := acp.RequestPermissionRequest{Options: []acp.PermissionOption{
+		{Name: "Allow", Kind: acp.PermissionOptionKindAllowOnce, OptionId: "allow"},
+	}}
+
+	_, err := permissionHandler(bufio.NewReader(reader), io.Discard)(ctx, request)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("permission error = %v, want deadline exceeded", err)
+	}
+}
+
 func TestPromptCommandRejectsNonPositiveTimeout(t *testing.T) {
 	cmd := NewRootCommand()
 	cmd.SetArgs([]string{"prompt", "--role", "reviewer", "--message", "hello", "--timeout", "0"})
@@ -532,7 +772,7 @@ func writePromptRole(t *testing.T) string {
 	t.Helper()
 
 	rolesDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rolesDir, "reviewer.md"), []byte("---\ndescription: test reviewer\ntype: codex\n---\nReview: {{ prompt }}\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(rolesDir, "reviewer.md"), []byte("---\ndescription: test reviewer\nprovider:\n  type: codex\n---\nReview: {{ prompt }}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -544,9 +784,22 @@ func writeParameterizedRole(t *testing.T) string {
 
 	rolesDir := t.TempDir()
 
-	body := "---\ndescription: test reviewer\ntype: codex\nparams:\n  audience: Intended readers\n  context: Relevant context\n---\nReview: {{ prompt }}\nAudience: {{ audience }}\nContext: {{ context }}\nLiteral: {{ example }}\n"
+	body := "---\ndescription: test reviewer\nprovider:\n  type: codex\nparams:\n  audience: Intended readers\n  context: Relevant context\n---\nReview: {{ prompt }}\nAudience: {{ audience }}\nContext: {{ context }}\nLiteral: {{ example }}\n"
 	if err := os.WriteFile(filepath.Join(rolesDir, "reviewer.md"), []byte(body), 0o600); err != nil {
 		t.Fatalf("os.WriteFile(parameterized role) returned unexpected error: %v", err)
+	}
+
+	return rolesDir
+}
+
+func writeRoleWithProvider(t *testing.T, provider string) string {
+	t.Helper()
+
+	rolesDir := t.TempDir()
+
+	body := "---\ndescription: test reviewer\nprovider:\n" + provider + "---\n{{ prompt }}\n"
+	if err := os.WriteFile(filepath.Join(rolesDir, "reviewer.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
 	return rolesDir
