@@ -20,11 +20,15 @@ import (
 )
 
 const (
-	Version            = "0.5.0"
-	roleListTabPadding = 2
+	Version              = "0.5.0"
+	roleListTabPadding   = 2
+	defaultPromptTimeout = 10 * time.Minute
 )
 
-var runDoctor = doctor.Run
+var (
+	runDoctor = doctor.Run
+	runRole   = runtime.RunOnce
+)
 
 // Run runs Callee and returns its process exit code.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -50,8 +54,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 // NewRootCommand creates the Callee Cobra command tree.
 func NewRootCommand() *cobra.Command {
 	var (
-		rolesDir, roleID, prompt string
-		debug, trace             bool
+		rolesDir     string
+		debug, trace bool
 	)
 
 	root := &cobra.Command{Use: "callee", Short: "Turn Markdown roles into callable ACP agents.", Version: Version, SilenceErrors: true, SilenceUsage: true, PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
@@ -62,50 +66,15 @@ func NewRootCommand() *cobra.Command {
 		log.Debug().Str("command", cmd.Name()).Msg("starting Callee command")
 
 		return nil
-	}, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		reg, err := load(rolesDir)
-		if err != nil {
-			return err
-		}
-
-		log.Debug().Strs("roles", reg.IDs()).Msg("loaded role registry")
-
-		r, err := reg.Get(roleID)
-		if err != nil {
-			return err
-		}
-
-		log.Debug().Str("role", r.ID).Str("type", r.Metadata.Type).Msg("resolved one-shot role")
-
-		rendered, err := r.Render(prompt)
-		if err != nil {
-			return err
-		}
-
-		log.Debug().Str("role", r.ID).Msg("rendered one-shot role prompt")
-
-		manager := runtime.NewManager(runtime.NormaFactory{})
-
-		content, err := manager.RunOnce(cmd.Context(), r, rendered)
-		if err != nil {
-			return err
-		}
-
-		log.Debug().Str("role", r.ID).Int("content_length", len(content)).Msg("one-shot role completed")
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), content)
-
-		return err
+	}, Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {
+		return errors.New("a command is required")
 	}}
 	root.PersistentFlags().StringVar(&rolesDir, "roles-dir", "", "load roles only from this directory")
 	root.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
 	root.PersistentFlags().BoolVar(&trace, "trace", false, "enable trace logging (overrides --debug)")
-	root.Flags().StringVar(&roleID, "role", "", "role ID")
-	root.Flags().StringVar(&prompt, "prompt", "", "initial prompt")
-	_ = root.MarkFlagRequired("role")
-	_ = root.MarkFlagRequired("prompt")
-	root.AddCommand(mcpServerCommand(&rolesDir))
+	root.AddCommand(promptCommand(&rolesDir))
+	root.AddCommand(listCommand(&rolesDir))
 	root.AddCommand(doctorCommand(&rolesDir))
-	root.AddCommand(roleCommand(&rolesDir))
 	root.AddCommand(setupCommand())
 
 	return root
@@ -132,20 +101,6 @@ func load(rolesDir string) (*registry.Registry, error) {
 	return registry.Load(registry.LoadOptions{RolesDir: rolesDir})
 }
 
-func mcpServerCommand(rolesDir *string) *cobra.Command {
-	return &cobra.Command{Use: "mcp-server", Short: "Serve Callee over MCP stdio", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		reg, err := load(*rolesDir)
-		if err != nil {
-			return err
-		}
-
-		log.Debug().Strs("roles", reg.IDs()).Msg("loaded role registry for MCP server")
-		log.Debug().Msg("starting MCP stdio server")
-
-		return runMCPServer(cmd.Context(), reg, Version)
-	}}
-}
-
 type roleListOutput struct {
 	Roles []roleListItem `json:"roles"`
 }
@@ -155,14 +110,7 @@ type roleListItem struct {
 	Description string `json:"description"`
 }
 
-func roleCommand(rolesDir *string) *cobra.Command {
-	cmd := &cobra.Command{Use: "role", Short: "Manage configured Callee roles"}
-	cmd.AddCommand(roleListCommand(rolesDir))
-
-	return cmd
-}
-
-func roleListCommand(rolesDir *string) *cobra.Command {
+func listCommand(rolesDir *string) *cobra.Command {
 	var jsonOutput bool
 
 	cmd := &cobra.Command{Use: "list", Short: "List configured Callee roles", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
@@ -195,6 +143,70 @@ func roleListCommand(rolesDir *string) *cobra.Command {
 		return out.Flush()
 	}}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output roles as JSON")
+
+	return cmd
+}
+
+type promptOutput struct {
+	ThreadID string `json:"threadId"`
+	Content  string `json:"content"`
+	Resumed  bool   `json:"resumed"`
+}
+
+func promptCommand(rolesDir *string) *cobra.Command {
+	var roleID, message, threadID string
+
+	var timeout time.Duration
+
+	var jsonOutput bool
+
+	cmd := &cobra.Command{Use: "prompt", Short: "Prompt a configured Callee role", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if timeout <= 0 {
+			return errors.New("timeout must be greater than zero")
+		}
+
+		reg, err := load(*rolesDir)
+		if err != nil {
+			return err
+		}
+
+		r, err := reg.Get(roleID)
+		if err != nil {
+			return err
+		}
+
+		rendered, err := r.Render(message)
+		if err != nil {
+			return err
+		}
+
+		turnCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+		defer cancel()
+
+		result, err := runRole(turnCtx, runtime.NormaFactory{}, r, rendered, threadID)
+		if err != nil {
+			return err
+		}
+
+		if jsonOutput {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(promptOutput{
+				ThreadID: result.ThreadID,
+				Content:  result.Content,
+				Resumed:  threadID != "" && result.ThreadID == threadID,
+			})
+		}
+
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), result.Content)
+
+		return err
+	}}
+	cmd.Flags().StringVar(&roleID, "role", "", "role ID")
+	cmd.Flags().StringVar(&message, "message", "", "message to send to the role")
+	cmd.Flags().StringVar(&threadID, "thread-id", "", "ACP session ID to resume")
+	cmd.Flags().DurationVar(&timeout, "timeout", defaultPromptTimeout, "maximum time for ACP startup and the prompt")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the response as JSON")
+	_ = cmd.MarkFlagRequired("role")
+	_ = cmd.MarkFlagRequired("message")
 
 	return cmd
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/baldaworks/callee/internal/doctor"
 	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/role"
+	"github.com/baldaworks/callee/internal/runtime"
 )
 
 func TestLoggingLevel(t *testing.T) {
@@ -40,6 +41,15 @@ func TestLoggingLevel(t *testing.T) {
 func TestVersionMatchesNextRelease(t *testing.T) {
 	if Version != "0.5.0" {
 		t.Fatalf("Version = %q, want 0.5.0", Version)
+	}
+}
+
+func TestMCPServerCommandIsUnavailable(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"mcp-server"})
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("mcp-server command succeeded")
 	}
 }
 
@@ -86,7 +96,7 @@ func TestDoctorCommandLoadsRolesAndPassesTimeout(t *testing.T) {
 	}
 }
 
-func TestRoleListCommand(t *testing.T) {
+func TestListCommand(t *testing.T) {
 	rolesDir := t.TempDir()
 
 	roles := map[string]string{
@@ -106,12 +116,12 @@ func TestRoleListCommand(t *testing.T) {
 	}{
 		{
 			name: "table",
-			args: []string{"role", "list", "--roles-dir", rolesDir},
+			args: []string{"list", "--roles-dir", rolesDir},
 			want: "ID        DESCRIPTION\nexplorer  Explores the codebase.\nreviewer  Reviews code changes.\n",
 		},
 		{
 			name: "json",
-			args: []string{"role", "list", "--roles-dir", rolesDir, "--json"},
+			args: []string{"list", "--roles-dir", rolesDir, "--json"},
 			want: "{\"roles\":[{\"id\":\"explorer\",\"description\":\"Explores the codebase.\\n\"},{\"id\":\"reviewer\",\"description\":\"Reviews code changes.\"}]}\n",
 		},
 	}
@@ -135,21 +145,21 @@ func TestRoleListCommand(t *testing.T) {
 	}
 }
 
-func TestRoleListCommandReturnsRoleLoadingErrors(t *testing.T) {
+func TestListCommandReturnsRoleLoadingErrors(t *testing.T) {
 	rolesDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(rolesDir, "invalid.md"), []byte("not frontmatter"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"role", "list", "--roles-dir", rolesDir})
+	cmd.SetArgs([]string{"list", "--roles-dir", rolesDir})
 
 	if err := cmd.Execute(); err == nil {
-		t.Fatal("role list succeeded with an invalid role")
+		t.Fatal("list succeeded with an invalid role")
 	}
 }
 
-func TestRoleListCommandWithNoRoles(t *testing.T) {
+func TestListCommandWithNoRoles(t *testing.T) {
 	rolesDir := t.TempDir()
 
 	tests := []struct {
@@ -157,8 +167,8 @@ func TestRoleListCommandWithNoRoles(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "table", args: []string{"role", "list", "--roles-dir", rolesDir}, want: "ID  DESCRIPTION\n"},
-		{name: "json", args: []string{"role", "list", "--roles-dir", rolesDir, "--json"}, want: "{\"roles\":[]}\n"},
+		{name: "table", args: []string{"list", "--roles-dir", rolesDir}, want: "ID  DESCRIPTION\n"},
+		{name: "json", args: []string{"list", "--roles-dir", rolesDir, "--json"}, want: "{\"roles\":[]}\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -178,4 +188,140 @@ func TestRoleListCommandWithNoRoles(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPromptCommandRendersMessageAndPassesThreadHandle(t *testing.T) {
+	rolesDir := writePromptRole(t)
+	original := runRole
+
+	t.Cleanup(func() { runRole = original })
+
+	runRole = func(ctx context.Context, _ runtime.Factory, gotRole role.Role, message, threadID string) (runtime.Result, error) {
+		if gotRole.ID != "reviewer" {
+			t.Fatalf("role = %q", gotRole.ID)
+		}
+
+		if message != "Review: inspect the change\n" {
+			t.Fatalf("message = %q", message)
+		}
+
+		if threadID != "acp-old" {
+			t.Fatalf("thread ID = %q", threadID)
+		}
+
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("prompt context has no deadline")
+		}
+
+		if remaining := time.Until(deadline); remaining < defaultPromptTimeout-time.Second || remaining > defaultPromptTimeout {
+			t.Fatalf("prompt timeout remaining = %s", remaining)
+		}
+
+		return runtime.Result{ThreadID: "acp-old", Content: "review complete"}, nil
+	}
+
+	cmd := NewRootCommand()
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "inspect the change", "--thread-id", "acp-old", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := stdout.String(), "{\"threadId\":\"acp-old\",\"content\":\"review complete\",\"resumed\":true}\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestPromptCommandReturnsReplacementThreadWhenResumeFallsBack(t *testing.T) {
+	rolesDir := writePromptRole(t)
+	original := runRole
+
+	t.Cleanup(func() { runRole = original })
+
+	runRole = func(_ context.Context, _ runtime.Factory, _ role.Role, _ string, threadID string) (runtime.Result, error) {
+		if threadID != "acp-expired" {
+			t.Fatalf("thread ID = %q", threadID)
+		}
+
+		return runtime.Result{ThreadID: "acp-replacement", Content: "fresh response"}, nil
+	}
+
+	cmd := NewRootCommand()
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "continue", "--thread-id", "acp-expired", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := stdout.String(), "{\"threadId\":\"acp-replacement\",\"content\":\"fresh response\",\"resumed\":false}\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestPromptCommandTextOutputAndExplicitTimeout(t *testing.T) {
+	rolesDir := writePromptRole(t)
+	original := runRole
+
+	t.Cleanup(func() { runRole = original })
+
+	runRole = func(ctx context.Context, _ runtime.Factory, _ role.Role, _ string, _ string) (runtime.Result, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) < time.Second || time.Until(deadline) > 2*time.Second {
+			t.Fatalf("prompt deadline = %v, remaining = %s", ok, time.Until(deadline))
+		}
+
+		return runtime.Result{ThreadID: "acp-1", Content: "plain text"}, nil
+	}
+
+	cmd := NewRootCommand()
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--timeout", "2s"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := stdout.String(), "plain text\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestPromptCommandRejectsNonPositiveTimeout(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"prompt", "--role", "reviewer", "--message", "hello", "--timeout", "0"})
+
+	if err := cmd.Execute(); err == nil || err.Error() != "timeout must be greater than zero" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestLegacyRootAndRoleListCommandsAreUnavailable(t *testing.T) {
+	for _, args := range [][]string{{"--role", "reviewer", "--prompt", "hello"}, {"role", "list"}} {
+		cmd := NewRootCommand()
+		cmd.SetArgs(args)
+
+		if err := cmd.Execute(); err == nil {
+			t.Fatalf("legacy command %#v succeeded", args)
+		}
+	}
+}
+
+func writePromptRole(t *testing.T) string {
+	t.Helper()
+
+	rolesDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rolesDir, "reviewer.md"), []byte("---\ndescription: test reviewer\ntype: codex\n---\nReview: {{ prompt }}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return rolesDir
 }

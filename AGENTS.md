@@ -1,10 +1,10 @@
 # Callee agent guidance
 
-- Preserve the three-tool raw MCP surface: `role` starts conversations, `role.reply` continues them, and `role.list` lists roles. The plugin mounts the server as `callee`, so hosts expose these as `callee.role`, `callee.role.reply`, and `callee.role.list`.
+- Preserve the CLI-only surface: `callee prompt --role <role> --message <task>`, `callee list`, `callee doctor`, and `callee setup`.
 - Preserve flat role frontmatter. Do not add nested provider configuration.
 - Do not add Gemini support.
-- Do not add MCP forwarding without an explicit product decision.
-- Keep stdout clean in MCP mode; diagnostics belong on stderr.
+- Do not add a server transport, Callee thread store, or handle binding without an explicit product decision.
+- Keep role output on stdout and diagnostics on stderr.
 - Use Norma Runtime for ACP process logic rather than duplicating it.
 - Run `go test ./...` and `go test -race ./...` before completion.
 

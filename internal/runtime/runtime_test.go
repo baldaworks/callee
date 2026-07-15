@@ -3,10 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,8 +14,7 @@ import (
 
 func TestNormalize(t *testing.T) {
 	for _, kind := range role.SupportedTypes() {
-		metadata := role.Metadata{Description: "x", Type: kind, Model: "m", Reasoning: "high", Mode: "review", ExtraArgs: []string{"--stdio"}}
-		metadata.Cmd = "/bin/agent"
+		metadata := role.Metadata{Description: "x", Type: kind, Model: "m", Reasoning: "high", Mode: "review", ExtraArgs: []string{"--stdio"}, Cmd: "/bin/agent"}
 		r := role.Role{ID: kind, Metadata: metadata, Template: "{{ prompt }}"}
 
 		cfg, err := Normalize(r)
@@ -34,24 +30,22 @@ func TestNormalize(t *testing.T) {
 }
 
 type fakeConversation struct {
-	n       int
-	prompts []string
-	roles   []string
-	closed  bool
+	prompts   []string
+	roles     []string
+	threadIDs []string
+	closed    bool
+	result    Result
+	err       error
 }
 
-func (f *fakeConversation) Start(_ context.Context, r role.Role, p string) (string, string, error) {
-	f.n++
-	f.prompts = append(f.prompts, p)
+func (f *fakeConversation) Run(_ context.Context, r role.Role, prompt, threadID string) (Result, error) {
+	f.prompts = append(f.prompts, prompt)
 	f.roles = append(f.roles, r.ID)
+	f.threadIDs = append(f.threadIDs, threadID)
 
-	return fmt.Sprintf("t%d", f.n), "started", nil
+	return f.result, f.err
 }
-func (f *fakeConversation) Reply(_ context.Context, _ string, p string) (string, error) {
-	f.prompts = append(f.prompts, p)
 
-	return "replied", nil
-}
 func (f *fakeConversation) Close() error {
 	f.closed = true
 
@@ -59,195 +53,66 @@ func (f *fakeConversation) Close() error {
 }
 
 type fakeFactory struct {
-	n             int
-	conversations map[string]*fakeConversation
+	conversation *fakeConversation
+	err          error
+	providers    []Provider
 }
 
 func (f *fakeFactory) New(_ context.Context, provider Provider) (Conversation, error) {
-	f.n++
-	c := &fakeConversation{}
-
-	if f.conversations == nil {
-		f.conversations = map[string]*fakeConversation{}
-	}
-
-	f.conversations[provider.Key()] = c
-
-	return c, nil
-}
-func TestManagerSharesProviderRuntimeAcrossRoles(t *testing.T) {
-	f := &fakeFactory{}
-	m := NewManager(f)
-	reviewer := testRole("reviewer", "codex")
-	reviewer.Metadata.Mode = "review"
-	explorer := testRole("explorer", "codex")
-	explorer.Metadata.Mode = "ask"
-
-	a, _, err := m.Start(context.Background(), reviewer, "one")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	b, _, err := m.Start(context.Background(), explorer, "two")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if a == b || f.n != 1 {
-		t.Fatal(a, b, f.n)
-	}
-
-	if len(a) < 5 || a[:4] != "cal_" {
-		t.Fatal("thread ID is not opaque", a)
-	}
-
-	if _, err := m.Reply(context.Background(), a, "reply"); err != nil {
-		t.Fatal(err)
-	}
-
-	_ = m.Close()
-
-	provider, err := ProviderFor(reviewer)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !f.conversations[provider.Key()].closed {
-		t.Fatal("not closed")
-	}
-}
-
-func TestManagerSeparatesProviderCommands(t *testing.T) {
-	f := &fakeFactory{}
-	m := NewManager(f)
-	first := testRole("first", "codex")
-	second := testRole("second", "codex")
-	second.Metadata.ExtraArgs = []string{"--profile", "other"}
-
-	if _, _, err := m.Start(context.Background(), first, "one"); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, _, err := m.Start(context.Background(), second, "two"); err != nil {
-		t.Fatal(err)
-	}
-
-	if f.n != 2 {
-		t.Fatalf("provider starts = %d, want 2", f.n)
-	}
-}
-
-func TestManagerInitializeStartsEachProviderOnce(t *testing.T) {
-	f := &fakeFactory{}
-	m := NewManager(f)
-	reviewer := testRole("reviewer", "codex")
-	explorer := testRole("explorer", "codex")
-	tester := testRole("tester", "claude")
-
-	if err := m.Initialize(context.Background(), []role.Role{reviewer, explorer, tester}); err != nil {
-		t.Fatal(err)
-	}
-
-	if f.n != 2 {
-		t.Fatalf("provider starts = %d, want 2", f.n)
-	}
-
-	if _, _, err := m.Start(context.Background(), reviewer, "review"); err != nil {
-		t.Fatal(err)
-	}
-
-	if f.n != 2 {
-		t.Fatalf("provider starts after initialized role = %d, want 2", f.n)
-	}
-}
-
-type failingFactory struct {
-	conversations []*fakeConversation
-}
-
-func (f *failingFactory) New(_ context.Context, provider Provider) (Conversation, error) {
-	if provider.Type() == "claude" {
-		return nil, errors.New("cannot start claude")
-	}
-
-	c := &fakeConversation{}
-	f.conversations = append(f.conversations, c)
-
-	return c, nil
-}
-
-func TestManagerInitializeClosesStartedRuntimesAfterFailure(t *testing.T) {
-	f := &failingFactory{}
-	m := NewManager(f)
-
-	err := m.Initialize(context.Background(), []role.Role{testRole("reviewer", "codex"), testRole("writer", "claude")})
-	if err == nil || !strings.Contains(err.Error(), `initialize role "writer" runtime: cannot start claude`) {
-		t.Fatalf("initialize error = %v", err)
-	}
-
-	if len(f.conversations) != 1 || !f.conversations[0].closed {
-		t.Fatal("started runtime was not closed")
-	}
-
-	if len(m.runtimes) != 0 || len(m.runtimeIDs) != 0 || len(m.threads) != 0 {
-		t.Fatalf("manager retained state after failed initialization: %#v %#v %#v", m.runtimes, m.runtimeIDs, m.threads)
-	}
-}
-
-type crashingConversation struct{ fakeConversation }
-
-func (c *crashingConversation) Reply(context.Context, string, string) (string, error) {
-	return "", io.EOF
-}
-
-type crashingFactory struct {
-	n            int
-	conversation *crashingConversation
-}
-
-func (f *crashingFactory) New(_ context.Context, _ Provider) (Conversation, error) {
-	f.n++
-	if f.conversation == nil {
-		f.conversation = &crashingConversation{}
+	f.providers = append(f.providers, provider)
+	if f.err != nil {
+		return nil, f.err
 	}
 
 	return f.conversation, nil
 }
 
-func TestManagerInvalidatesThreadsAfterRuntimeCrash(t *testing.T) {
-	f := &crashingFactory{}
-	m := NewManager(f)
-	reviewer := testRole("reviewer", "codex")
-	explorer := testRole("explorer", "codex")
+func TestRunOnceExecutesAndClosesRuntime(t *testing.T) {
+	conversation := &fakeConversation{result: Result{Content: "started", ThreadID: "acp-123"}}
+	factory := &fakeFactory{conversation: conversation}
+	r := testRole("reviewer", "codex")
 
-	threadID, _, err := m.Start(context.Background(), reviewer, "one")
+	got, err := RunOnce(context.Background(), factory, r, "review this", "acp-previous")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	otherThreadID, _, err := m.Start(context.Background(), explorer, "other")
-	if err != nil {
-		t.Fatal(err)
+	if got != (Result{Content: "started", ThreadID: "acp-123"}) {
+		t.Fatalf("result = %#v", got)
 	}
 
-	if _, err := m.Reply(context.Background(), threadID, "two"); err == nil {
-		t.Fatal("reply error = nil")
+	if !conversation.closed {
+		t.Fatal("runtime was not closed")
 	}
 
-	if _, err := m.Reply(context.Background(), threadID, "three"); err == nil || !strings.Contains(err.Error(), "no longer available") {
-		t.Fatal(err)
+	if !reflect.DeepEqual(conversation.prompts, []string{"review this"}) || !reflect.DeepEqual(conversation.roles, []string{"reviewer"}) || !reflect.DeepEqual(conversation.threadIDs, []string{"acp-previous"}) {
+		t.Fatalf("conversation = %#v", conversation)
 	}
 
-	if _, err := m.Reply(context.Background(), otherThreadID, "three"); err == nil || !strings.Contains(err.Error(), "no longer available") {
-		t.Fatal(err)
+	if len(factory.providers) != 1 || factory.providers[0].Type() != "codex" {
+		t.Fatalf("providers = %#v", factory.providers)
+	}
+}
+
+func TestRunOnceClosesRuntimeAfterExecutionError(t *testing.T) {
+	conversation := &fakeConversation{err: errors.New("agent failed")}
+
+	_, err := RunOnce(context.Background(), &fakeFactory{conversation: conversation}, testRole("reviewer", "codex"), "review this", "")
+	if err == nil || !errors.Is(err, conversation.err) {
+		t.Fatalf("RunOnce error = %v", err)
 	}
 
-	if _, _, err := m.Start(context.Background(), reviewer, "four"); err != nil {
-		t.Fatal(err)
+	if !conversation.closed {
+		t.Fatal("runtime was not closed")
 	}
+}
 
-	if f.n != 2 {
-		t.Fatalf("runtime starts = %d, want 2", f.n)
+func TestRunOnceReturnsFactoryError(t *testing.T) {
+	factoryErr := errors.New("agent unavailable")
+
+	_, err := RunOnce(context.Background(), &fakeFactory{err: factoryErr}, testRole("reviewer", "codex"), "review this", "")
+	if err == nil || !errors.Is(err, factoryErr) {
+		t.Fatalf("RunOnce error = %v", err)
 	}
 }
 
@@ -294,7 +159,7 @@ func TestRoleSessionState(t *testing.T) {
 	r.Metadata.Model = "gpt-5.6-sol"
 	r.Metadata.Mode = "review"
 	r.Metadata.Reasoning = "high"
-	state := roleSessionState(r)
+	state := roleSessionState(r, "")
 
 	acpState, ok := state[acpagent.SessionStateKey].(map[string]any)
 	if !ok {
@@ -312,7 +177,7 @@ func TestRoleSessionState(t *testing.T) {
 		acpagent.SelectSessionConfigValue("reasoning_effort", "high"),
 	}
 	if !reflect.DeepEqual(values, want) {
-		t.Fatalf("session config values = %#v", values)
+		t.Fatalf("session config values = %#v, want %#v", values, want)
 	}
 
 	if _, ok := acpState["meta"]; ok {
@@ -326,7 +191,8 @@ func TestGrokRoleSessionStateUsesOnlyACPConfigValues(t *testing.T) {
 	r.Metadata.Mode = "plan"
 	r.Metadata.Reasoning = "high"
 
-	state := roleSessionState(r)
+	state := roleSessionState(r, "")
+
 	acpState := state[acpagent.SessionStateKey].(map[string]any)
 	values := acpState["config_values"].([]acpagent.SessionConfigValue)
 
@@ -347,8 +213,7 @@ func TestGrokRoleSessionStateUsesOnlyACPConfigValues(t *testing.T) {
 func TestCodexRoleSessionStatePassesModeToACPBridge(t *testing.T) {
 	r := testRole("reviewer", "codex")
 	r.Metadata.Mode = "review"
-
-	state := roleSessionState(r)
+	state := roleSessionState(r, "")
 
 	acpState, ok := state[acpagent.SessionStateKey].(map[string]any)
 	if !ok {
@@ -362,6 +227,24 @@ func TestCodexRoleSessionStatePassesModeToACPBridge(t *testing.T) {
 
 	if want := []acpagent.SessionConfigValue{acpagent.SelectSessionConfigValue("mode", "review")}; !reflect.DeepEqual(values, want) {
 		t.Fatalf("session config values = %#v, want %#v", values, want)
+	}
+}
+
+func TestRoleSessionStateSeedsRawACPThreadID(t *testing.T) {
+	r := testRole("reviewer", "codex")
+	state := roleSessionState(r, "acp-session-123")
+
+	acpState, ok := state[acpagent.SessionStateKey].(map[string]any)
+	if !ok {
+		t.Fatalf("ACP state = %#v", state)
+	}
+
+	if got := acpState["session_id"]; got != "acp-session-123" {
+		t.Fatalf("session_id = %#v, want raw ACP handle", got)
+	}
+
+	if _, ok := acpState["config_values"]; ok {
+		t.Fatalf("config_values = %#v, want absent", acpState["config_values"])
 	}
 }
 

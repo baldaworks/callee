@@ -1,7 +1,7 @@
 {
   "name": "callee",
   "version": "0.5.0",
-  "description": "Run Callee roles as MCP-backed subagents or through the CLI fallback.",
+  "description": "Route natural-language tasks through Callee roles.",
   "author": {
     "name": "Baldaworks",
     "url": "https://github.com/baldaworks"
@@ -9,19 +9,19 @@
   "homepage": "https://github.com/baldaworks/callee",
   "repository": "https://github.com/baldaworks/callee",
   "license": "MIT",
-  "keywords": ["subagents", "mcp", "roles"],
+  "keywords": ["subagents", "cli", "roles"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Callee",
-    "shortDescription": "Run Markdown-defined roles as subagents.",
-    "longDescription": "Use Callee roles as stateful MCP-backed subagents within the current host session, with an npx CLI fallback when MCP is unavailable.",
+    "shortDescription": "Route tasks through Markdown-defined roles.",
+    "longDescription": "Route natural-language tasks through project-defined Callee role workflows.",
     "developerName": "Baldaworks",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "$callee role:reviewer Review the current changes.",
-      "Show me how to configure Callee MCP in this project."
+      "$callee Review the current changes.",
+      "$callee Review the current changes and fix any verified findings.",
+      "$callee With the reviewer role, review the current changes."
     ]
-  },
-  "mcpServers": "./.mcp.json"
+  }
 }

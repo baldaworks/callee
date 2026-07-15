@@ -1,7 +1,7 @@
 {
   "name": "callee",
   "version": "0.5.0",
-  "description": "Run Callee roles as MCP-backed subagents or through the CLI fallback.",
+  "description": "Route natural-language tasks through Callee roles.",
   "author": {
     "name": "Baldaworks",
     "url": "https://github.com/baldaworks"
@@ -9,7 +9,6 @@
   "homepage": "https://github.com/baldaworks/callee",
   "repository": "https://github.com/baldaworks/callee",
   "license": "MIT",
-  "keywords": ["subagents", "mcp", "roles"],
-  "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "keywords": ["subagents", "cli", "roles"],
+  "skills": "./skills/"
 }

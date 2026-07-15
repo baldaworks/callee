@@ -1,7 +1,7 @@
 {
   "name": "callee",
   "version": "0.5.0",
-  "description": "Run Callee roles as MCP-backed subagents or through the CLI fallback.",
+  "description": "Route natural-language tasks through Callee roles.",
   "author": {
     "name": "Baldaworks"
   }

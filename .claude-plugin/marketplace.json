@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "callee",
-      "description": "Run Callee roles as stateful MCP-backed subagents within the current host session.",
+      "description": "Route natural-language tasks through Callee roles.",
       "version": "0.5.0",
       "author": {
         "name": "Baldaworks"

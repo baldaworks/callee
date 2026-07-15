@@ -1,4 +1,4 @@
-// Package runtime adapts Callee roles to Norma Runtime and manages role conversations.
+// Package runtime adapts Callee roles to Norma Runtime for one-shot execution.
 package runtime
 
 import (

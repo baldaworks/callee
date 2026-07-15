@@ -3,12 +3,10 @@ module github.com/baldaworks/callee
 go 1.26.5
 
 require (
-	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/normahq/go-adk-acpagent/v2 v2.2.1
 	github.com/normahq/runtime/v2 v2.0.7
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
-	go.uber.org/fx v1.24.0
 	google.golang.org/adk/v2 v2.0.0
 	google.golang.org/genai v1.57.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -164,6 +162,7 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mgechev/revive v1.15.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
+	github.com/modelcontextprotocol/go-sdk v1.6.1 // indirect
 	github.com/moricho/tparallel v0.3.2 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/nakabonne/nestif v0.3.1 // indirect
@@ -235,7 +234,6 @@ require (
 	go.opentelemetry.io/otel/log v0.19.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
-	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect

@@ -102,7 +102,6 @@ type normaConversation struct {
 	runner   *runner.Runner
 	sessions session.Service
 	closer   interface{ Close() error }
-	threads  map[string]string
 }
 
 func newNormaConversation(ag agent.Agent, closer interface{ Close() error }) (Conversation, error) {
@@ -113,33 +112,29 @@ func newNormaConversation(ag agent.Agent, closer interface{ Close() error }) (Co
 		return nil, err
 	}
 
-	return &normaConversation{runner: r, sessions: service, closer: closer, threads: map[string]string{}}, nil
+	return &normaConversation{runner: r, sessions: service, closer: closer}, nil
 }
 
-func (n *normaConversation) Start(ctx context.Context, r role.Role, prompt string) (string, string, error) {
-	created, err := n.sessions.Create(ctx, &session.CreateRequest{AppName: "callee", UserID: "callee", State: roleSessionState(r)})
+func (n *normaConversation) Run(ctx context.Context, r role.Role, prompt, threadID string) (Result, error) {
+	created, err := n.sessions.Create(ctx, &session.CreateRequest{AppName: "callee", UserID: "callee", State: roleSessionState(r, threadID)})
 	if err != nil {
-		return "", "", err
+		return Result{}, err
 	}
 
-	localID := created.Session.ID()
-
-	content, err := n.turn(ctx, localID, prompt)
+	content, err := n.turn(ctx, created.Session.ID(), prompt)
 	if err != nil {
-		return "", "", err
+		return Result{}, err
 	}
 
-	threadID, err := n.acpThreadID(ctx, localID)
+	remoteThreadID, err := n.acpThreadID(ctx, created.Session.ID())
 	if err != nil {
-		return "", "", err
+		return Result{}, err
 	}
 
-	n.threads[threadID] = localID
-
-	return threadID, content, nil
+	return Result{ThreadID: remoteThreadID, Content: content}, nil
 }
 
-func roleSessionState(r role.Role) map[string]any {
+func roleSessionState(r role.Role, threadID string) map[string]any {
 	configValues := make([]acpagent.SessionConfigValue, 0, sessionConfigCapacity)
 	if model := strings.TrimSpace(r.Metadata.Model); model != "" {
 		configValues = append(configValues, acpagent.SelectSessionConfigValue("model", model))
@@ -153,20 +148,20 @@ func roleSessionState(r role.Role) map[string]any {
 		configValues = append(configValues, acpagent.SelectSessionConfigValue("reasoning_effort", reasoning))
 	}
 
-	if len(configValues) == 0 {
+	if len(configValues) == 0 && strings.TrimSpace(threadID) == "" {
 		return nil
 	}
 
-	return map[string]any{acpagent.SessionStateKey: map[string]any{"config_values": configValues}}
-}
-
-func (n *normaConversation) Reply(ctx context.Context, threadID, prompt string) (string, error) {
-	localID, ok := n.threads[threadID]
-	if !ok {
-		return "", fmt.Errorf("thread %q is not available", threadID)
+	acpState := map[string]any{}
+	if len(configValues) > 0 {
+		acpState["config_values"] = configValues
 	}
 
-	return n.turn(ctx, localID, prompt)
+	if threadID = strings.TrimSpace(threadID); threadID != "" {
+		acpState["session_id"] = threadID
+	}
+
+	return map[string]any{acpagent.SessionStateKey: acpState}
 }
 
 func (n *normaConversation) Close() error {
@@ -177,30 +172,29 @@ func (n *normaConversation) Close() error {
 	return nil
 }
 
-func (n *normaConversation) acpThreadID(ctx context.Context, localID string) (string, error) {
-	result, err := n.sessions.Get(ctx, &session.GetRequest{AppName: "callee", UserID: "callee", SessionID: localID})
+func (n *normaConversation) acpThreadID(ctx context.Context, id string) (string, error) {
+	stored, err := n.sessions.Get(ctx, &session.GetRequest{AppName: "callee", UserID: "callee", SessionID: id})
 	if err != nil {
-		return "", fmt.Errorf("get ACP session state: %w", err)
+		return "", fmt.Errorf("read role session: %w", err)
 	}
 
-	state, err := result.Session.State().Get(acpagent.SessionStateKey)
+	rawState, err := stored.Session.State().Get(acpagent.SessionStateKey)
 	if err != nil {
 		return "", fmt.Errorf("read ACP session state: %w", err)
 	}
 
-	values, ok := state.(map[string]any)
+	acpState, ok := rawState.(map[string]any)
 	if !ok {
-		return "", fmt.Errorf("read ACP session state: invalid value")
+		return "", fmt.Errorf("ACP session state must be an object; got %T", rawState)
 	}
 
-	threadID, _ := values["session_id"].(string)
-	if threadID == "" {
-		return "", fmt.Errorf("read ACP session state: missing session_id")
+	threadID, ok := acpState["session_id"].(string)
+	if !ok || strings.TrimSpace(threadID) == "" {
+		return "", fmt.Errorf("ACP session state has no session_id")
 	}
 
 	return threadID, nil
 }
-
 func (n *normaConversation) turn(ctx context.Context, id, prompt string) (string, error) {
 	var final string
 
