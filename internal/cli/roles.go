@@ -1,0 +1,220 @@
+package cli
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/baldaworks/callee/internal/role"
+	"github.com/spf13/cobra"
+)
+
+const roleListTabPadding = 2
+
+type roleListOutput struct {
+	Roles []roleListItem `json:"roles"`
+}
+
+type roleListItem struct {
+	ID          string            `json:"id"`
+	Description string            `json:"description"`
+	Params      map[string]string `json:"params"`
+}
+
+type roleViewOutput struct {
+	ID          string            `json:"id"`
+	Description string            `json:"description"`
+	Type        string            `json:"type"`
+	Cmd         string            `json:"cmd,omitempty"`
+	Model       string            `json:"model,omitempty"`
+	Reasoning   string            `json:"reasoning,omitempty"`
+	Mode        string            `json:"mode,omitempty"`
+	ExtraArgs   []string          `json:"extraArgs,omitempty"`
+	Params      map[string]string `json:"params"`
+}
+
+func roleCommand(rolesDir *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "role",
+		Short: "Inspect configured Callee roles",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return errors.New("a role command is required")
+		},
+	}
+	cmd.AddCommand(roleListCommand(rolesDir))
+	cmd.AddCommand(roleViewCommand(rolesDir))
+
+	return cmd
+}
+
+func roleListCommand(rolesDir *string) *cobra.Command {
+	var jsonOutput bool
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List configured Callee roles",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			reg, err := load(*rolesDir)
+			if err != nil {
+				return err
+			}
+
+			roles := reg.Roles()
+			if jsonOutput {
+				output := roleListOutput{Roles: make([]roleListItem, 0, len(roles))}
+				for _, configuredRole := range roles {
+					output.Roles = append(output.Roles, roleListItem{
+						ID:          configuredRole.ID,
+						Description: strings.TrimSpace(configuredRole.Metadata.Description),
+						Params:      normalizedParams(configuredRole.Metadata.Params),
+					})
+				}
+
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(output)
+			}
+
+			out := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, roleListTabPadding, ' ', 0)
+			if _, err := fmt.Fprintln(out, "ID\tDESCRIPTION\tPARAMETERS"); err != nil {
+				return err
+			}
+
+			for _, configuredRole := range roles {
+				paramNames := strings.Join(sortedKeys(configuredRole.Metadata.Params), ", ")
+				if paramNames == "" {
+					paramNames = "-"
+				}
+
+				if _, err := fmt.Fprintf(
+					out,
+					"%s\t%s\t%s\n",
+					configuredRole.ID,
+					strings.TrimSpace(configuredRole.Metadata.Description),
+					paramNames,
+				); err != nil {
+					return err
+				}
+			}
+
+			return out.Flush()
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output roles as JSON and diagnostics as JSON Lines")
+
+	return cmd
+}
+
+func roleViewCommand(rolesDir *string) *cobra.Command {
+	var jsonOutput, markdownOutput bool
+
+	cmd := &cobra.Command{
+		Use:   "view <role-id>",
+		Short: "View a configured Callee role",
+		Args:  cobra.ExactArgs(1),
+		PreRunE: func(_ *cobra.Command, _ []string) error {
+			if jsonOutput && markdownOutput {
+				return errors.New("--json and --markdown are mutually exclusive")
+			}
+
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			reg, err := load(*rolesDir)
+			if err != nil {
+				return err
+			}
+
+			configuredRole, err := reg.Get(args[0])
+			if err != nil {
+				return err
+			}
+
+			switch {
+			case jsonOutput:
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(newRoleViewOutput(configuredRole))
+			case markdownOutput:
+				contents, marshalErr := configuredRole.MarshalMarkdown()
+				if marshalErr != nil {
+					return marshalErr
+				}
+
+				_, err = cmd.OutOrStdout().Write(contents)
+
+				return err
+			default:
+				return writeRoleView(cmd, configuredRole)
+			}
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output role metadata as JSON and diagnostics as JSON Lines")
+	cmd.Flags().BoolVar(&markdownOutput, "markdown", false, "output the normalized Markdown role")
+
+	return cmd
+}
+
+func normalizedParams(params map[string]string) map[string]string {
+	normalized := make(map[string]string, len(params))
+	for name, description := range params {
+		normalized[name] = strings.TrimSpace(description)
+	}
+
+	return normalized
+}
+
+func newRoleViewOutput(configuredRole role.Role) roleViewOutput {
+	return roleViewOutput{
+		ID:          configuredRole.ID,
+		Description: strings.TrimSpace(configuredRole.Metadata.Description),
+		Type:        configuredRole.Metadata.Type,
+		Cmd:         configuredRole.Metadata.Cmd,
+		Model:       configuredRole.Metadata.Model,
+		Reasoning:   configuredRole.Metadata.Reasoning,
+		Mode:        configuredRole.Metadata.Mode,
+		ExtraArgs:   configuredRole.Metadata.ExtraArgs,
+		Params:      normalizedParams(configuredRole.Metadata.Params),
+	}
+}
+
+func writeRoleView(cmd *cobra.Command, configuredRole role.Role) error {
+	metadata := configuredRole.Metadata
+	lines := []string{
+		"ID: " + configuredRole.ID,
+		"Description: " + strings.TrimSpace(metadata.Description),
+		"Type: " + metadata.Type,
+	}
+
+	optionalFields := []struct {
+		label string
+		value string
+	}{
+		{label: "Command", value: metadata.Cmd},
+		{label: "Model", value: metadata.Model},
+		{label: "Reasoning", value: metadata.Reasoning},
+		{label: "Mode", value: metadata.Mode},
+	}
+	for _, field := range optionalFields {
+		if field.value != "" {
+			lines = append(lines, field.label+": "+field.value)
+		}
+	}
+
+	if len(metadata.ExtraArgs) > 0 {
+		lines = append(lines, fmt.Sprintf("Extra args: %q", metadata.ExtraArgs))
+	}
+
+	if len(metadata.Params) == 0 {
+		lines = append(lines, "Parameters: none")
+	} else {
+		lines = append(lines, "Parameters:")
+		for _, name := range sortedKeys(metadata.Params) {
+			lines = append(lines, fmt.Sprintf("  %s: %s", name, strings.TrimSpace(metadata.Params[name])))
+		}
+	}
+
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), strings.Join(lines, "\n"))
+
+	return err
+}

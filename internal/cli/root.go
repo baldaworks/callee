@@ -7,8 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
-	"text/tabwriter"
+	"os"
 	"time"
 
 	"github.com/baldaworks/callee/internal/doctor"
@@ -20,8 +19,7 @@ import (
 )
 
 const (
-	Version              = "0.6.0"
-	roleListTabPadding   = 2
+	Version              = "0.7.0"
 	defaultPromptTimeout = 10 * time.Minute
 )
 
@@ -62,7 +60,7 @@ func NewRootCommand() *cobra.Command {
 		debug, trace bool
 	)
 
-	root := &cobra.Command{Use: "callee", Short: "Turn Markdown roles into callable ACP agents.", Version: Version, SilenceErrors: true, SilenceUsage: true, PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+	root := &cobra.Command{Use: "callee", Short: "Run provider-aware subagent roles described in Markdown.", Version: Version, SilenceErrors: true, SilenceUsage: true, PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		jsonOutput := commandJSONOutput(cmd)
 		if err := logging.Init(logging.WithLevel(loggingLevel(cmd.Name(), debug, trace)), logging.WithJSON(jsonOutput), logging.WithWriter(cmd.ErrOrStderr())); err != nil {
 			return err
@@ -78,8 +76,9 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
 	root.PersistentFlags().BoolVar(&trace, "trace", false, "enable trace logging (overrides --debug)")
 	root.AddCommand(promptCommand(&rolesDir))
-	root.AddCommand(listCommand(&rolesDir))
+	root.AddCommand(roleCommand(&rolesDir))
 	root.AddCommand(doctorCommand(&rolesDir))
+	root.AddCommand(promptKitCommand())
 	root.AddCommand(setupCommand())
 
 	return root
@@ -122,52 +121,6 @@ func load(rolesDir string) (*registry.Registry, error) {
 	return registry.Load(registry.LoadOptions{RolesDir: rolesDir})
 }
 
-type roleListOutput struct {
-	Roles []roleListItem `json:"roles"`
-}
-
-type roleListItem struct {
-	ID          string `json:"id"`
-	Description string `json:"description"`
-}
-
-func listCommand(rolesDir *string) *cobra.Command {
-	var jsonOutput bool
-
-	cmd := &cobra.Command{Use: "list", Short: "List configured Callee roles", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		reg, err := load(*rolesDir)
-		if err != nil {
-			return err
-		}
-
-		roles := reg.Roles()
-		if jsonOutput {
-			output := roleListOutput{Roles: make([]roleListItem, 0, len(roles))}
-			for _, r := range roles {
-				output.Roles = append(output.Roles, roleListItem{ID: r.ID, Description: r.Metadata.Description})
-			}
-
-			return json.NewEncoder(cmd.OutOrStdout()).Encode(output)
-		}
-
-		out := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, roleListTabPadding, ' ', 0)
-		if _, err := fmt.Fprintln(out, "ID\tDESCRIPTION"); err != nil {
-			return err
-		}
-
-		for _, r := range roles {
-			if _, err := fmt.Fprintf(out, "%s\t%s\n", r.ID, strings.TrimSpace(r.Metadata.Description)); err != nil {
-				return err
-			}
-		}
-
-		return out.Flush()
-	}}
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output roles as JSON and diagnostics as JSON Lines")
-
-	return cmd
-}
-
 type promptOutput struct {
 	ThreadID string `json:"threadId"`
 	Content  string `json:"content"`
@@ -175,11 +128,12 @@ type promptOutput struct {
 }
 
 func promptCommand(rolesDir *string) *cobra.Command {
-	var roleID, message, threadID string
-
-	var timeout time.Duration
-
-	var jsonOutput bool
+	var (
+		roleID, message, messageFile, threadID string
+		params, paramFiles                     []string
+		timeout                                time.Duration
+		jsonOutput                             bool
+	)
 
 	cmd := &cobra.Command{Use: "prompt", Short: "Prompt a configured Callee role", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if timeout <= 0 {
@@ -196,15 +150,33 @@ func promptCommand(rolesDir *string) *cobra.Command {
 			return err
 		}
 
-		rendered, err := r.Render(message)
+		input, err := promptInput(message, messageFile, cmd.Flags().Changed("message-file"))
 		if err != nil {
 			return err
+		}
+
+		outbound := input
+
+		if threadID != "" {
+			if cmd.Flags().Changed("param") || cmd.Flags().Changed("param-file") {
+				return errors.New("role parameters can only be supplied when starting a thread")
+			}
+		} else {
+			values, valuesErr := runtimeParameterValues(params, paramFiles)
+			if valuesErr != nil {
+				return valuesErr
+			}
+
+			outbound, err = r.Render(input, values)
+			if err != nil {
+				return err
+			}
 		}
 
 		turnCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
 		defer cancel()
 
-		result, err := runRole(turnCtx, runtime.NormaFactory{Stderr: cmd.ErrOrStderr(), JSONDiagnostics: jsonOutput}, r, rendered, threadID)
+		result, err := runRole(turnCtx, runtime.NormaFactory{Stderr: cmd.ErrOrStderr(), JSONDiagnostics: jsonOutput}, r, outbound, threadID)
 		if err != nil {
 			return err
 		}
@@ -223,13 +195,42 @@ func promptCommand(rolesDir *string) *cobra.Command {
 	}}
 	cmd.Flags().StringVar(&roleID, "role", "", "role ID")
 	cmd.Flags().StringVar(&message, "message", "", "message to send to the role")
-	cmd.Flags().StringVar(&threadID, "thread-id", "", "ACP session ID to resume")
-	cmd.Flags().DurationVar(&timeout, "timeout", defaultPromptTimeout, "maximum time for ACP startup and the prompt")
+	cmd.Flags().StringVar(&messageFile, "message-file", "", "read the exact message from this file")
+	cmd.Flags().StringArrayVar(&params, "param", nil, "role parameter as key=value; repeatable on a new thread")
+	cmd.Flags().StringArrayVar(&paramFiles, "param-file", nil, "role parameter as key=path; repeatable on a new thread")
+	cmd.Flags().StringVar(&threadID, "thread-id", "", "opaque thread handle to resume")
+	cmd.Flags().DurationVar(&timeout, "timeout", defaultPromptTimeout, "maximum time for runtime startup and the prompt")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the response as JSON and diagnostics as JSON Lines")
+	cmd.MarkFlagsMutuallyExclusive("message", "message-file")
+	cmd.MarkFlagsOneRequired("message", "message-file")
 	_ = cmd.MarkFlagRequired("role")
-	_ = cmd.MarkFlagRequired("message")
 
 	return cmd
+}
+
+func promptInput(message, path string, useFile bool) (string, error) {
+	if !useFile {
+		return message, nil
+	}
+
+	if path == "" {
+		return "", errors.New("--message-file requires a non-empty file path")
+	}
+
+	if path == "-" {
+		return "", errors.New("--message-file requires a file path, not stdin")
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read message file %q: %w", path, err)
+	}
+
+	return string(content), nil
+}
+
+func runtimeParameterValues(raw, files []string) (map[string]string, error) {
+	return parameterValues(raw, files, "role parameter", "is specified more than once")
 }
 
 func isExpectedCancellation(ctx context.Context, err error) bool {
@@ -239,7 +240,7 @@ func isExpectedCancellation(ctx context.Context, err error) bool {
 func doctorCommand(rolesDir *string) *cobra.Command {
 	var timeout time.Duration
 
-	cmd := &cobra.Command{Use: "doctor", Short: "Check configured role runtimes", Long: "Load every configured role, initialize its ACP runtime, and close it without sending a model prompt.", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "doctor", Short: "Check configured role runtimes", Long: "Load every configured role, initialize its runtime, and close it without sending a model prompt.", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		reg, err := load(*rolesDir)
 		if err != nil {
 			return err

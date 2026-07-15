@@ -22,6 +22,12 @@ type setupTarget struct {
 	name     string
 	commands [][]string
 	role     string
+	install  func(bool) (setupInstallResult, error)
+}
+
+type setupInstallResult struct {
+	created   []string
+	unchanged []string
 }
 
 var runSetupCommand = runSetupCommandDefault
@@ -30,8 +36,8 @@ func setupCommand() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "setup <codex|claude|grok|copilot>",
-		Short: "Install a host plugin and create a reviewer role",
+		Use:   "setup <codex|claude|grok|copilot|opencode>",
+		Short: "Install a host integration and create a reviewer role",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target, err := setupTargetFor(args[0])
@@ -39,10 +45,8 @@ func setupCommand() *cobra.Command {
 				return err
 			}
 
-			for _, command := range target.commands {
-				if err := runSetupCommand(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), command[0], command[1:]...); err != nil {
-					return err
-				}
+			if err := installSetupTarget(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), target, force); err != nil {
+				return err
 			}
 
 			created, err := writeReviewerRole(target.role, force)
@@ -59,9 +63,44 @@ func setupCommand() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing reviewer role")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing setup files")
 
 	return cmd
+}
+
+func installSetupTarget(ctx context.Context, stdout, stderr io.Writer, target setupTarget, force bool) error {
+	for _, command := range target.commands {
+		if err := runSetupCommand(ctx, stdout, stderr, command[0], command[1:]...); err != nil {
+			return err
+		}
+	}
+
+	if target.install == nil {
+		return nil
+	}
+
+	result, err := target.install(force)
+	if err != nil {
+		return err
+	}
+
+	return reportOpenCodeInstall(stdout, result)
+}
+
+func reportOpenCodeInstall(stdout io.Writer, result setupInstallResult) error {
+	if len(result.created) > 0 {
+		if _, err := fmt.Fprintln(stdout, "Installed OpenCode skills and commands."); err != nil {
+			return err
+		}
+	}
+
+	if len(result.unchanged) > 0 {
+		if _, err := fmt.Fprintln(stdout, "Existing OpenCode skills and commands were left unchanged."); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func setupTargetFor(name string) (setupTarget, error) {
@@ -102,8 +141,14 @@ func setupTargetFor(name string) (setupTarget, error) {
 			},
 			role: copilotReviewerRole,
 		}, nil
+	case "opencode":
+		return setupTarget{
+			name:    "OpenCode",
+			role:    openCodeReviewerRole,
+			install: writeOpenCodeIntegration,
+		}, nil
 	default:
-		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, grok, or copilot)", name)
+		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, grok, copilot, or opencode)", name)
 	}
 }
 
@@ -188,6 +233,20 @@ Do not modify files. Return concrete, evidence-backed findings.
 const copilotReviewerRole = `---
 description: Reviews code changes for correctness and regressions.
 type: copilot
+---
+
+You are an independent code reviewer.
+
+Review the following task:
+
+{{ prompt }}
+
+Do not modify files. Return concrete, evidence-backed findings.
+`
+
+const openCodeReviewerRole = `---
+description: Reviews code changes for correctness and regressions.
+type: opencode
 ---
 
 You are an independent code reviewer.

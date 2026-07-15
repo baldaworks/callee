@@ -1,7 +1,7 @@
 {
   "name": "callee",
-  "version": "0.6.0",
-  "description": "Route natural-language tasks through Callee roles.",
+  "version": "0.7.0",
+  "description": "Run provider-aware subagent roles described in Markdown.",
   "author": {
     "name": "Baldaworks",
     "url": "https://github.com/baldaworks"
@@ -9,19 +9,20 @@
   "homepage": "https://github.com/baldaworks/callee",
   "repository": "https://github.com/baldaworks/callee",
   "license": "MIT",
-  "keywords": ["subagents", "cli", "roles"],
+  "keywords": ["markdown", "multi-provider", "subagents", "cli", "roles"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Callee",
-    "shortDescription": "Route tasks through Markdown-defined roles.",
-    "longDescription": "Route natural-language tasks through project-defined Callee role workflows.",
+    "shortDescription": "Provider-aware subagent roles in Markdown.",
+    "longDescription": "Run natural-language workflows through project-defined, provider-aware subagent roles.",
     "developerName": "Baldaworks",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
       "$callee Review the current changes.",
       "$callee Review the current changes and fix any verified findings.",
-      "$callee With the reviewer role, review the current changes."
+      "$callee With the reviewer role, review the current changes.",
+      "$callee-promptkit Create a Go code-review role from a PromptKit template for Codex."
     ]
   }
 }

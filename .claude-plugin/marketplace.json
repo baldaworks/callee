@@ -4,14 +4,14 @@
     "name": "Baldaworks"
   },
   "metadata": {
-    "description": "Callee roles for Claude Code.",
-    "version": "0.6.0"
+    "description": "Provider-aware Markdown subagent roles for Claude Code.",
+    "version": "0.7.0"
   },
   "plugins": [
     {
       "name": "callee",
-      "description": "Route natural-language tasks through Callee roles.",
-      "version": "0.6.0",
+      "description": "Run provider-aware subagent roles described in Markdown.",
+      "version": "0.7.0",
       "author": {
         "name": "Baldaworks"
       },

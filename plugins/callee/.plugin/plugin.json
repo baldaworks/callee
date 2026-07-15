@@ -1,7 +1,7 @@
 {
   "name": "callee",
-  "version": "0.6.0",
-  "description": "Route natural-language tasks through Callee roles.",
+  "version": "0.7.0",
+  "description": "Run provider-aware subagent roles described in Markdown.",
   "author": {
     "name": "Baldaworks",
     "url": "https://github.com/baldaworks"
@@ -9,6 +9,6 @@
   "homepage": "https://github.com/baldaworks/callee",
   "repository": "https://github.com/baldaworks/callee",
   "license": "MIT",
-  "keywords": ["subagents", "cli", "roles"],
+  "keywords": ["markdown", "multi-provider", "subagents", "cli", "roles"],
   "skills": "./skills/"
 }

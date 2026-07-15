@@ -3,6 +3,7 @@ module github.com/baldaworks/callee
 go 1.26.5
 
 require (
+	github.com/baldaworks/promptkitty v0.2.1
 	github.com/normahq/go-adk-acpagent/v2 v2.2.1
 	github.com/normahq/runtime/v2 v2.0.7
 	github.com/rs/zerolog v1.35.1

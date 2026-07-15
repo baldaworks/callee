@@ -4,15 +4,15 @@
     "name": "Baldaworks",
     "url": "https://github.com/baldaworks"
   },
-  "description": "Marketplace for Callee roles in Grok Build.",
+  "description": "Marketplace for provider-aware Markdown subagent roles in Grok Build.",
   "plugins": [
     {
       "name": "callee",
-      "description": "Route natural-language tasks through Callee roles.",
-      "version": "0.6.0",
+      "description": "Run provider-aware subagent roles described in Markdown.",
+      "version": "0.7.0",
       "source": "./plugins/callee",
       "homepage": "https://github.com/baldaworks/callee",
-      "keywords": ["subagents", "cli", "roles"]
+      "keywords": ["markdown", "multi-provider", "subagents", "cli", "roles"]
     }
   ]
 }

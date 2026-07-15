@@ -54,6 +54,11 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 			},
 			wantType: "type: copilot",
 		},
+		{
+			name:     "opencode",
+			target:   "opencode",
+			wantType: "type: opencode",
+		},
 	}
 
 	for _, test := range tests {
@@ -99,6 +104,126 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				t.Fatalf("stdout = %q", stdout.String())
 			}
 		})
+	}
+}
+
+func TestOpenCodeSetupInstallsSkillsAndCommands(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"setup", "opencode"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, asset := range openCodeAssetFiles {
+		want, err := openCodeAssets.ReadFile(asset.source)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := os.ReadFile(filepath.FromSlash(asset.destination))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s differs from embedded asset %s", asset.destination, asset.source)
+		}
+	}
+}
+
+func TestOpenCodeSetupPreservesAssetsUnlessForced(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	path := filepath.FromSlash(".opencode/commands/callee.md")
+	if err := os.MkdirAll(filepath.Dir(path), reviewerDirMode); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, []byte("custom"), reviewerFileMode); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := writeOpenCodeIntegration(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.created) != len(openCodeAssetFiles)-1 || len(result.unchanged) != 1 {
+		t.Fatalf("first install result = %#v", result)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(got) != "custom" {
+		t.Fatalf("custom command = %q", got)
+	}
+
+	result, err = writeOpenCodeIntegration(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.created) != len(openCodeAssetFiles) || len(result.unchanged) != 0 {
+		t.Fatalf("forced install result = %#v", result)
+	}
+
+	want, err := openCodeAssets.ReadFile("assets/opencode/commands/callee.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Fatalf("forced command = %q, want %q", got, want)
+	}
+}
+
+func TestOpenCodeSkillAssetsMatchPluginSkills(t *testing.T) {
+	for source, pluginPath := range map[string]string{
+		"assets/opencode/skills/callee/SKILL.md":           filepath.Join("..", "..", "plugins", "callee", "skills", "callee", "SKILL.md"),
+		"assets/opencode/skills/callee-promptkit/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "skills", "callee-promptkit", "SKILL.md"),
+	} {
+		want, err := os.ReadFile(pluginPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := openCodeAssets.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got, want) {
+			t.Errorf("OpenCode asset %s differs from %s", source, pluginPath)
+		}
+	}
+}
+
+func TestOpenCodeCommandAssetsLoadTheMatchingSkill(t *testing.T) {
+	for source, skill := range map[string]string{
+		"assets/opencode/commands/callee.md":           "callee",
+		"assets/opencode/commands/callee-promptkit.md": "callee-promptkit",
+	} {
+		data, err := openCodeAssets.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, want := range []string{"Load the `" + skill + "` skill", "$ARGUMENTS"} {
+			if !strings.Contains(string(data), want) {
+				t.Errorf("OpenCode command %s is missing %q", source, want)
+			}
+		}
 	}
 }
 

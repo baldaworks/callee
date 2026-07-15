@@ -1,12 +1,30 @@
 # Callee agent guidance
 
-- Preserve the CLI-only surface: `callee prompt --role <role> --message <task>`, `callee list`, `callee doctor`, and `callee setup`.
-- Preserve flat role frontmatter. Do not add nested provider configuration.
+- Preserve the CLI-only surface: `callee prompt --role <role> --message <task>`, `callee role list`, `callee role view <role>`, `callee doctor`, and `callee setup`.
+- Preserve flat provider fields in role frontmatter. Do not add nested provider
+  configuration. A top-level `params` description map is allowed for runtime
+  role inputs.
 - Do not add Gemini support.
 - Do not add a server transport, Callee thread store, or handle binding without an explicit product decision.
 - Keep role output on stdout and diagnostics on stderr.
 - Use Norma Runtime for ACP process logic rather than duplicating it.
 - Run `go test ./...` and `go test -race ./...` before completion.
+
+## Go code style
+
+- Follow the Google Go Style Guide, Style Decisions, and Best Practices: prefer
+  the least mechanism, explicit dependencies, actionable errors, and focused
+  table-driven tests.
+- Write new and changed Go code in the repository's configured `wsl_v5` style
+  from the start. Separate declaration/setup groups from control flow, keep
+  related assignments together, and use blank lines consistently around
+  branches, loops, and returns.
+- Before running the quality gate, review the complete changed Go diff once for
+  formatting and whitespace consistency and run `gofmt` on every changed Go
+  file.
+- Run the configured linter once as part of the final local quality gate. Do not
+  iterate by rerunning the full linter after each individual whitespace fix;
+  collect and fix all findings together before the next full gate.
 
 ## Release cycle
 

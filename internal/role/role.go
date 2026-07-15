@@ -8,13 +8,14 @@ import (
 
 // Metadata is the intentionally flat role frontmatter schema.
 type Metadata struct {
-	Description string   `yaml:"description"`
-	Type        string   `yaml:"type"`
-	Cmd         string   `yaml:"cmd"`
-	Model       string   `yaml:"model"`
-	Reasoning   string   `yaml:"reasoning"`
-	Mode        string   `yaml:"mode"`
-	ExtraArgs   []string `yaml:"extra_args"`
+	Description string            `yaml:"description"`
+	Type        string            `yaml:"type"`
+	Cmd         string            `yaml:"cmd,omitempty"`
+	Model       string            `yaml:"model,omitempty"`
+	Reasoning   string            `yaml:"reasoning,omitempty"`
+	Mode        string            `yaml:"mode,omitempty"`
+	ExtraArgs   []string          `yaml:"extra_args,omitempty"`
+	Params      map[string]string `yaml:"params,omitempty"`
 }
 
 // Role is a validated Markdown-defined agent role.
@@ -67,5 +68,5 @@ func (r Role) Validate() error {
 		return fmt.Errorf("role %q: template body must not be empty", r.ID)
 	}
 
-	return validateTemplate(r.ID, r.Template)
+	return validateTemplate(r.ID, r.Template, r.Metadata.Params)
 }

@@ -1,8 +1,9 @@
 {
   "name": "callee",
-  "version": "0.6.0",
-  "description": "Route natural-language tasks through Callee roles.",
+  "version": "0.7.0",
+  "description": "Run provider-aware subagent roles described in Markdown.",
   "author": {
     "name": "Baldaworks"
-  }
+  },
+  "skills": "./skills/"
 }
