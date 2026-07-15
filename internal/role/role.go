@@ -22,7 +22,6 @@ type Provider struct {
 	Reasoning string   `yaml:"reasoning,omitempty"`
 	Mode      string   `yaml:"mode,omitempty"`
 	ExtraArgs []string `yaml:"extra_args,omitempty"`
-	REPL      bool     `yaml:"repl,omitempty"`
 	Timeout   string   `yaml:"timeout,omitempty"`
 }
 
@@ -31,6 +30,7 @@ type Metadata struct {
 	API         string            `yaml:"api,omitempty"`
 	Kind        string            `yaml:"kind,omitempty"`
 	Description string            `yaml:"description"`
+	REPL        bool              `yaml:"repl,omitempty"`
 	Provider    Provider          `yaml:"provider"`
 	Params      map[string]string `yaml:"params,omitempty"`
 }

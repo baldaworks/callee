@@ -9,6 +9,9 @@ import (
 	"github.com/normahq/runtime/v2/agentconfig"
 )
 
+// codexACPBridgeVersion is the bridge release validated with Callee.
+const codexACPBridgeVersion = "1.7.4"
+
 // Provider identifies one reusable ACP process.
 type Provider struct {
 	typeName string
@@ -77,6 +80,7 @@ func Normalize(r role.Role) (agentconfig.Config, error) {
 	cfg := agentconfig.Config{Type: runtimeType}
 	switch runtimeType {
 	case agentconfig.AgentTypeCodexACP:
+		block.BridgeVersion = codexACPBridgeVersion
 		cfg.CodexACP = block
 	case agentconfig.AgentTypeClaudeCodeACP:
 		cfg.ClaudeCodeACP = block

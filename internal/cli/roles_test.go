@@ -11,6 +11,7 @@ import (
 const viewRoleMarkdown = `---
 description: |
   Reviews changes carefully.
+repl: true
 provider:
   type: generic_acp
   cmd: review-agent
@@ -19,7 +20,6 @@ provider:
   mode: read-only
   extra_args:
     - --strict
-  repl: true
   timeout: 20m
 params:
   audience: Intended readers
@@ -58,9 +58,9 @@ func TestRoleViewCommand(t *testing.T) {
 		{
 			name: "json",
 			args: []string{"role", "view", "reviewer", "--roles-dir", rolesDir, "--json"},
-			want: "{\"id\":\"reviewer\",\"api\":\"callee.metalagman.dev\",\"kind\":\"role\",\"description\":\"Reviews changes carefully.\"," +
+			want: "{\"id\":\"reviewer\",\"api\":\"callee.metalagman.dev\",\"kind\":\"role\",\"description\":\"Reviews changes carefully.\",\"repl\":true," +
 				"\"provider\":{\"type\":\"generic_acp\",\"cmd\":\"review-agent\",\"model\":\"review-model\",\"reasoning\":\"high\",\"mode\":\"read-only\"," +
-				"\"extraArgs\":[\"--strict\"],\"repl\":true,\"timeout\":\"20m\",\"effectiveTimeout\":\"20m\",\"timeoutSource\":\"provider\"},\"params\":{\"audience\":\"Intended readers\",\"focus\":\"What to review\"}}\n",
+				"\"extraArgs\":[\"--strict\"],\"timeout\":\"20m\",\"effectiveTimeout\":\"20m\",\"timeoutSource\":\"provider\"},\"params\":{\"audience\":\"Intended readers\",\"focus\":\"What to review\"}}\n",
 		},
 	}
 	for _, test := range tests {
@@ -101,6 +101,7 @@ func TestRoleViewMarkdownReturnsNormalizedRole(t *testing.T) {
 		"kind: role\n" +
 		"description: |\n" +
 		"    Reviews changes carefully.\n" +
+		"repl: true\n" +
 		"provider:\n" +
 		"    type: generic_acp\n" +
 		"    cmd: review-agent\n" +
@@ -109,7 +110,6 @@ func TestRoleViewMarkdownReturnsNormalizedRole(t *testing.T) {
 		"    mode: read-only\n" +
 		"    extra_args:\n" +
 		"        - --strict\n" +
-		"    repl: true\n" +
 		"    timeout: 20m\n" +
 		"params:\n" +
 		"    audience: Intended readers\n" +

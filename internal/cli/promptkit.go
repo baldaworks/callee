@@ -37,7 +37,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 		persona, format                                      string
 		bindings, bindingFiles, extraArgs                    []string
 		protocols, taxonomies                                []string
-		dryRun, force, noFormat                              bool
+		dryRun, force, noFormat, repl                        bool
 	)
 
 	cmd := &cobra.Command{
@@ -85,6 +85,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 				API:         role.CurrentAPI,
 				Kind:        role.RoleKind,
 				Description: description,
+				REPL:        repl,
 				Provider: role.Provider{
 					Type:      roleType,
 					Cmd:       runtimeCommand,
@@ -117,6 +118,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&mode, "mode", "", "runtime session mode")
 	cmd.Flags().StringVar(&runtimeCommand, "cmd", "", "runtime command override")
 	cmd.Flags().StringArrayVar(&extraArgs, "extra-arg", nil, "argument appended to the runtime; repeatable")
+	cmd.Flags().BoolVar(&repl, "repl", false, "enable top-level REPL behavior in the generated role")
 	cmd.Flags().StringVar(&output, "output", "", "role file path")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the generated role without writing it")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing role file")

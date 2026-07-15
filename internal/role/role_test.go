@@ -43,7 +43,8 @@ func TestParseValidation(t *testing.T) {
 	for name, body := range map[string]string{
 		"missing description": "---\nprovider:\n  type: codex\n---\n{{ prompt }}", "missing type": "---\ndescription: x\nprovider: {}\n---\n{{ prompt }}",
 		"gemini": "---\ndescription: x\nprovider:\n  type: gemini\n---\n{{ prompt }}", "unknown": "---\ndescription: x\nprovider:\n  type: codex\n  unknown: x\n---\n{{ prompt }}",
-		"empty": "---\ndescription: x\nprovider:\n  type: codex\n---\n", "missing expression": "---\ndescription: x\nprovider:\n  type: codex\n---\nhello",
+		"nested repl": "---\ndescription: x\nprovider:\n  type: codex\n  repl: true\n---\n{{ prompt }}",
+		"empty":       "---\ndescription: x\nprovider:\n  type: codex\n---\n", "missing expression": "---\ndescription: x\nprovider:\n  type: codex\n---\nhello",
 		"duplicate": "---\ndescription: x\nprovider:\n  type: codex\n---\n{{ prompt }} {{ prompt }}", "other expression": "---\ndescription: x\nprovider:\n  type: codex\n---\n{{ name }}",
 		"generic cmd": "---\ndescription: x\nprovider:\n  type: generic_acp\n---\n{{ prompt }}",
 	} {
@@ -54,7 +55,7 @@ func TestParseValidation(t *testing.T) {
 }
 
 func TestParseResourceMetadataAndProviderOptions(t *testing.T) {
-	data := []byte("---\ndescription: interactive reviewer\nprovider:\n  type: codex\n  repl: true\n  timeout: 20m\n---\n{{ prompt }}")
+	data := []byte("---\ndescription: interactive reviewer\nrepl: true\nprovider:\n  type: codex\n  timeout: 20m\n---\n{{ prompt }}")
 
 	parsed, err := parseTestRole("reviewer", data)
 	if err != nil {
@@ -65,8 +66,8 @@ func TestParseResourceMetadataAndProviderOptions(t *testing.T) {
 		t.Fatalf("resource identity = %q/%q", parsed.API(), parsed.Kind())
 	}
 
-	if !parsed.Metadata.Provider.REPL {
-		t.Fatal("provider.repl = false, want true")
+	if !parsed.Metadata.REPL {
+		t.Fatal("repl = false, want true")
 	}
 
 	if got := parsed.PromptTimeout(15 * time.Minute); got != 20*time.Minute {

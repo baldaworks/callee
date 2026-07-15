@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Provider-aware Markdown subagent roles for GitHub Copilot CLI.",
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "plugins": [
     {
       "name": "callee",
       "description": "Run provider-aware subagent roles described in Markdown.",
-      "version": "0.9.0",
+      "version": "0.10.0",
       "source": "./plugins/callee",
       "author": {
         "name": "Baldaworks",

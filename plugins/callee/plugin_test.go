@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const releaseVersion = "0.9.0"
+const releaseVersion = "0.10.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "run-role", "SKILL.md"))
@@ -24,8 +24,13 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"callee role list --json",
 		"`params` object containing",
 		"role view \"<selected-role-id>\" --json",
-		"callee prompt --role \"<selected-role-id>\"",
+		"top-level `repl` value as",
+		"callee exec --role \"<selected-role-id>\"",
 		"--param \"<name>=<value>\" --json",
+		"callee agent --role \"<selected-role-id>\"",
+		"Configure the process runner to allocate a TTY.",
+		"Keep the same `callee agent` process alive",
+		"process writes that final Markdown artifact to stdout",
 		"supply every parameter declared by the selected role",
 		"Do not pass `--param` or `--param-file` when continuing a thread.",
 		"setup <codex|claude|grok|copilot|opencode>",
@@ -35,7 +40,6 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"otherwise uses the CLI default of 15 minutes.",
 		"first attempt ends specifically because its timeout expired, retry the same",
 		"stage with an explicit, larger `--timeout`.",
-		"Do not dispatch roles whose `provider.repl` is true",
 		"Run independent discovery or review stages in parallel.",
 		"When the user naturally names a role, resolve that mention against the",
 		"Run that role as the required first stage. Do not silently substitute a",
@@ -44,7 +48,7 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"For a dependent stage, include the original task and a concise handoff with",
 		"actionable findings, evidence and provenance, relevant files, constraints, and",
 		"Keep only this short-lived routing state in the current host conversation",
-		"continued in a new conversation. Do not expose handles, role IDs, or raw",
+		"continued in a new conversation. Do not expose handles, role IDs, or",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill is missing %q", want)
@@ -62,7 +66,11 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	}
 
 	if !strings.Contains(text, "--param \"<name>=<value>\" --json") {
-		t.Fatal("every internal prompt must use JSON output")
+		t.Fatal("one-shot dispatch must use JSON output")
+	}
+
+	if strings.Contains(text, "callee prompt --role") || strings.Contains(text, "provider.repl") {
+		t.Fatal("skill retains the removed prompt command or nested REPL field")
 	}
 
 	if strings.Contains(text, "--timeout 15m") {
@@ -101,6 +109,12 @@ func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
 		"--no-format",
 		"default or infer a type.",
 		"nested `provider` section",
+		"## Decide the interaction mode",
+		"expected to ask model-led follow-up questions",
+		"Do not enable REPL merely because the role has unbound runtime parameters.",
+		"Pass `--repl` only for a positive decision.",
+		"PromptKit does not perform this semantic",
+		"--repl",
 		"--dry-run",
 	} {
 		if !strings.Contains(text, want) {
@@ -337,7 +351,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	for _, forbidden := range []string{
 		"--sparse",
 		"setup <host>",
-		"@0.9.0 setup",
+		"@0.10.0 setup",
 		"Flat frontmatter",
 		"--type codex",
 		"For Codex:",

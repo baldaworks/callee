@@ -22,6 +22,37 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
+type roleExecutionStub struct {
+	run      func(context.Context, role.Role, string, string) (runtime.Result, error)
+	closed   bool
+	closeErr error
+}
+
+func (s *roleExecutionStub) Run(ctx context.Context, configuredRole role.Role, prompt, threadID string) (runtime.Result, error) {
+	return s.run(ctx, configuredRole, prompt, threadID)
+}
+
+func (s *roleExecutionStub) Close() error {
+	s.closed = true
+
+	return s.closeErr
+}
+
+func stubRoleExecution(t *testing.T, run func(context.Context, role.Role, string, string) (runtime.Result, error)) *roleExecutionStub {
+	t.Helper()
+
+	original := openRole
+	stub := &roleExecutionStub{run: run}
+
+	t.Cleanup(func() { openRole = original })
+
+	openRole = func(context.Context, runtime.Factory, role.Role) (runtime.Conversation, error) {
+		return stub, nil
+	}
+
+	return stub
+}
+
 func TestLoggingLevel(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -45,8 +76,8 @@ func TestLoggingLevel(t *testing.T) {
 }
 
 func TestVersionMatchesNextRelease(t *testing.T) {
-	if Version != "0.9.0" {
-		t.Fatalf("Version = %q, want 0.9.0", Version)
+	if Version != "0.10.0" {
+		t.Fatalf("Version = %q, want 0.10.0", Version)
 	}
 }
 
@@ -112,7 +143,7 @@ func TestRoleListCommand(t *testing.T) {
 	rolesDir := t.TempDir()
 
 	roles := map[string]string{
-		"reviewer.md": "---\ndescription: Reviews code changes.\nprovider:\n  type: codex\nparams:\n  focus: What to review\n---\nReview {{ prompt }} for {{ focus }}\n",
+		"reviewer.md": "---\ndescription: Reviews code changes.\nrepl: true\nprovider:\n  type: codex\nparams:\n  focus: What to review\n---\nReview {{ prompt }} for {{ focus }}\n",
 		"explorer.md": "---\ndescription: >\n  Explores the codebase.\nprovider:\n  type: codex\n---\nExplore {{ prompt }}\n",
 	}
 	for name, body := range roles {
@@ -129,12 +160,12 @@ func TestRoleListCommand(t *testing.T) {
 		{
 			name: "table",
 			args: []string{"role", "list", "--roles-dir", rolesDir},
-			want: "ID        DESCRIPTION             PARAMETERS\nexplorer  Explores the codebase.  -\nreviewer  Reviews code changes.   focus\n",
+			want: "ID        REPL   DESCRIPTION             PARAMETERS\nexplorer  false  Explores the codebase.  -\nreviewer  true   Reviews code changes.   focus\n",
 		},
 		{
 			name: "json",
 			args: []string{"role", "list", "--roles-dir", rolesDir, "--json"},
-			want: "{\"roles\":[{\"id\":\"explorer\",\"description\":\"Explores the codebase.\",\"params\":{}},{\"id\":\"reviewer\",\"description\":\"Reviews code changes.\",\"params\":{\"focus\":\"What to review\"}}]}\n",
+			want: "{\"roles\":[{\"id\":\"explorer\",\"description\":\"Explores the codebase.\",\"repl\":false,\"params\":{}},{\"id\":\"reviewer\",\"description\":\"Reviews code changes.\",\"repl\":true,\"params\":{\"focus\":\"What to review\"}}]}\n",
 		},
 	}
 	for _, test := range tests {
@@ -179,7 +210,7 @@ func TestRoleListCommandWithNoRoles(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "table", args: []string{"role", "list", "--roles-dir", rolesDir}, want: "ID  DESCRIPTION  PARAMETERS\n"},
+		{name: "table", args: []string{"role", "list", "--roles-dir", rolesDir}, want: "ID  REPL  DESCRIPTION  PARAMETERS\n"},
 		{name: "json", args: []string{"role", "list", "--roles-dir", rolesDir, "--json"}, want: "{\"roles\":[]}\n"},
 	}
 	for _, test := range tests {
@@ -202,13 +233,9 @@ func TestRoleListCommandWithNoRoles(t *testing.T) {
 	}
 }
 
-func TestPromptCommandRendersMessageAndPassesThreadHandle(t *testing.T) {
+func TestExecCommandRendersMessageAndPassesThreadHandle(t *testing.T) {
 	rolesDir := writePromptRole(t)
-	original := runRole
-
-	t.Cleanup(func() { runRole = original })
-
-	runRole = func(ctx context.Context, _ runtime.Factory, gotRole role.Role, message, threadID string) (runtime.Result, error) {
+	stubRoleExecution(t, func(ctx context.Context, gotRole role.Role, message, threadID string) (runtime.Result, error) {
 		if gotRole.ID != "reviewer" {
 			t.Fatalf("role = %q", gotRole.ID)
 		}
@@ -226,18 +253,18 @@ func TestPromptCommandRendersMessageAndPassesThreadHandle(t *testing.T) {
 			t.Fatal("prompt context has no deadline")
 		}
 
-		if remaining := time.Until(deadline); remaining < defaultPromptTimeout-time.Second || remaining > defaultPromptTimeout {
+		if remaining := time.Until(deadline); remaining < defaultRoleTimeout-time.Second || remaining > defaultRoleTimeout {
 			t.Fatalf("prompt timeout remaining = %s", remaining)
 		}
 
 		return runtime.Result{ThreadID: "acp-old", Content: "review complete"}, nil
-	}
+	})
 
 	cmd := NewRootCommand()
 
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "inspect the change", "--thread-id", "acp-old", "--json"})
+	cmd.SetArgs([]string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "inspect the change", "--thread-id", "acp-old", "--json"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -270,7 +297,7 @@ func TestJSONOutputUsesJSONDiagnostics(t *testing.T) {
 
 func TestRunWritesJSONErrorsWhenRequested(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if exitCode := Run(context.Background(), []string{"prompt", "--role", "reviewer", "--message", "hello", "--timeout", "0", "--json"}, &stdout, &stderr); exitCode != 1 {
+	if exitCode := Run(context.Background(), []string{"exec", "--role", "reviewer", "--message", "hello", "--timeout", "0", "--json"}, &stdout, &stderr); exitCode != 1 {
 		t.Fatalf("exit code = %d, want 1", exitCode)
 	}
 
@@ -284,25 +311,64 @@ func TestRunWritesJSONErrorsWhenRequested(t *testing.T) {
 	}
 }
 
-func TestPromptCommandReturnsReplacementThreadWhenResumeFallsBack(t *testing.T) {
+func TestRunCancellationRequiresSuccessfulShutdown(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		closeErr  error
+		wantCode  int
+		wantError string
+	}{
+		{name: "clean shutdown", wantCode: 0},
+		{name: "shutdown failure", closeErr: errors.New("close failed"), wantCode: 1, wantError: "close failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rolesDir := writePromptRole(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			stub := stubRoleExecution(t, func(runCtx context.Context, _ role.Role, _ string, _ string) (runtime.Result, error) {
+				cancel()
+				<-runCtx.Done()
+
+				return runtime.Result{}, runCtx.Err()
+			})
+			stub.closeErr = test.closeErr
+
+			var stdout, stderr bytes.Buffer
+
+			code := Run(ctx, []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "inspect"}, &stdout, &stderr)
+			if code != test.wantCode {
+				t.Fatalf("Run() code = %d, want %d; stderr = %q", code, test.wantCode, stderr.String())
+			}
+
+			if !stub.closed {
+				t.Fatal("runtime was not closed")
+			}
+
+			if test.wantError == "" && stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want empty", stderr.String())
+			}
+
+			if test.wantError != "" && !strings.Contains(stderr.String(), test.wantError) {
+				t.Fatalf("stderr = %q, want containing %q", stderr.String(), test.wantError)
+			}
+		})
+	}
+}
+
+func TestExecCommandReturnsReplacementThreadWhenResumeFallsBack(t *testing.T) {
 	rolesDir := writePromptRole(t)
-	original := runRole
-
-	t.Cleanup(func() { runRole = original })
-
-	runRole = func(_ context.Context, _ runtime.Factory, _ role.Role, _ string, threadID string) (runtime.Result, error) {
+	stubRoleExecution(t, func(_ context.Context, _ role.Role, _ string, threadID string) (runtime.Result, error) {
 		if threadID != "acp-expired" {
 			t.Fatalf("thread ID = %q", threadID)
 		}
 
 		return runtime.Result{ThreadID: "acp-replacement", Content: "fresh response"}, nil
-	}
+	})
 
 	cmd := NewRootCommand()
 
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "continue", "--thread-id", "acp-expired", "--json"})
+	cmd.SetArgs([]string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "continue", "--thread-id", "acp-expired", "--json"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -313,7 +379,7 @@ func TestPromptCommandReturnsReplacementThreadWhenResumeFallsBack(t *testing.T) 
 	}
 }
 
-func TestPromptCommandRendersMessageAndParametersOnNewThread(t *testing.T) {
+func TestExecCommandRendersMessageAndParametersOnNewThread(t *testing.T) {
 	rolesDir := writeParameterizedRole(t)
 	messagePath := filepath.Join(t.TempDir(), "message.txt")
 	contextPath := filepath.Join(t.TempDir(), "context.txt")
@@ -328,11 +394,7 @@ func TestPromptCommandRendersMessageAndParametersOnNewThread(t *testing.T) {
 		t.Fatalf("os.WriteFile(%q) returned unexpected error: %v", contextPath, err)
 	}
 
-	original := runRole
-
-	t.Cleanup(func() { runRole = original })
-
-	runRole = func(_ context.Context, _ runtime.Factory, _ role.Role, got, threadID string) (runtime.Result, error) {
+	stubRoleExecution(t, func(_ context.Context, _ role.Role, got, threadID string) (runtime.Result, error) {
 		if threadID != "" {
 			t.Errorf("runRole() thread ID = %q, want empty", threadID)
 		}
@@ -343,28 +405,24 @@ func TestPromptCommandRendersMessageAndParametersOnNewThread(t *testing.T) {
 		}
 
 		return runtime.Result{ThreadID: "thread-new", Content: "done"}, nil
-	}
+	})
 
 	cmd := NewRootCommand()
 	cmd.SetArgs([]string{
-		"prompt", "--roles-dir", rolesDir, "--role", "reviewer",
+		"exec", "--roles-dir", rolesDir, "--role", "reviewer",
 		"--message-file", messagePath,
 		"--param", "audience=",
 		"--param-file", "context=" + contextPath,
 	})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute(prompt with params) returned unexpected error: %v", err)
+		t.Fatalf("Execute(exec with params) returned unexpected error: %v", err)
 	}
 }
 
-func TestPromptCommandResumeSendsRawMessage(t *testing.T) {
+func TestExecCommandResumeSendsRawMessage(t *testing.T) {
 	rolesDir := writeParameterizedRole(t)
-	original := runRole
-
-	t.Cleanup(func() { runRole = original })
-
-	runRole = func(_ context.Context, _ runtime.Factory, _ role.Role, got, threadID string) (runtime.Result, error) {
+	stubRoleExecution(t, func(_ context.Context, _ role.Role, got, threadID string) (runtime.Result, error) {
 		if got != "follow up {{ audience }}" {
 			t.Errorf("runRole() resumed message = %q, want raw input", got)
 		}
@@ -374,20 +432,20 @@ func TestPromptCommandResumeSendsRawMessage(t *testing.T) {
 		}
 
 		return runtime.Result{ThreadID: threadID, Content: "done"}, nil
-	}
+	})
 
 	cmd := NewRootCommand()
 	cmd.SetArgs([]string{
-		"prompt", "--roles-dir", rolesDir, "--role", "reviewer",
+		"exec", "--roles-dir", rolesDir, "--role", "reviewer",
 		"--thread-id", "thread-old", "--message", "follow up {{ audience }}",
 	})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute(resumed prompt) returned unexpected error: %v", err)
+		t.Fatalf("Execute(resumed exec) returned unexpected error: %v", err)
 	}
 }
 
-func TestPromptCommandParameterErrors(t *testing.T) {
+func TestExecCommandParameterErrors(t *testing.T) {
 	rolesDir := writeParameterizedRole(t)
 
 	tests := []struct {
@@ -397,32 +455,32 @@ func TestPromptCommandParameterErrors(t *testing.T) {
 	}{
 		{
 			name: "missing",
-			args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"},
+			args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"},
 			want: "missing=[audience context]",
 		},
 		{
 			name: "unknown",
-			args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param", "audience=x", "--param", "context=y", "--param", "extra=z"},
+			args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param", "audience=x", "--param", "context=y", "--param", "extra=z"},
 			want: "unknown=[extra]",
 		},
 		{
 			name: "duplicate",
-			args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param", "audience=x", "--param", "audience=y"},
+			args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param", "audience=x", "--param", "audience=y"},
 			want: "more than once",
 		},
 		{
 			name: "resume param",
-			args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--thread-id", "old", "--message", "hello", "--param", "audience=x"},
+			args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--thread-id", "old", "--message", "hello", "--param", "audience=x"},
 			want: "only be supplied when starting a thread",
 		},
 		{
 			name: "param stdin",
-			args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param-file", "audience=-"},
+			args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param-file", "audience=-"},
 			want: "not stdin",
 		},
 		{
 			name: "param empty file path",
-			args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param-file", "audience="},
+			args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--param-file", "audience="},
 			want: "non-empty file path",
 		},
 	}
@@ -438,7 +496,7 @@ func TestPromptCommandParameterErrors(t *testing.T) {
 	}
 }
 
-func TestPromptCommandMessageFileErrors(t *testing.T) {
+func TestExecCommandMessageFileErrors(t *testing.T) {
 	rolesDir := writePromptRole(t)
 
 	tests := []struct {
@@ -446,10 +504,10 @@ func TestPromptCommandMessageFileErrors(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "both", args: []string{"prompt", "--role", "reviewer", "--message", "hello", "--message-file", "message.txt"}, want: "none of the others can be"},
-		{name: "neither", args: []string{"prompt", "--role", "reviewer"}, want: "at least one"},
-		{name: "empty", args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message-file", ""}, want: "non-empty file path"},
-		{name: "stdin", args: []string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message-file", "-"}, want: "not stdin"},
+		{name: "both", args: []string{"exec", "--role", "reviewer", "--message", "hello", "--message-file", "message.txt"}, want: "none of the others can be"},
+		{name: "neither", args: []string{"exec", "--role", "reviewer"}, want: "at least one"},
+		{name: "empty", args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message-file", ""}, want: "non-empty file path"},
+		{name: "stdin", args: []string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message-file", "-"}, want: "not stdin"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -482,26 +540,22 @@ func TestRoleListJSONIncludesParameterDescriptions(t *testing.T) {
 	}
 }
 
-func TestPromptCommandTextOutputAndExplicitTimeout(t *testing.T) {
+func TestExecCommandTextOutputAndExplicitTimeout(t *testing.T) {
 	rolesDir := writeRoleWithProvider(t, "  type: codex\n  timeout: 30s\n")
-	original := runRole
-
-	t.Cleanup(func() { runRole = original })
-
-	runRole = func(ctx context.Context, _ runtime.Factory, _ role.Role, _ string, _ string) (runtime.Result, error) {
+	stubRoleExecution(t, func(ctx context.Context, _ role.Role, _ string, _ string) (runtime.Result, error) {
 		deadline, ok := ctx.Deadline()
 		if !ok || time.Until(deadline) < time.Second || time.Until(deadline) > 2*time.Second {
 			t.Fatalf("prompt deadline = %v, remaining = %s", ok, time.Until(deadline))
 		}
 
 		return runtime.Result{ThreadID: "acp-1", Content: "plain text"}, nil
-	}
+	})
 
 	cmd := NewRootCommand()
 
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--timeout", "2s"})
+	cmd.SetArgs([]string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--timeout", "2s"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -512,13 +566,9 @@ func TestPromptCommandTextOutputAndExplicitTimeout(t *testing.T) {
 	}
 }
 
-func TestPromptCommandUsesProviderTimeout(t *testing.T) {
+func TestExecCommandUsesProviderTimeout(t *testing.T) {
 	rolesDir := writeRoleWithProvider(t, "  type: codex\n  timeout: 3s\n")
-	original := runRole
-
-	t.Cleanup(func() { runRole = original })
-
-	runRole = func(ctx context.Context, _ runtime.Factory, _ role.Role, _ string, _ string) (runtime.Result, error) {
+	stubRoleExecution(t, func(ctx context.Context, _ role.Role, _ string, _ string) (runtime.Result, error) {
 		deadline, ok := ctx.Deadline()
 
 		remaining := time.Until(deadline)
@@ -527,10 +577,10 @@ func TestPromptCommandUsesProviderTimeout(t *testing.T) {
 		}
 
 		return runtime.Result{Content: "done"}, nil
-	}
+	})
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+	cmd.SetArgs([]string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -569,8 +619,8 @@ func (c *replConversation) Close() error {
 	return c.closeErr
 }
 
-func TestPromptCommandRunsOptInREPLWithOneConversation(t *testing.T) {
-	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n  timeout: 3s\n")
+func TestAgentCommandRunsOptInREPLWithOneConversation(t *testing.T) {
+	rolesDir := writeRole(t, true, "  type: codex\n  timeout: 3s\n")
 	conversation := &replConversation{}
 	original := openRole
 
@@ -581,19 +631,25 @@ func TestPromptCommandRunsOptInREPLWithOneConversation(t *testing.T) {
 			t.Fatalf("runtime lifetime context is already cancelled: %v", ctx.Err())
 		}
 
-		if !configuredRole.Metadata.Provider.REPL {
-			t.Fatal("provider.repl = false")
+		if !configuredRole.Metadata.REPL {
+			t.Fatal("repl = false")
 		}
 
 		return conversation, nil
 	}
 
+	terminal := newTestTerminal("follow up\n\nquit\n")
+	originalTerminal := openTerminal
+
+	t.Cleanup(func() { openTerminal = originalTerminal })
+
+	openTerminal = func() (io.ReadWriteCloser, error) { return terminal, nil }
+
 	var stdout bytes.Buffer
 
 	cmd := NewRootCommand()
-	cmd.SetIn(strings.NewReader("follow up\n\nquit\n"))
 	cmd.SetOut(&stdout)
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "initial", "--thread-id", "thread-old"})
+	cmd.SetArgs([]string{"agent", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "initial", "--thread-id", "thread-old"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -617,24 +673,110 @@ func TestPromptCommandRunsOptInREPLWithOneConversation(t *testing.T) {
 		}
 	}
 
-	if got, want := stdout.String(), "response 1\n> response 2\n> > "; got != want {
+	if got, want := stdout.String(), "response 2\n"; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+
+	if got, want := terminal.output.String(), "response 1\n> response 2\n> > "; got != want {
+		t.Fatalf("terminal output = %q, want %q", got, want)
 	}
 }
 
-func TestPromptCommandRejectsJSONForREPLRole(t *testing.T) {
-	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n")
+func TestAgentCommandRejectsJSON(t *testing.T) {
+	rolesDir := writeRole(t, true, "  type: codex\n")
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--json"})
+	cmd.SetArgs([]string{"agent", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello", "--json"})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--json is not supported") {
+	if err == nil || !strings.Contains(err.Error(), "--json is only supported by callee exec") {
 		t.Fatalf("Execute() error = %v", err)
 	}
 }
 
-func TestPromptCommandClosesREPLAfterTurnAndCloseErrors(t *testing.T) {
-	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n")
+func TestExecCommandRejectsREPLRole(t *testing.T) {
+	rolesDir := writeRole(t, true, "  type: codex\n")
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"exec", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "requires interactive execution; use callee agent") {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestAgentCommandCollectsMissingParametersFromTerminal(t *testing.T) {
+	rolesDir := writeParameterizedRole(t)
+	terminal := newTestTerminal("developers\nrepository context\n")
+	originalTerminal := openTerminal
+
+	t.Cleanup(func() {
+		openTerminal = originalTerminal
+	})
+
+	openTerminal = func() (io.ReadWriteCloser, error) { return terminal, nil }
+
+	stubRoleExecution(t, func(_ context.Context, _ role.Role, message, threadID string) (runtime.Result, error) {
+		if threadID != "" {
+			t.Fatalf("thread ID = %q, want empty", threadID)
+		}
+
+		want := "Review: inspect\nAudience: developers\nContext: repository context\nLiteral: {{ example }}\n"
+		if message != want {
+			t.Fatalf("message = %q, want %q", message, want)
+		}
+
+		return runtime.Result{ThreadID: "thread-new", Content: "done"}, nil
+	})
+
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"agent", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "inspect"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := terminal.output.String(), "audience — Intended readers: context — Relevant context: "; got != want {
+		t.Fatalf("terminal output = %q, want %q", got, want)
+	}
+
+	if got, want := stdout.String(), "done\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestAgentCommandRequiresTerminalWhenInteractionIsNeeded(t *testing.T) {
+	tests := []struct {
+		name     string
+		rolesDir func(*testing.T) string
+	}{
+		{name: "missing parameters", rolesDir: writeParameterizedRole},
+		{name: "REPL role", rolesDir: func(t *testing.T) string { return writeRole(t, true, "  type: codex\n") }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rolesDir := test.rolesDir(t)
+			originalTerminal := openTerminal
+
+			t.Cleanup(func() { openTerminal = originalTerminal })
+
+			openTerminal = func() (io.ReadWriteCloser, error) { return nil, errors.New("no tty") }
+
+			cmd := NewRootCommand()
+			cmd.SetArgs([]string{"agent", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "interactive terminal is required: no tty") {
+				t.Fatalf("Execute() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestAgentCommandClosesREPLAfterTurnAndCloseErrors(t *testing.T) {
+	rolesDir := writeRole(t, true, "  type: codex\n")
 	turnErr := errors.New("turn failed")
 	closeErr := errors.New("close failed")
 	conversation := &replConversation{runErr: turnErr, closeErr: closeErr}
@@ -646,8 +788,15 @@ func TestPromptCommandClosesREPLAfterTurnAndCloseErrors(t *testing.T) {
 		return conversation, nil
 	}
 
+	terminal := newTestTerminal("")
+	originalTerminal := openTerminal
+
+	t.Cleanup(func() { openTerminal = originalTerminal })
+
+	openTerminal = func() (io.ReadWriteCloser, error) { return terminal, nil }
+
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+	cmd.SetArgs([]string{"agent", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
 
 	err := cmd.Execute()
 	if !errors.Is(err, turnErr) || !errors.Is(err, closeErr) {
@@ -659,8 +808,8 @@ func TestPromptCommandClosesREPLAfterTurnAndCloseErrors(t *testing.T) {
 	}
 }
 
-func TestPromptCommandTimesOutREPLStartup(t *testing.T) {
-	rolesDir := writeRoleWithProvider(t, "  type: codex\n  repl: true\n  timeout: 20ms\n")
+func TestAgentCommandTimesOutREPLStartup(t *testing.T) {
+	rolesDir := writeRole(t, true, "  type: codex\n  timeout: 20ms\n")
 	original := openRole
 
 	t.Cleanup(func() { openRole = original })
@@ -673,9 +822,15 @@ func TestPromptCommandTimesOutREPLStartup(t *testing.T) {
 
 		return nil, ctx.Err()
 	}
+	terminal := newTestTerminal("")
+	originalTerminal := openTerminal
+
+	t.Cleanup(func() { openTerminal = originalTerminal })
+
+	openTerminal = func() (io.ReadWriteCloser, error) { return terminal, nil }
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"prompt", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
+	cmd.SetArgs([]string{"agent", "--roles-dir", rolesDir, "--role", "reviewer", "--message", "hello"})
 
 	err := cmd.Execute()
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
@@ -748,9 +903,9 @@ func TestPermissionHandlerHonorsTurnTimeout(t *testing.T) {
 	}
 }
 
-func TestPromptCommandRejectsNonPositiveTimeout(t *testing.T) {
+func TestExecCommandRejectsNonPositiveTimeout(t *testing.T) {
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"prompt", "--role", "reviewer", "--message", "hello", "--timeout", "0"})
+	cmd.SetArgs([]string{"exec", "--role", "reviewer", "--message", "hello", "--timeout", "0"})
 
 	if err := cmd.Execute(); err == nil || err.Error() != "timeout must be greater than zero" {
 		t.Fatalf("error = %v", err)
@@ -758,7 +913,7 @@ func TestPromptCommandRejectsNonPositiveTimeout(t *testing.T) {
 }
 
 func TestLegacyRootCommandsAreUnavailable(t *testing.T) {
-	for _, args := range [][]string{{"--role", "reviewer", "--prompt", "hello"}, {"list"}} {
+	for _, args := range [][]string{{"prompt", "--role", "reviewer", "--message", "hello"}, {"--role", "reviewer", "--prompt", "hello"}, {"list"}} {
 		cmd := NewRootCommand()
 		cmd.SetArgs(args)
 
@@ -793,16 +948,49 @@ func writeParameterizedRole(t *testing.T) string {
 }
 
 func writeRoleWithProvider(t *testing.T, provider string) string {
+	return writeRole(t, false, provider)
+}
+
+func writeRole(t *testing.T, repl bool, provider string) string {
 	t.Helper()
 
 	rolesDir := t.TempDir()
 
-	body := "---\ndescription: test reviewer\nprovider:\n" + provider + "---\n{{ prompt }}\n"
+	metadata := "---\ndescription: test reviewer\n"
+	if repl {
+		metadata += "repl: true\n"
+	}
+
+	body := metadata + "provider:\n" + provider + "---\n{{ prompt }}\n"
 	if err := os.WriteFile(filepath.Join(rolesDir, "reviewer.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	return rolesDir
+}
+
+type testTerminal struct {
+	input  *strings.Reader
+	output bytes.Buffer
+	closed bool
+}
+
+func newTestTerminal(input string) *testTerminal {
+	return &testTerminal{input: strings.NewReader(input)}
+}
+
+func (t *testTerminal) Read(p []byte) (int, error) {
+	return t.input.Read(p)
+}
+
+func (t *testTerminal) Write(p []byte) (int, error) {
+	return t.output.Write(p)
+}
+
+func (t *testTerminal) Close() error {
+	t.closed = true
+
+	return nil
 }
 
 func assertJSONLines(t *testing.T, output string) []map[string]any {

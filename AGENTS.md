@@ -1,9 +1,9 @@
 # Callee agent guidance
 
-- Preserve the CLI-only surface: `callee prompt --role <role> --message <task>`, `callee role list`, `callee role view <role>`, `callee doctor`, and `callee setup`.
+- Preserve the CLI-only surface: `callee agent --role <role> --message <task>`, `callee exec --role <role> --message <task>`, `callee role list`, `callee role view <role>`, `callee doctor`, and `callee setup`.
 - Keep provider configuration nested under the `provider` section in role
   frontmatter. Do not accept legacy flat provider fields. The optional `api`,
-  `kind`, and `params` fields remain top-level.
+  `kind`, `repl`, and `params` fields remain top-level.
 - Do not add Gemini support.
 - Do not add a server transport, Callee thread store, or handle binding without an explicit product decision.
 - Keep role output on stdout and diagnostics on stderr.

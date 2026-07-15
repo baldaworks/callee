@@ -61,6 +61,7 @@ func TestPromptKitRoleCreate(t *testing.T) {
 		"--template", "review-code",
 		"--description", "Reviews code changes.",
 		"--type", "codex",
+		"--repl",
 		"--prompt-param", "code",
 		"--bind", "language=Go",
 		"--bind-file", "context=" + contextPath,
@@ -93,6 +94,10 @@ func TestPromptKitRoleCreate(t *testing.T) {
 
 	if generated.API() != role.CurrentAPI || generated.Kind() != role.RoleKind {
 		t.Fatalf("generated identity = %q/%q", generated.API(), generated.Kind())
+	}
+
+	if !generated.Metadata.REPL {
+		t.Fatal("generated repl = false, want true")
 	}
 
 	wantProvider := role.Provider{
@@ -163,6 +168,10 @@ func TestPromptKitRoleCreateDryRun(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "# Runtime Input") || !strings.Contains(stdout.String(), "{{ prompt }}") {
 		t.Errorf("dry-run output is not a role:\n%s", stdout.String())
+	}
+
+	if strings.Contains(stdout.String(), "repl:") {
+		t.Errorf("dry-run output contains repl without --repl:\n%s", stdout.String())
 	}
 }
 

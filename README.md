@@ -79,15 +79,17 @@ returns the result, and exits.
 .callee/roles/*.md
         │
         ▼
-   callee prompt  ──▶  Norma Runtime  ──▶  provider CLI
+ callee exec/agent ──▶  Norma Runtime  ──▶  provider CLI
         ▲                                      │
         └──────── result on stdout ◀───────────┘
 ```
 
-The role file supplies instructions, nested provider metadata, and optional
-runtime parameters. Every `callee prompt` invocation creates and closes its
-runtime; Callee has no background process or local thread store. Diagnostics
-go to stderr, leaving role output on stdout for scripts and host integrations.
+The role file supplies instructions, nested provider metadata, an optional
+top-level interaction mode, and optional runtime parameters. `callee exec`
+opens one model turn and closes its runtime. `callee agent` can keep one
+provider process open for interactive clarification. Callee has no background
+process or local thread store. Diagnostics go to stderr, leaving the final role
+output on stdout for scripts and host integrations.
 
 Providers own their opaque thread handles. To continue a conversation from the
 CLI, the caller must retain the returned handle and pass it back with
@@ -134,8 +136,8 @@ role separately.
 
 - Each provider CLI must be installed, authenticated, and maintained outside
   Callee.
-- Every prompt starts and closes a provider runtime instead of reusing a
-  persistent Callee process.
+- Every invocation starts a provider runtime instead of reusing a persistent
+  Callee process.
 - Installation and invocation syntax differs slightly between host plugin
   systems.
 - Provider-aware roles intentionally contain runtime-specific metadata rather
@@ -167,10 +169,10 @@ Or run the published command directly through npm:
 npx --yes @baldaworks/callee@latest --version
 ```
 
-Prompt a role:
+Execute a non-interactive role for one model turn:
 
 ```bash
-callee prompt --role reviewer --message "Review the current changes"
+callee exec --role reviewer --message "Review the current changes"
 ```
 
 Roles may declare additional runtime inputs as a top-level description map:
@@ -185,7 +187,7 @@ Supply every declared parameter when starting a thread. Empty values are
 explicit, and file inputs preserve their contents exactly:
 
 ```bash
-callee prompt --role reviewer \
+callee exec --role reviewer \
   --message-file ./task.md \
   --param audience=maintainers \
   --param-file context=./context.md
@@ -193,27 +195,41 @@ callee prompt --role reviewer \
 
 Use `--roles-dir ./examples/roles` to load only a specific directory.
 
-`prompt` has a 15 minute default timeout. A role may override it with
+`exec` and `agent` have a 15 minute default timeout. A role may override it with
 `provider.timeout`; an explicit `--timeout` takes precedence over both. For a
 one-shot role the budget covers runtime startup and the prompt together.
+Both commands close their provider runtime after success, failure, timeout, or
+the first interrupt signal, allowing up to 10 seconds for graceful shutdown. A
+second interrupt restores the operating system's immediate termination
+behavior.
 
-Set `provider.repl: true` to keep one provider process and one local session
-open for line-oriented follow-up prompts. The startup and each active turn get
-their own timeout budget; time spent waiting for the next input line is not
-timed. Blank lines are ignored, and `exit`, `quit`, or EOF closes the runtime.
-REPL roles use human-readable output and do not support `--json`.
+Set top-level `repl: true` when the role may ask model-led clarification
+questions. Run those roles with `callee agent`, which requires a terminal and
+keeps one provider process and one local session open for line-oriented
+follow-ups. It also collects any missing declared parameters from the terminal.
+The startup and each active turn get their own timeout budget; time spent
+waiting for input is not timed. Blank lines are ignored, and `exit`, `quit`, or
+EOF closes the runtime. The final Markdown artifact is written to stdout;
+interactive prompts and responses use the terminal, and diagnostics use
+stderr. `agent` does not support `--json`.
+
+```bash
+callee agent --role spec-writer --message "Add first-class REPL roles"
+```
+
+`callee exec` rejects roles with `repl: true`. Omitting `repl` means `false`.
 
 ### Continue a thread
 
-Use `--json` when you need the opaque provider thread handle returned by a
-prompt. It writes one result object to stdout and JSON Lines diagnostics to
-stderr, including messages emitted by the provider:
+Use `exec --json` when you need the opaque provider thread handle returned by a
+one-shot turn. It writes one result object to stdout and JSON Lines diagnostics
+to stderr, including messages emitted by the provider:
 
 ```bash
-callee prompt --role reviewer --message "Review the current changes" --json
+callee exec --role reviewer --message "Review the current changes" --json
 # {"threadId":"<provider thread handle>","content":"...","resumed":false}
 
-callee prompt --role reviewer --thread-id "<provider thread handle>" \
+callee exec --role reviewer --thread-id "<provider thread handle>" \
   --message "Now focus on tests" --json
 ```
 
@@ -227,7 +243,8 @@ starts a replacement conversation, the response contains that replacement
 
 ### Inspect roles
 
-List configured roles with their descriptions and declared parameter names:
+List configured roles with their effective REPL mode, descriptions, and
+declared parameter names:
 
 ```bash
 callee role list
@@ -333,13 +350,13 @@ undeclared mustache fragments remain ordinary Markdown.
 | `api` | no | API identity; defaults from the loader context |
 | `kind` | no | Resource kind; `roles` directories default it to `role` |
 | `description` | yes | Role description shown by `callee role list` |
+| `repl` | no | Enables model-led interactive clarification; defaults to `false` |
 | `provider.type` | yes | Built-in Callee runtime type |
 | `provider.cmd` | no | Executable override |
 | `provider.model` | no | Model identifier |
 | `provider.reasoning` | no | Norma Runtime `reasoning_effort` |
 | `provider.mode` | no | Runtime session mode |
 | `provider.extra_args` | no | Arguments appended by Norma Runtime |
-| `provider.repl` | no | Enables the interactive line-oriented REPL; defaults to `false` |
 | `provider.timeout` | no | Positive Go duration used unless `--timeout` is explicit |
 | `params` | no | Runtime parameter descriptions |
 
@@ -351,6 +368,7 @@ Supported types: `codex`, `claude`, `grok`, `copilot`, `opencode`, and
 api: callee.metalagman.dev
 kind: role
 description: Runs a custom ACP-compatible reviewer.
+repl: true
 provider:
   type: generic_acp
   cmd: /usr/local/bin/company-review-agent
@@ -359,7 +377,6 @@ provider:
   mode: review
   extra_args:
     - --stdio
-  repl: true
   timeout: 20m
 ---
 
@@ -392,6 +409,7 @@ callee promptkit role create go-reviewer \
   --type generic_acp \
   --cmd /usr/local/bin/company-review-agent \
   --prompt-param code \
+  --repl \
   --bind language=Go \
   --bind context=repository \
   --dry-run
@@ -404,6 +422,11 @@ role parameters. The PromptKit template is fully rendered during authoring,
 then Callee adds one Runtime Input section with exactly one placeholder for the
 message and each unbound parameter. Configurable personas must be selected at
 creation time with `--persona`.
+
+Pass `--repl` when the generated role should be able to ask model-led
+clarification questions. The flag deterministically writes top-level
+`repl: true`; when omitted, no `repl` field is written. PromptKit does not infer
+the interaction mode from template semantics.
 
 Composition can be adjusted with `--persona`, repeated `--protocol`, repeated
 `--taxonomy`, and either `--format` or `--no-format`. Omit `--dry-run` to write

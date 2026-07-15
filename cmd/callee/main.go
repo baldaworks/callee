@@ -10,8 +10,23 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	os.Exit(run())
+}
+
+func run() int {
+	ctx, stop := commandContext()
 	defer stop()
 
-	os.Exit(cli.Run(ctx, os.Args[1:], os.Stdout, os.Stderr))
+	return cli.Run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+}
+
+func commandContext() (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+
+	return ctx, stop
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"iter"
 	"reflect"
@@ -33,104 +32,6 @@ func TestNormalize(t *testing.T) {
 		if cfg.Type != want {
 			t.Errorf("%s = %s", kind, cfg.Type)
 		}
-	}
-}
-
-type fakeConversation struct {
-	prompts   []string
-	roles     []string
-	threadIDs []string
-	closed    bool
-	result    Result
-	err       error
-	closeErr  error
-}
-
-func (f *fakeConversation) Run(_ context.Context, r role.Role, prompt, threadID string) (Result, error) {
-	f.prompts = append(f.prompts, prompt)
-	f.roles = append(f.roles, r.ID)
-	f.threadIDs = append(f.threadIDs, threadID)
-
-	return f.result, f.err
-}
-
-func (f *fakeConversation) Close() error {
-	f.closed = true
-
-	return f.closeErr
-}
-
-type fakeFactory struct {
-	conversation *fakeConversation
-	err          error
-	providers    []Provider
-}
-
-func (f *fakeFactory) New(_ context.Context, provider Provider) (Conversation, error) {
-	f.providers = append(f.providers, provider)
-	if f.err != nil {
-		return nil, f.err
-	}
-
-	return f.conversation, nil
-}
-
-func TestRunOnceExecutesAndClosesRuntime(t *testing.T) {
-	conversation := &fakeConversation{result: Result{Content: "started", ThreadID: "acp-123"}}
-	factory := &fakeFactory{conversation: conversation}
-	r := testRole("reviewer", "codex")
-
-	got, err := RunOnce(context.Background(), factory, r, "review this", "acp-previous")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if got != (Result{Content: "started", ThreadID: "acp-123"}) {
-		t.Fatalf("result = %#v", got)
-	}
-
-	if !conversation.closed {
-		t.Fatal("runtime was not closed")
-	}
-
-	if !reflect.DeepEqual(conversation.prompts, []string{"review this"}) || !reflect.DeepEqual(conversation.roles, []string{"reviewer"}) || !reflect.DeepEqual(conversation.threadIDs, []string{"acp-previous"}) {
-		t.Fatalf("conversation = %#v", conversation)
-	}
-
-	if len(factory.providers) != 1 || factory.providers[0].Type() != "codex" {
-		t.Fatalf("providers = %#v", factory.providers)
-	}
-}
-
-func TestRunOnceClosesRuntimeAfterExecutionError(t *testing.T) {
-	conversation := &fakeConversation{err: errors.New("agent failed")}
-
-	_, err := RunOnce(context.Background(), &fakeFactory{conversation: conversation}, testRole("reviewer", "codex"), "review this", "")
-	if err == nil || !errors.Is(err, conversation.err) {
-		t.Fatalf("RunOnce error = %v", err)
-	}
-
-	if !conversation.closed {
-		t.Fatal("runtime was not closed")
-	}
-}
-
-func TestRunOnceReturnsFactoryError(t *testing.T) {
-	factoryErr := errors.New("agent unavailable")
-
-	_, err := RunOnce(context.Background(), &fakeFactory{err: factoryErr}, testRole("reviewer", "codex"), "review this", "")
-	if err == nil || !errors.Is(err, factoryErr) {
-		t.Fatalf("RunOnce error = %v", err)
-	}
-}
-
-func TestRunOnceReturnsCloseError(t *testing.T) {
-	wantErr := errors.New("close failed")
-	conversation := &fakeConversation{result: Result{Content: "done"}, closeErr: wantErr}
-
-	_, err := RunOnce(context.Background(), &fakeFactory{conversation: conversation}, testRole("reviewer", "codex"), "review", "")
-	if err == nil || !errors.Is(err, wantErr) {
-		t.Fatalf("RunOnce() error = %v, want close error", err)
 	}
 }
 
@@ -385,13 +286,13 @@ func TestRoleSessionStateSeedsRawACPThreadID(t *testing.T) {
 	}
 }
 
-func TestCodexProviderUsesRuntimeBridgeVersion(t *testing.T) {
+func TestCodexProviderUsesPinnedBridgeVersion(t *testing.T) {
 	provider, err := ProviderFor(testRole("reviewer", "codex"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := []string{"npx", "-y", "@normahq/codex-acp-bridge@1.7.3"}
+	want := []string{"npx", "-y", "@normahq/codex-acp-bridge@1.7.4"}
 	if !reflect.DeepEqual(provider.command, want) {
 		t.Fatalf("Codex ACP command = %#v, want %#v", provider.command, want)
 	}

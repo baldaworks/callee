@@ -11,7 +11,7 @@ Use the same Callee command launcher for the whole workflow:
 
 1. Try `callee --version`. If it succeeds, use `callee` for every command.
 2. If `callee` is not available, use
-   `npx --yes @baldaworks/callee@0.9.0` as the command prefix.
+   `npx --yes @baldaworks/callee@0.10.0` as the command prefix.
 3. If the fallback fails because the host blocks network or npm cache access,
    including `EAI_AGAIN` or `EROFS`, request the required approval and retry
    the exact command. Do not interpret a failed command as an empty catalog.
@@ -78,6 +78,26 @@ If the template has a configurable persona, select it at creation time with
 use `api: callee.metalagman.dev`, `kind: role`, and a nested `provider` section;
 the top-level `params` map remains separate. Do not add Gemini support.
 
+## Decide the interaction mode
+
+After the template and role contract are known, inspect the template's
+instructions and output contract. Enable REPL when the resulting role is
+expected to ask model-led follow-up questions after its declared runtime
+parameters have been supplied. Treat instructions to clarify insufficient,
+ambiguous, or conflicting information as a positive signal. Requirements and
+specification roles that interview the user before producing the artifact are
+REPL roles.
+
+Do not enable REPL merely because the role has unbound runtime parameters.
+Callee can collect missing declared parameters separately; REPL describes
+clarification led by the role model. If the template can produce its complete
+artifact from the user message and declared parameters in one model turn, keep
+REPL disabled.
+
+Pass `--repl` only for a positive decision. Omit it otherwise so generated
+roles do not contain `repl: false`. PromptKit does not perform this semantic
+analysis; this skill makes the decision before invoking the deterministic CLI.
+
 ## Create the role
 
 Run the confirmed command from the project directory:
@@ -90,6 +110,9 @@ callee promptkit role create "<role-id>" \
   --prompt-param "<message-parameter>" \
   --bind "<key=value>"
 ```
+
+Add `--repl` to this command only when the interaction-mode decision is
+positive. Omit it when the decision is negative.
 
 When requested, adjust PromptKit composition with `--persona`, repeated
 `--protocol`, repeated `--taxonomy`, and either `--format` or `--no-format`.

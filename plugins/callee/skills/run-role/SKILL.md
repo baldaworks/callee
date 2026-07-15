@@ -11,7 +11,7 @@ Use the same Callee command launcher for the whole workflow:
 
 1. Try `callee --version`. If it succeeds, use `callee` for every command.
 2. If `callee` is not available, use
-   `npx --yes @baldaworks/callee@0.9.0` as the command prefix.
+   `npx --yes @baldaworks/callee@0.10.0` as the command prefix.
 3. If the fallback fails because the host blocks network or npm cache access,
    including `EAI_AGAIN` or `EROFS`, request the required approval and retry
    the exact command. Do not interpret a failed command as an empty catalog.
@@ -33,14 +33,12 @@ For every fresh task, discover the current role catalog before selecting work:
 callee role list --json
 ```
 
-The catalog includes every role's description and a `params` object containing
-every parameter name and description. Select capabilities by their stated
-purpose, not by a hard-coded role name. Keep role IDs internal to the dispatch.
-After selecting a role, inspect it with `role view "<selected-role-id>" --json`.
-Do not dispatch roles whose `provider.repl` is true: the skill's structured
-one-shot protocol is non-interactive and REPL roles reject `--json`. For a
-naturally named REPL role, report that it must be run interactively; otherwise
-choose a matching one-shot role. Use `--markdown` only when the normalized role
+The catalog includes every role's description, effective top-level `repl`
+value, and a `params` object containing every parameter name and description.
+Select capabilities by their stated purpose, not by a hard-coded role name.
+Keep role IDs internal to the dispatch. After selecting a role, inspect it with
+`role view "<selected-role-id>" --json`. Treat its top-level `repl` value as
+authoritative for dispatch. Use `--markdown` only when the normalized role
 definition is needed.
 
 - When the user naturally names a role, resolve that mention against the
@@ -69,12 +67,13 @@ unresolved conflicts. Do not pass raw transcripts. If a prerequisite stage
 fails, preserve successful independent results and report that the dependent
 work could not be completed.
 
-## Dispatch stages
+## Dispatch one-shot stages
 
-Every Callee prompt made by this skill must use JSON output:
+When the selected role has `repl: false`, execute one model turn with JSON
+output:
 
 ```bash
-callee prompt --role "<selected-role-id>" \
+callee exec --role "<selected-role-id>" \
   --message "<stage task>" \
   --param "<name>=<value>" --json
 ```
@@ -91,7 +90,7 @@ stage already active in this host conversation, pass its latest opaque thread
 handle internally:
 
 ```bash
-callee prompt --role "<selected-role-id>" \
+callee exec --role "<selected-role-id>" \
   --thread-id "<opaque-thread-handle>" --message "<stage task>" \
   --json
 ```
@@ -106,6 +105,38 @@ Do not pass `--param` or `--param-file` when continuing a thread. Parameters
 initialize the role context only when the thread starts; follow-ups are sent as
 raw messages to the existing context.
 
+## Dispatch interactive stages
+
+When the selected role has `repl: true`, launch it with a real TTY and without
+`--json`:
+
+```bash
+callee agent --role "<selected-role-id>" \
+  --message "<stage task>" \
+  --param "<name>=<value>"
+```
+
+Configure the process runner to allocate a TTY. Callee uses that terminal to
+collect missing declared parameters, present the role's follow-up questions,
+and receive answers. Supply parameter values already explicit in the request;
+let the TTY collect only values that remain missing. Do not treat missing
+declared parameters as evidence that a non-REPL role should be interactive.
+Keep stdout and stderr separately captured while providing the controlling
+TTY. Never use the combined TTY transcript as the stage result; consume the
+final artifact from stdout.
+
+Keep the same `callee agent` process alive while its role asks follow-up
+questions. Send answers to that process's TTY; do not restart the command for
+each answer. While a role response requests information, answer it. Once the
+response is a completed artifact rather than a question, send `quit`. The
+process writes that final Markdown artifact to stdout and writes diagnostics to
+stderr. Use that Markdown as the stage result.
+
+Do not pass `--thread-id` to start a replacement interactive process. REPL
+continuation happens inside the live TTY process. If that process is no longer
+available, start a fresh interactive stage and explain that its prior context
+cannot be resumed.
+
 Keep only this short-lived routing state in the current host conversation: the
 selected role ID, task summary, and most recent opaque thread handle for each
 active stage. The model decides whether a new request naturally continues one
@@ -113,10 +144,10 @@ of those stages or starts fresh. It may keep several active conversations.
 Never write this state to a file or assume it survives a cleared, compacted, or
 restarted host conversation. When context is unavailable, ask to start fresh.
 
-If a resumed call reports `resumed: false`, replace the retained handle with the
-returned one and say only that the previous context was unavailable and work
-continued in a new conversation. Do not expose handles, role IDs, or raw
-transcripts unless the user explicitly requests diagnostics.
+If a resumed `exec` call reports `resumed: false`, replace the retained handle
+with the returned one and say only that the previous context was unavailable
+and work continued in a new conversation. Do not expose handles, role IDs, or
+raw transcripts unless the user explicitly requests diagnostics.
 
 ## Report results
 
@@ -133,6 +164,6 @@ install a host integration and create an editable starter role, run:
 callee setup <codex|claude|grok|copilot|opencode>
 ```
 
-Keep provider fields under the role's `provider` section. A top-level `params`
-description map is allowed; do not add Gemini support or a persistent Callee
-role-session store.
+Keep provider fields under the role's `provider` section. The `repl` flag and
+`params` description map are top-level role fields. Do not add Gemini support
+or a persistent Callee role-session store.
