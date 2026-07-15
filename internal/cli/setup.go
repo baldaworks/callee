@@ -118,7 +118,7 @@ func setupTargetFor(name string) (setupTarget, error) {
 			name:    "Codex",
 			prepare: prepareCodexMarketplace,
 			commands: [][]string{
-				{"codex", "plugin", "marketplace", "add", "baldaworks/callee", "--sparse", ".agents/plugins", "--sparse", "plugins/callee"},
+				{"codex", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"codex", "plugin", "add", "callee@callee"},
 			},
 			role: codexReviewerRole,

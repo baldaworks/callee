@@ -254,6 +254,110 @@ func TestPublicMetadataUsesProviderAwarePositioning(t *testing.T) {
 	}
 }
 
+func TestREADMEPresentsHostsEqually(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(data)
+	quickStartStart := strings.Index(text, "## Quick start")
+	wedgeStart := strings.Index(text, "## The wedge")
+	integrationsStart := strings.Index(text, "## Host integrations")
+	rolesStart := strings.Index(text, "## Roles")
+
+	if quickStartStart < 0 || wedgeStart < 0 || integrationsStart < 0 || rolesStart < 0 {
+		t.Fatal("README is missing a required landing-page section")
+	}
+
+	hero := text[:quickStartStart]
+	quickStart := text[quickStartStart:wedgeStart]
+	integrations := text[integrationsStart:rolesStart]
+	hosts := []struct {
+		name   string
+		target string
+	}{
+		{name: "Codex", target: "codex"},
+		{name: "Claude Code", target: "claude"},
+		{name: "Grok Build", target: "grok"},
+		{name: "Copilot CLI", target: "copilot"},
+		{name: "OpenCode", target: "opencode"},
+	}
+
+	for _, section := range []struct {
+		name string
+		text string
+	}{
+		{name: "hero", text: hero},
+		{name: "host integrations", text: integrations},
+	} {
+		previous := -1
+
+		for _, host := range hosts {
+			row := "| " + host.name + " | `npx --yes @baldaworks/callee@latest setup " + host.target + "` |"
+			index := strings.Index(section.text, row)
+
+			if index < 0 {
+				t.Errorf("README %s is missing setup row %q", section.name, row)
+
+				continue
+			}
+
+			if index <= previous {
+				t.Errorf("README %s places %s outside the canonical host order", section.name, host.name)
+			}
+
+			previous = index
+		}
+	}
+
+	previous := -1
+
+	for _, host := range hosts {
+		heading := "#### " + host.name
+		index := strings.Index(integrations, heading)
+
+		if index < 0 {
+			t.Errorf("README manual installation is missing heading %q", heading)
+
+			continue
+		}
+
+		if index <= previous {
+			t.Errorf("README manual installation places %s outside the canonical host order", host.name)
+		}
+
+		previous = index
+	}
+
+	if strings.Contains(strings.ToLower(quickStart), "codex") {
+		t.Error("README quick start singles out Codex")
+	}
+
+	for _, forbidden := range []string{
+		"--sparse",
+		"setup <host>",
+		"@0.9.0 setup",
+		"Flat frontmatter",
+		"--type codex",
+		"For Codex:",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("README contains host-biased or stale text %q", forbidden)
+		}
+	}
+
+	for _, want := range []string{
+		"Nested provider frontmatter",
+		"Supported types: `codex`, `claude`, `grok`, `copilot`, `opencode`, and",
+		"--type generic_acp",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("README is missing audited text %q", want)
+		}
+	}
+}
+
 func TestPluginHasNoLegacyCommands(t *testing.T) {
 	for _, name := range []string{"role.md", "reset.md", "setup.md", "subagent.md"} {
 		if _, err := os.Stat(filepath.Join("commands", name)); !os.IsNotExist(err) {
@@ -339,7 +443,6 @@ func TestCodexStarterPromptsUseNaturalLanguage(t *testing.T) {
 
 func TestDistributionMetadataMatchesRelease(t *testing.T) {
 	paths := []string{
-		filepath.Join("..", "..", "README.md"),
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
