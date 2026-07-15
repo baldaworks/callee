@@ -70,25 +70,14 @@ Review the following task:
 Do not modify files. Return concrete, evidence-backed findings.
 ```
 
-Start a fresh host session and describe the outcome you want. Hosts that add a
-plugin namespace use the short skill IDs; hosts that expose skill IDs directly
-use the `callee-` prefix:
+Start a fresh host session and invoke its run-role entry point. For Codex:
 
-- **Codex**
-  - Run: `$callee:run-role Review the current changes.`
-  - Create: `$callee:create-role Create a Go code-review role.`
-- **Claude Code**
-  - Run: `/callee:run-role Review the current changes.`
-  - Create: `/callee:create-role Create a Go code-review role.`
-- **Grok Build**
-  - Run: `/callee-run-role Review the current changes.`
-  - Create: `/callee-create-role Create a Go code-review role.`
-- **Copilot CLI**
-  - Run: `/callee-run-role Review the current changes.`
-  - Create: `/callee-create-role Create a Go code-review role.`
-- **OpenCode**
-  - Run: `$callee-run-role Review the current changes.`
-  - Create: `$callee-create-role Create a Go code-review role.`
+```text
+$callee:run-role Review the current changes.
+```
+
+See [Host integrations](#host-integrations) for the setup value and exact run
+and create syntax for every supported harness.
 
 The run-role skill discovers the role catalog for a new task, matches its
 descriptions to the requested work, and can combine independent and dependent
@@ -297,33 +286,42 @@ initialized runtimes are closed before the next check.
 
 ## Host integrations
 
-Callee is available as a Codex, Claude Code, Grok Build, and Copilot CLI
-plugin. OpenCode uses its native skills and slash commands. Every integration
-is a CLI wrapper: it runs Callee once for each role request and needs no server
-configuration.
+Callee uses one setup command across every supported agent harness:
+
+```bash
+npx --yes @baldaworks/callee@0.9.0 setup <host>
+```
+
+| Host | `<host>` | Run a role | Create a role | Integration |
+| --- | --- | --- | --- | --- |
+| Codex | `codex` | `$callee:run-role Review the current changes.` | `$callee:create-role Create a reviewer role.` | Namespaced plugin skills |
+| Claude Code | `claude` | `/callee:run-role Review the current changes.` | `/callee:create-role Create a reviewer role.` | Namespaced plugin skills |
+| Grok Build | `grok` | `/callee-run-role Review the current changes.` | `/callee-create-role Create a reviewer role.` | Prefixed plugin skills |
+| Copilot CLI | `copilot` | `/callee-run-role Review the current changes.` | `/callee-create-role Create a reviewer role.` | Prefixed plugin skills |
+| OpenCode | `opencode` | `$callee-run-role Review the current changes.` | `$callee-create-role Create a reviewer role.` | Project-local skills and commands |
+
+Setup installs the host integration and creates the editable sample role at
+`.callee/roles/reviewer.md`. Every integration is a CLI wrapper: it runs Callee
+for role requests and needs no server configuration. Start a fresh host session
+after setup so the new integration is discovered.
+
+### Manual plugin installation
 
 Install a plugin manually when you do not want to create the sample role:
 
+#### Codex
+
 ```bash
-# Codex
 codex plugin marketplace add baldaworks/callee \
   --sparse .agents/plugins \
   --sparse plugins/callee
 codex plugin add callee@callee
-
-# Grok Build
-grok plugin marketplace add baldaworks/callee
-grok plugin install callee@callee --trust
-
-# Copilot CLI
-copilot plugin marketplace add baldaworks/callee
-copilot plugin install callee@callee
 ```
 
 Rerun `setup codex` to migrate an existing pre-0.8.0 marketplace snapshot. It
 replaces the old sparse registration before installing the plugin again.
 
-For Claude Code:
+#### Claude Code
 
 ```text
 /plugin marketplace add baldaworks/callee
@@ -331,16 +329,23 @@ For Claude Code:
 /reload-plugins
 ```
 
-For OpenCode, install the project-local skills and commands:
+#### Grok Build
 
 ```bash
-npx --yes @baldaworks/callee@latest setup opencode
+grok plugin marketplace add baldaworks/callee
+grok plugin install callee@callee --trust
 ```
 
-OpenCode then supports natural-language skill use such as `$callee-run-role
-Review the current changes.` and `$callee-create-role Create a reviewer role`,
-plus the compatible `/callee` and `/callee-promptkit` commands. The installer
-creates no JavaScript plugin or custom tools.
+#### Copilot CLI
+
+```bash
+copilot plugin marketplace add baldaworks/callee
+copilot plugin install callee@callee
+```
+
+OpenCode has no separate plugin-only installation. Its unified setup command
+installs project-local skills plus the compatible `/callee` and
+`/callee-promptkit` commands; it creates no JavaScript plugin or custom tools.
 
 ## Roles
 
