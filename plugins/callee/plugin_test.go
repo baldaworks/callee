@@ -8,22 +8,23 @@ import (
 	"testing"
 )
 
-const releaseVersion = "0.8.0"
+const releaseVersion = "0.8.1"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "callee-run-role", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join("skills", "run-role", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(data)
 	for _, want := range []string{
-		"name: callee-run-role",
-		"Use `$callee-run-role <task>`",
-		"@baldaworks/callee@" + releaseVersion + " role list --json",
+		"name: run-role",
+		"Try `callee --version`.",
+		"npx --yes @baldaworks/callee@" + releaseVersion,
+		"callee role list --json",
 		"`params` object containing",
 		"role view \"<selected-role-id>\" --json",
-		"@baldaworks/callee@" + releaseVersion + " prompt --role \"<selected-role-id>\"",
+		"callee prompt --role \"<selected-role-id>\"",
 		"--param \"<name>=<value>\" --json",
 		"supply every parameter declared by the selected role",
 		"Do not pass `--param` or `--param-file` when continuing a thread.",
@@ -60,19 +61,26 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 }
 
 func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "callee-create-role", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join("skills", "create-role", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(data)
 	for _, want := range []string{
-		"name: callee-create-role",
-		"Use `$callee-create-role <role request>`",
-		"`$callee-run-role <task>` to run existing roles",
-		"@baldaworks/callee@" + releaseVersion + " promptkit search",
-		"@baldaworks/callee@" + releaseVersion + " promptkit show",
-		"@baldaworks/callee@" + releaseVersion + " promptkit role create",
+		"name: create-role",
+		"Try `callee --version`.",
+		"npx --yes @baldaworks/callee@" + releaseVersion,
+		"two to four short capability queries",
+		"callee promptkit search \"<capability>\" --type template --json",
+		"callee promptkit list --json",
+		"callee promptkit show \"<template>\" --json",
+		"Present at most three candidates.",
+		"wait for the user to confirm",
+		"author-requirements-doc",
+		"author-design-doc",
+		"author-architecture-spec",
+		"callee promptkit role create",
 		"--prompt-param",
 		"--bind",
 		"--bind-file",
@@ -81,8 +89,8 @@ func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
 		"--protocol",
 		"--taxonomy",
 		"--no-format",
-		"Never default or infer a type.",
-		"Keep Callee metadata flat.",
+		"default or infer a type.",
+		"metadata flat.",
 		"--dry-run",
 	} {
 		if !strings.Contains(text, want) {
@@ -98,47 +106,82 @@ func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
 }
 
 func TestPluginContainsOnlyTheNamedSkills(t *testing.T) {
-	entries, err := os.ReadDir("skills")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(entries) != 2 {
-		t.Fatalf("skills directory contains %d entries, want 2", len(entries))
-	}
-
-	want := map[string]bool{
-		"callee-create-role": false,
-		"callee-run-role":    false,
-	}
-	for _, entry := range entries {
-		if _, ok := want[entry.Name()]; !ok {
-			t.Errorf("unexpected skill directory %q", entry.Name())
-
-			continue
+	for directory, names := range map[string][]string{
+		"skills":          {"create-role", "run-role"},
+		"prefixed-skills": {"callee-create-role", "callee-run-role"},
+	} {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			t.Fatal(err)
 		}
 
-		want[entry.Name()] = true
-	}
+		if len(entries) != len(names) {
+			t.Fatalf("%s contains %d entries, want %d", directory, len(entries), len(names))
+		}
 
-	for name, found := range want {
-		if !found {
-			t.Errorf("skill directory %q is missing", name)
+		for i, entry := range entries {
+			if entry.Name() != names[i] {
+				t.Errorf("%s entry %d = %q, want %q", directory, i, entry.Name(), names[i])
+			}
 		}
 	}
 }
 
+func TestSkillVariantsHaveMatchingBodies(t *testing.T) {
+	for shortName, prefixedName := range map[string]string{
+		"create-role": "callee-create-role",
+		"run-role":    "callee-run-role",
+	} {
+		paths := []string{
+			filepath.Join("skills", shortName, "SKILL.md"),
+			filepath.Join("prefixed-skills", prefixedName, "SKILL.md"),
+			filepath.Join("..", "..", "internal", "cli", "assets", "opencode", "skills", prefixedName, "SKILL.md"),
+		}
+
+		var want string
+
+		for _, path := range paths {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			body := skillBody(t, data)
+			if want == "" {
+				want = body
+
+				continue
+			}
+
+			if body != want {
+				t.Errorf("%s body differs from %s", path, paths[0])
+			}
+		}
+	}
+}
+
+func skillBody(t *testing.T, data []byte) string {
+	t.Helper()
+
+	parts := strings.SplitN(string(data), "---", 3)
+	if len(parts) != 3 || strings.TrimSpace(parts[0]) != "" {
+		t.Fatal("skill has invalid YAML frontmatter delimiters")
+	}
+
+	return strings.TrimSpace(parts[2])
+}
+
 func TestCodexSkillMetadataUsesPublicNames(t *testing.T) {
 	for path, fields := range map[string][]string{
-		filepath.Join("skills", "callee-run-role", "agents", "openai.yaml"): {
+		filepath.Join("skills", "run-role", "agents", "openai.yaml"): {
 			`display_name: "Callee Run Role"`,
 			`short_description: "Run and combine project-defined Callee roles"`,
-			`default_prompt: "Use $callee-run-role to review the current changes."`,
+			`default_prompt: "Use $callee:run-role to review the current changes."`,
 		},
-		filepath.Join("skills", "callee-create-role", "agents", "openai.yaml"): {
+		filepath.Join("skills", "create-role", "agents", "openai.yaml"): {
 			`display_name: "Callee Create Role"`,
 			`short_description: "Create Callee roles from PromptKit templates"`,
-			`default_prompt: "Use $callee-create-role to create a Go code-review role for Codex."`,
+			`default_prompt: "Use $callee:create-role to create a Go code-review role for Codex."`,
 		},
 	} {
 		data, err := os.ReadFile(path)
@@ -209,20 +252,20 @@ func TestPluginHasNoLegacyCommands(t *testing.T) {
 	}
 }
 
-func TestAllPluginManifestsExposeTheSharedSkills(t *testing.T) {
-	for _, path := range []string{
-		filepath.Join(".claude-plugin", "plugin.json"),
-		filepath.Join(".codex-plugin", "plugin.json"),
-		filepath.Join(".grok-plugin", "plugin.json"),
-		filepath.Join(".plugin", "plugin.json"),
+func TestPluginManifestsExposeHostAppropriateSkills(t *testing.T) {
+	for path, want := range map[string]string{
+		filepath.Join(".claude-plugin", "plugin.json"): `"skills": "./skills/"`,
+		filepath.Join(".codex-plugin", "plugin.json"):  `"skills": "./skills/"`,
+		filepath.Join(".grok-plugin", "plugin.json"):   `"skills": "./prefixed-skills/"`,
+		filepath.Join(".plugin", "plugin.json"):        `"skills": "./prefixed-skills/"`,
 	} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if !strings.Contains(string(data), `"skills": "./skills/"`) {
-			t.Errorf("%s does not expose the shared skills directory", path)
+		if !strings.Contains(string(data), want) {
+			t.Errorf("%s does not expose %s", path, want)
 		}
 	}
 }
@@ -257,9 +300,9 @@ func TestCodexStarterPromptsUseNaturalLanguage(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"$callee-run-role Review the current changes.",
-		"$callee-run-role Review the changes and fix verified findings.",
-		"$callee-create-role Create a Go code-review role for Codex.",
+		"$callee:run-role Review the current changes.",
+		"$callee:run-role Review the changes and fix verified findings.",
+		"$callee:create-role Create a Go code-review role for Codex.",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("Codex plugin is missing starter prompt %q", want)
@@ -294,8 +337,10 @@ func TestDistributionMetadataMatchesRelease(t *testing.T) {
 		filepath.Join(".codex-plugin", "plugin.json"),
 		filepath.Join(".grok-plugin", "plugin.json"),
 		filepath.Join(".plugin", "plugin.json"),
-		filepath.Join("skills", "callee-run-role", "SKILL.md"),
-		filepath.Join("skills", "callee-create-role", "SKILL.md"),
+		filepath.Join("skills", "run-role", "SKILL.md"),
+		filepath.Join("skills", "create-role", "SKILL.md"),
+		filepath.Join("prefixed-skills", "callee-run-role", "SKILL.md"),
+		filepath.Join("prefixed-skills", "callee-create-role", "SKILL.md"),
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)

@@ -1,5 +1,5 @@
 ---
-name: callee-create-role
+name: create-role
 description: Create a project-defined Callee Markdown role from an embedded PromptKit template. Use when the user asks to generate, scaffold, or author a new Callee role.
 ---
 

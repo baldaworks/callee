@@ -237,8 +237,8 @@ func TestOpenCodeSetupPreservesAssetsUnlessForced(t *testing.T) {
 
 func TestOpenCodeSkillAssetsMatchPluginSkills(t *testing.T) {
 	for source, pluginPath := range map[string]string{
-		"assets/opencode/skills/callee-run-role/SKILL.md":    filepath.Join("..", "..", "plugins", "callee", "skills", "callee-run-role", "SKILL.md"),
-		"assets/opencode/skills/callee-create-role/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "skills", "callee-create-role", "SKILL.md"),
+		"assets/opencode/skills/callee-run-role/SKILL.md":    filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-run-role", "SKILL.md"),
+		"assets/opencode/skills/callee-create-role/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-create-role", "SKILL.md"),
 	} {
 		want, err := os.ReadFile(pluginPath)
 		if err != nil {

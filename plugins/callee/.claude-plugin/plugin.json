@@ -1,6 +1,6 @@
 {
   "name": "callee",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Run provider-aware subagent roles described in Markdown.",
   "author": {
     "name": "Baldaworks"

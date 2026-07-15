@@ -1,5 +1,5 @@
 ---
-name: callee-run-role
+name: run-role
 description: Run, continue, and combine project-defined Callee roles for coding work. Use when the user asks to delegate investigation, review, implementation, or testing through Callee, optionally with a named role.
 ---
 

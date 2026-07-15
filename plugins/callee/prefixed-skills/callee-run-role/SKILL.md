@@ -5,19 +5,32 @@ description: Run, continue, and combine project-defined Callee roles for coding 
 
 # Run Callee roles
 
-## Invocation
+## Resolve the CLI
 
-Use `$callee-run-role <task>`. The user may optionally name a role in ordinary
-language, such as `$callee-run-role With the reviewer role, review these
-changes.` Never require a role choice or a conversation handle, and do not
-introduce a command syntax for role selection.
+Use the same Callee command launcher for the whole workflow:
+
+1. Try `callee --version`. If it succeeds, use `callee` for every command.
+2. If `callee` is not available, use
+   `npx --yes @baldaworks/callee@0.8.1` as the command prefix.
+3. If the fallback fails because the host blocks network or npm cache access,
+   including `EAI_AGAIN` or `EROFS`, request the required approval and retry
+   the exact command. Do not interpret a failed command as an empty catalog.
+4. If neither launcher can run, report the launcher failure and the one-time
+   CLI installation requirement instead of guessing about roles.
+
+The examples below use `callee`; substitute the pinned `npx` prefix when the
+local CLI is unavailable.
 
 ## Route a task
+
+The user may name a role in ordinary language. Never require a role choice or
+a conversation handle, and do not introduce a command syntax for role
+selection.
 
 For every fresh task, discover the current role catalog before selecting work:
 
 ```bash
-npx --yes @baldaworks/callee@0.8.0 role list --json
+callee role list --json
 ```
 
 The catalog includes every role's description and a `params` object containing
@@ -57,9 +70,8 @@ work could not be completed.
 
 Every Callee prompt made by this skill must use JSON output:
 
-
 ```bash
-npx --yes @baldaworks/callee@0.8.0 prompt --role "<selected-role-id>" \
+callee prompt --role "<selected-role-id>" \
   --message "<stage task>" \
   --param "<name>=<value>" --json
 ```
@@ -76,7 +88,7 @@ stage already active in this host conversation, pass its latest opaque thread
 handle internally:
 
 ```bash
-npx --yes @baldaworks/callee@0.8.0 prompt --role "<selected-role-id>" \
+callee prompt --role "<selected-role-id>" \
   --thread-id "<opaque-thread-handle>" --message "<stage task>" --json
 ```
 
@@ -108,7 +120,7 @@ Callee integrations are CLI wrappers and require no server configuration. To
 install a host integration and create an editable starter role, run:
 
 ```bash
-npx --yes @baldaworks/callee@0.8.0 setup <codex|claude|grok|copilot|opencode>
+callee setup <codex|claude|grok|copilot|opencode>
 ```
 
 Keep provider fields flat. A top-level `params` description map is allowed; do
