@@ -23,10 +23,10 @@ From the repository you want to work in, install a host plugin and create
 `.callee/roles/reviewer.md`:
 
 ```bash
-npx --yes @baldaworks/callee@0.5.0 setup codex
-# or: npx --yes @baldaworks/callee@0.5.0 setup claude
-# or: npx --yes @baldaworks/callee@0.5.0 setup grok
-# or: npx --yes @baldaworks/callee@0.5.0 setup copilot
+npx --yes @baldaworks/callee@0.6.0 setup codex
+# or: npx --yes @baldaworks/callee@0.6.0 setup claude
+# or: npx --yes @baldaworks/callee@0.6.0 setup grok
+# or: npx --yes @baldaworks/callee@0.6.0 setup copilot
 ```
 
 For Codex, this creates the following project-local reviewer. The other setup
@@ -77,7 +77,7 @@ go install github.com/baldaworks/callee/cmd/callee@latest
 Or run the published command directly:
 
 ```bash
-npx --yes @baldaworks/callee@0.5.0 --version
+npx --yes @baldaworks/callee@0.6.0 --version
 ```
 
 Prompt a role:
@@ -94,7 +94,8 @@ it with `--timeout`, for example `--timeout 90s`.
 ### Continue a thread
 
 Use `--json` when you need the opaque provider thread handle returned by a
-prompt:
+prompt. It writes one result object to stdout and JSON Lines diagnostics to
+stderr, including messages emitted by the provider:
 
 ```bash
 callee prompt --role reviewer --message "Review the current changes" --json

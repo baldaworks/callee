@@ -18,7 +18,7 @@ role selection.
 For every fresh task, discover the current role catalog before selecting work:
 
 ```bash
-npx --yes @baldaworks/callee@0.5.0 list --json
+npx --yes @baldaworks/callee@0.6.0 list --json
 ```
 
 Read the role descriptions and select capabilities by their stated purpose,
@@ -56,7 +56,7 @@ Every Callee prompt made by this skill must use JSON output:
 
 
 ```bash
-npx --yes @baldaworks/callee@0.5.0 prompt --role "<selected-role-id>" \
+npx --yes @baldaworks/callee@0.6.0 prompt --role "<selected-role-id>" \
   --message "<stage task>" --json
 ```
 
@@ -65,7 +65,7 @@ stage already active in this host conversation, pass its latest opaque thread
 handle internally:
 
 ```bash
-npx --yes @baldaworks/callee@0.5.0 prompt --role "<selected-role-id>" \
+npx --yes @baldaworks/callee@0.6.0 prompt --role "<selected-role-id>" \
   --thread-id "<opaque-thread-handle>" --message "<stage task>" --json
 ```
 
@@ -93,7 +93,7 @@ The plugin is a CLI wrapper and requires no server configuration. To install
 the host plugin and create an editable starter role, run:
 
 ```bash
-npx --yes @baldaworks/callee@0.5.0 setup <codex|claude|grok|copilot>
+npx --yes @baldaworks/callee@0.6.0 setup <codex|claude|grok|copilot>
 ```
 
 Keep role frontmatter flat. Do not add provider configuration, Gemini support,

@@ -2,11 +2,15 @@
 package logging
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -26,8 +30,9 @@ const (
 type Option func(*options)
 
 type options struct {
-	level string
-	json  bool
+	level  string
+	json   bool
+	writer io.Writer
 }
 
 // WithLevel selects trace, debug, info, warn, or error logging.
@@ -35,6 +40,9 @@ func WithLevel(level string) Option { return func(o *options) { o.level = level 
 
 // WithJSON writes JSON logs instead of human-readable console logs.
 func WithJSON(enabled bool) Option { return func(o *options) { o.json = enabled } }
+
+// WithWriter selects where logs are written. The default is standard error.
+func WithWriter(writer io.Writer) Option { return func(o *options) { o.writer = writer } }
 
 // Init configures zerolog as Callee's logger and slog for dependencies.
 func Init(setters ...Option) error {
@@ -50,11 +58,16 @@ func Init(setters ...Option) error {
 
 	zerolog.SetGlobalLevel(zeroLevel)
 
+	writer := opts.writer
+	if writer == nil {
+		writer = os.Stderr
+	}
+
 	var logger zerolog.Logger
 	if opts.json {
-		logger = zerolog.New(os.Stderr)
+		logger = zerolog.New(writer)
 	} else {
-		logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
+		logger = zerolog.New(zerolog.ConsoleWriter{Out: writer, TimeFormat: time.RFC3339})
 	}
 
 	logger = logger.With().Timestamp().Logger()
@@ -66,6 +79,81 @@ func Init(setters ...Option) error {
 	slog.SetDefault(slog.New(newZerologHandler(logger)))
 
 	return nil
+}
+
+// WriteJSONError writes a command failure as one JSON Lines diagnostic event.
+func WriteJSONError(writer io.Writer, err error) error {
+	return json.NewEncoder(writer).Encode(diagnosticEvent{
+		Level:   LevelError,
+		Time:    time.Now().UTC(),
+		Message: "command failed",
+		Error:   err.Error(),
+	})
+}
+
+// JSONLineWriter wraps raw diagnostic lines in JSON Lines events.
+type JSONLineWriter struct {
+	mu     sync.Mutex
+	writer io.Writer
+	buffer []byte
+}
+
+// NewJSONLineWriter returns an io.Writer that emits one event per input line.
+func NewJSONLineWriter(writer io.Writer) *JSONLineWriter {
+	return &JSONLineWriter{writer: writer}
+}
+
+// Write buffers incomplete lines and emits completed diagnostic events.
+func (w *JSONLineWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.buffer = append(w.buffer, data...)
+	for {
+		index := bytes.IndexByte(w.buffer, '\n')
+		if index < 0 {
+			return len(data), nil
+		}
+
+		line := strings.TrimSuffix(string(w.buffer[:index]), "\r")
+
+		w.buffer = w.buffer[index+1:]
+		if err := w.writeEvent(line); err != nil {
+			return len(data), err
+		}
+	}
+}
+
+// Flush emits the final unterminated line, if any.
+func (w *JSONLineWriter) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if len(w.buffer) == 0 {
+		return nil
+	}
+
+	line := strings.TrimSuffix(string(w.buffer), "\r")
+	w.buffer = nil
+
+	return w.writeEvent(line)
+}
+
+type diagnosticEvent struct {
+	Level   string    `json:"level"`
+	Time    time.Time `json:"time"`
+	Source  string    `json:"source,omitempty"`
+	Message string    `json:"message"`
+	Error   string    `json:"error,omitempty"`
+}
+
+func (w *JSONLineWriter) writeEvent(message string) error {
+	return json.NewEncoder(w.writer).Encode(diagnosticEvent{
+		Level:   LevelInfo,
+		Time:    time.Now().UTC(),
+		Source:  "provider",
+		Message: message,
+	})
 }
 
 func resolveLevel(raw string) (zerolog.Level, slog.Level, error) {

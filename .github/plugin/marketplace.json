@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Callee roles for GitHub Copilot CLI.",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "plugins": [
     {
       "name": "callee",
       "description": "Route natural-language tasks through Callee roles.",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "source": "./plugins/callee",
       "author": {
         "name": "Baldaworks",

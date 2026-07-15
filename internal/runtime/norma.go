@@ -2,11 +2,14 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/role"
 	acpagent "github.com/normahq/go-adk-acpagent/v2"
 	"github.com/normahq/runtime/v2/agentconfig"
@@ -20,22 +23,35 @@ import (
 )
 
 // NormaFactory builds ACP agents through Norma Runtime.
-type NormaFactory struct{}
+type NormaFactory struct {
+	Stderr          io.Writer
+	JSONDiagnostics bool
+}
 
 var buildNormaAgent = buildNormaAgentDefault
 
 const sessionConfigCapacity = 3
 
-func (NormaFactory) New(ctx context.Context, provider Provider) (Conversation, error) {
-	ag, closer, err := buildNormaAgent(ctx, provider)
+func (f NormaFactory) New(ctx context.Context, provider Provider) (Conversation, error) {
+	stderr, flush := f.diagnosticsWriter()
+
+	ag, closer, err := buildNormaAgent(ctx, provider, stderr)
 	if err != nil {
+		if flushErr := flush(); flushErr != nil {
+			return nil, errors.Join(err, flushErr)
+		}
+
 		return nil, err
 	}
 
-	conversation, err := newNormaConversation(ag, closer)
+	conversation, err := newNormaConversation(ag, closer, flush)
 	if err != nil {
 		if closer != nil {
 			_ = closer.Close()
+		}
+
+		if flushErr := flush(); flushErr != nil {
+			return nil, errors.Join(err, flushErr)
 		}
 
 		return nil, err
@@ -46,29 +62,55 @@ func (NormaFactory) New(ctx context.Context, provider Provider) (Conversation, e
 
 // Check starts and initializes a role's ACP runtime, then closes it without
 // creating a session or sending a model prompt.
-func (NormaFactory) Check(ctx context.Context, r role.Role) error {
+func (f NormaFactory) Check(ctx context.Context, r role.Role) error {
 	provider, err := ProviderFor(r)
 	if err != nil {
 		return err
 	}
 
-	_, closer, err := buildNormaAgent(ctx, provider)
+	stderr, flush := f.diagnosticsWriter()
+
+	_, closer, err := buildNormaAgent(ctx, provider, stderr)
 	if err != nil {
+		if flushErr := flush(); flushErr != nil {
+			return errors.Join(err, flushErr)
+		}
+
 		return err
 	}
 
-	if closer == nil {
-		return nil
+	var closeErr error
+	if closer != nil {
+		closeErr = closer.Close()
 	}
 
-	if err := closer.Close(); err != nil {
-		return fmt.Errorf("close role %q runtime: %w", r.ID, err)
+	if flushErr := flush(); flushErr != nil {
+		closeErr = errors.Join(closeErr, flushErr)
+	}
+
+	if closeErr != nil {
+		return fmt.Errorf("close role %q runtime: %w", r.ID, closeErr)
 	}
 
 	return nil
 }
 
-func buildNormaAgentDefault(ctx context.Context, provider Provider) (agent.Agent, interface{ Close() error }, error) {
+func (f NormaFactory) diagnosticsWriter() (io.Writer, func() error) {
+	stderr := f.Stderr
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+
+	if !f.JSONDiagnostics {
+		return stderr, func() error { return nil }
+	}
+
+	writer := logging.NewJSONLineWriter(stderr)
+
+	return writer, writer.Flush
+}
+
+func buildNormaAgentDefault(ctx context.Context, provider Provider, stderr io.Writer) (agent.Agent, interface{ Close() error }, error) {
 	log.Debug().Str("provider", provider.Type()).Msg("normalizing provider runtime configuration")
 
 	cwd, err := os.Getwd()
@@ -83,7 +125,7 @@ func buildNormaAgentDefault(ctx context.Context, provider Provider) (agent.Agent
 		}
 	}
 
-	factory := agentfactory.New(map[string]agentconfig.Config{provider.Key(): provider.config}, mcpregistry.New(nil), agentfactory.WithStderrWriter(os.Stderr))
+	factory := agentfactory.New(map[string]agentconfig.Config{provider.Key(): provider.config}, mcpregistry.New(nil), agentfactory.WithStderrWriter(stderr))
 	log.Debug().Str("provider", provider.Type()).Msg("initializing ACP runtime")
 
 	ag, err := factory.Build(ctx, agentfactory.BuildRequest{AgentID: provider.Key(), Name: provider.Type(), Description: provider.Type(), WorkingDirectory: cwd})
@@ -102,9 +144,10 @@ type normaConversation struct {
 	runner   *runner.Runner
 	sessions session.Service
 	closer   interface{ Close() error }
+	flush    func() error
 }
 
-func newNormaConversation(ag agent.Agent, closer interface{ Close() error }) (Conversation, error) {
+func newNormaConversation(ag agent.Agent, closer interface{ Close() error }, flush func() error) (Conversation, error) {
 	service := session.InMemoryService()
 
 	r, err := runner.New(runner.Config{AppName: "callee", Agent: ag, SessionService: service})
@@ -112,7 +155,7 @@ func newNormaConversation(ag agent.Agent, closer interface{ Close() error }) (Co
 		return nil, err
 	}
 
-	return &normaConversation{runner: r, sessions: service, closer: closer}, nil
+	return &normaConversation{runner: r, sessions: service, closer: closer, flush: flush}, nil
 }
 
 func (n *normaConversation) Run(ctx context.Context, r role.Role, prompt, threadID string) (Result, error) {
@@ -165,11 +208,16 @@ func roleSessionState(r role.Role, threadID string) map[string]any {
 }
 
 func (n *normaConversation) Close() error {
+	var errs []error
 	if n.closer != nil {
-		return n.closer.Close()
+		errs = append(errs, n.closer.Close())
 	}
 
-	return nil
+	if n.flush != nil {
+		errs = append(errs, n.flush())
+	}
+
+	return errors.Join(errs...)
 }
 
 func (n *normaConversation) acpThreadID(ctx context.Context, id string) (string, error) {

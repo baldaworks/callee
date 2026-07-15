@@ -9,7 +9,7 @@
     {
       "name": "callee",
       "description": "Route natural-language tasks through Callee roles.",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "source": "./plugins/callee",
       "homepage": "https://github.com/baldaworks/callee",
       "keywords": ["subagents", "cli", "roles"]

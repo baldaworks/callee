@@ -1,8 +1,11 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
 	"time"
@@ -130,7 +133,7 @@ func TestNormaFactoryCheckClosesRuntime(t *testing.T) {
 	t.Cleanup(func() { buildNormaAgent = original })
 
 	closer := &closeTracker{}
-	buildNormaAgent = func(ctx context.Context, provider Provider) (agent.Agent, interface{ Close() error }, error) {
+	buildNormaAgent = func(ctx context.Context, provider Provider, _ io.Writer) (agent.Agent, interface{ Close() error }, error) {
 		if provider.Type() != "codex" {
 			t.Fatalf("provider type = %q, want codex", provider.Type())
 		}
@@ -151,6 +154,71 @@ func TestNormaFactoryCheckClosesRuntime(t *testing.T) {
 
 	if !closer.closed {
 		t.Fatal("runtime was not closed")
+	}
+}
+
+func TestNormaFactoryWrapsProviderDiagnosticsAsJSON(t *testing.T) {
+	original := buildNormaAgent
+
+	t.Cleanup(func() { buildNormaAgent = original })
+
+	var output bytes.Buffer
+
+	buildNormaAgent = func(_ context.Context, _ Provider, stderr io.Writer) (agent.Agent, interface{ Close() error }, error) {
+		if _, err := io.WriteString(stderr, "provider started\npartial"); err != nil {
+			t.Fatal(err)
+		}
+
+		return nil, &closeTracker{}, nil
+	}
+
+	if err := (NormaFactory{Stderr: &output, JSONDiagnostics: true}).Check(context.Background(), testRole("reviewer", "codex")); err != nil {
+		t.Fatal(err)
+	}
+
+	var first, second map[string]any
+
+	decoder := json.NewDecoder(&output)
+	if err := decoder.Decode(&first); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := decoder.Decode(&second); err != nil {
+		t.Fatal(err)
+	}
+
+	for index, event := range []map[string]any{first, second} {
+		if event["source"] != "provider" || event["level"] != "info" {
+			t.Fatalf("event %d = %#v", index, event)
+		}
+	}
+
+	if first["message"] != "provider started" || second["message"] != "partial" {
+		t.Fatalf("events = %#v, %#v", first, second)
+	}
+}
+
+func TestNormaFactoryPassesProviderDiagnosticsThroughWithoutJSON(t *testing.T) {
+	original := buildNormaAgent
+
+	t.Cleanup(func() { buildNormaAgent = original })
+
+	var output bytes.Buffer
+
+	buildNormaAgent = func(_ context.Context, _ Provider, stderr io.Writer) (agent.Agent, interface{ Close() error }, error) {
+		if _, err := io.WriteString(stderr, "provider started\n"); err != nil {
+			t.Fatal(err)
+		}
+
+		return nil, &closeTracker{}, nil
+	}
+
+	if err := (NormaFactory{Stderr: &output}).Check(context.Background(), testRole("reviewer", "codex")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := output.String(), "provider started\n"; got != want {
+		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }
 

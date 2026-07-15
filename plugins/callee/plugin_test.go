@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const releaseVersion = "0.5.0"
+const releaseVersion = "0.6.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "callee", "SKILL.md"))

@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,8 +41,8 @@ func TestLoggingLevel(t *testing.T) {
 }
 
 func TestVersionMatchesNextRelease(t *testing.T) {
-	if Version != "0.5.0" {
-		t.Fatalf("Version = %q, want 0.5.0", Version)
+	if Version != "0.6.0" {
+		t.Fatalf("Version = %q, want 0.6.0", Version)
 	}
 }
 
@@ -236,6 +238,42 @@ func TestPromptCommandRendersMessageAndPassesThreadHandle(t *testing.T) {
 	}
 }
 
+func TestJSONOutputUsesJSONDiagnostics(t *testing.T) {
+	rolesDir := t.TempDir()
+	cmd := NewRootCommand()
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"list", "--roles-dir", rolesDir, "--debug", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := stdout.String(), "{\"roles\":[]}\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+
+	assertJSONLines(t, stderr.String())
+}
+
+func TestRunWritesJSONErrorsWhenRequested(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(context.Background(), []string{"prompt", "--role", "reviewer", "--message", "hello", "--timeout", "0", "--json"}, &stdout, &stderr); exitCode != 1 {
+		t.Fatalf("exit code = %d, want 1", exitCode)
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+
+	events := assertJSONLines(t, stderr.String())
+	if len(events) != 1 || events[0]["level"] != "error" || events[0]["error"] != "timeout must be greater than zero" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
 func TestPromptCommandReturnsReplacementThreadWhenResumeFallsBack(t *testing.T) {
 	rolesDir := writePromptRole(t)
 	original := runRole
@@ -324,4 +362,22 @@ func writePromptRole(t *testing.T) string {
 	}
 
 	return rolesDir
+}
+
+func assertJSONLines(t *testing.T, output string) []map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+
+	events := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatalf("diagnostic is not JSON: %v\n%s", err, output)
+		}
+
+		events = append(events, event)
+	}
+
+	return events
 }

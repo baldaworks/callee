@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version              = "0.5.0"
+	Version              = "0.6.0"
 	roleListTabPadding   = 2
 	defaultPromptTimeout = 10 * time.Minute
 )
@@ -43,7 +43,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return 0
 		}
 
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		if jsonRequested(args) {
+			_ = logging.WriteJSONError(stderr, err)
+		} else {
+			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		}
 
 		return 1
 	}
@@ -59,7 +63,8 @@ func NewRootCommand() *cobra.Command {
 	)
 
 	root := &cobra.Command{Use: "callee", Short: "Turn Markdown roles into callable ACP agents.", Version: Version, SilenceErrors: true, SilenceUsage: true, PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-		if err := logging.Init(logging.WithLevel(loggingLevel(cmd.Name(), debug, trace))); err != nil {
+		jsonOutput := commandJSONOutput(cmd)
+		if err := logging.Init(logging.WithLevel(loggingLevel(cmd.Name(), debug, trace)), logging.WithJSON(jsonOutput), logging.WithWriter(cmd.ErrOrStderr())); err != nil {
 			return err
 		}
 
@@ -78,6 +83,22 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(setupCommand())
 
 	return root
+}
+
+func commandJSONOutput(cmd *cobra.Command) bool {
+	jsonOutput, err := cmd.Flags().GetBool("json")
+
+	return err == nil && jsonOutput
+}
+
+func jsonRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--json" || arg == "--json=true" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func loggingLevel(commandName string, debug, trace bool) string {
@@ -142,7 +163,7 @@ func listCommand(rolesDir *string) *cobra.Command {
 
 		return out.Flush()
 	}}
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output roles as JSON")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output roles as JSON and diagnostics as JSON Lines")
 
 	return cmd
 }
@@ -183,7 +204,7 @@ func promptCommand(rolesDir *string) *cobra.Command {
 		turnCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
 		defer cancel()
 
-		result, err := runRole(turnCtx, runtime.NormaFactory{}, r, rendered, threadID)
+		result, err := runRole(turnCtx, runtime.NormaFactory{Stderr: cmd.ErrOrStderr(), JSONDiagnostics: jsonOutput}, r, rendered, threadID)
 		if err != nil {
 			return err
 		}
@@ -204,7 +225,7 @@ func promptCommand(rolesDir *string) *cobra.Command {
 	cmd.Flags().StringVar(&message, "message", "", "message to send to the role")
 	cmd.Flags().StringVar(&threadID, "thread-id", "", "ACP session ID to resume")
 	cmd.Flags().DurationVar(&timeout, "timeout", defaultPromptTimeout, "maximum time for ACP startup and the prompt")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the response as JSON")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the response as JSON and diagnostics as JSON Lines")
 	_ = cmd.MarkFlagRequired("role")
 	_ = cmd.MarkFlagRequired("message")
 
@@ -226,7 +247,7 @@ func doctorCommand(rolesDir *string) *cobra.Command {
 
 		log.Debug().Strs("roles", reg.IDs()).Dur("timeout", timeout).Msg("loaded role registry for doctor")
 
-		return runDoctor(cmd.Context(), reg.Roles(), runtime.NormaFactory{}, timeout, cmd.OutOrStdout())
+		return runDoctor(cmd.Context(), reg.Roles(), runtime.NormaFactory{Stderr: cmd.ErrOrStderr()}, timeout, cmd.OutOrStdout())
 	}}
 	cmd.Flags().DurationVar(&timeout, "timeout", time.Minute, "maximum initialization time for each role")
 

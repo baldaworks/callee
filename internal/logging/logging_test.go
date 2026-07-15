@@ -3,6 +3,7 @@ package logging
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
@@ -23,6 +24,84 @@ func TestInitConfiguresZerologAndSlog(t *testing.T) {
 
 	if !slog.Default().Handler().Enabled(context.Background(), slog.LevelDebug) {
 		t.Fatal("slog debug is disabled")
+	}
+}
+
+func TestInitWithJSONWritesStructuredLogs(t *testing.T) {
+	var output bytes.Buffer
+
+	t.Cleanup(func() { _ = Init(WithLevel(LevelInfo)) })
+
+	if err := Init(WithLevel(LevelInfo), WithJSON(true), WithWriter(&output)); err != nil {
+		t.Fatal(err)
+	}
+
+	slog.Info("starting role", slog.String("role", "reviewer"))
+
+	var event map[string]any
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatalf("unmarshal JSON log: %v\n%s", err, output.String())
+	}
+
+	if event["level"] != "info" || event["message"] != "starting role" || event["role"] != "reviewer" {
+		t.Fatalf("event = %#v", event)
+	}
+}
+
+func TestJSONLineWriterWrapsCompleteAndPartialLines(t *testing.T) {
+	var output bytes.Buffer
+
+	writer := NewJSONLineWriter(&output)
+
+	if _, err := writer.Write([]byte("first\r\nsecond")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := writer.Write([]byte(" line\nthird")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	var events []map[string]any
+
+	decoder := json.NewDecoder(&output)
+	for decoder.More() {
+		var event map[string]any
+		if err := decoder.Decode(&event); err != nil {
+			t.Fatal(err)
+		}
+
+		events = append(events, event)
+	}
+
+	wantMessages := []string{"first", "second line", "third"}
+	if len(events) != len(wantMessages) {
+		t.Fatalf("events = %#v", events)
+	}
+
+	for index, want := range wantMessages {
+		if events[index]["level"] != "info" || events[index]["source"] != "provider" || events[index]["message"] != want {
+			t.Fatalf("event %d = %#v", index, events[index])
+		}
+	}
+}
+
+func TestWriteJSONError(t *testing.T) {
+	var output bytes.Buffer
+	if err := WriteJSONError(&output, context.Canceled); err != nil {
+		t.Fatal(err)
+	}
+
+	var event map[string]any
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatal(err)
+	}
+
+	if event["level"] != "error" || event["message"] != "command failed" || event["error"] != context.Canceled.Error() {
+		t.Fatalf("event = %#v", event)
 	}
 }
 
