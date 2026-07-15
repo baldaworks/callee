@@ -41,8 +41,8 @@ func TestLoggingLevel(t *testing.T) {
 }
 
 func TestVersionMatchesNextRelease(t *testing.T) {
-	if Version != "0.7.0" {
-		t.Fatalf("Version = %q, want 0.7.0", Version)
+	if Version != "0.8.0" {
+		t.Fatalf("Version = %q, want 0.8.0", Version)
 	}
 }
 

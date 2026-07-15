@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-//go:embed assets/opencode/skills/callee/SKILL.md assets/opencode/skills/callee-promptkit/SKILL.md assets/opencode/commands/callee.md assets/opencode/commands/callee-promptkit.md
+//go:embed assets/opencode/skills/callee-run-role/SKILL.md assets/opencode/skills/callee-create-role/SKILL.md assets/opencode/commands/callee.md assets/opencode/commands/callee-promptkit.md
 var openCodeAssets embed.FS
 
 type openCodeAsset struct {
@@ -16,8 +16,8 @@ type openCodeAsset struct {
 }
 
 var openCodeAssetFiles = []openCodeAsset{
-	{source: "assets/opencode/skills/callee/SKILL.md", destination: ".opencode/skills/callee/SKILL.md"},
-	{source: "assets/opencode/skills/callee-promptkit/SKILL.md", destination: ".opencode/skills/callee-promptkit/SKILL.md"},
+	{source: "assets/opencode/skills/callee-run-role/SKILL.md", destination: ".opencode/skills/callee-run-role/SKILL.md"},
+	{source: "assets/opencode/skills/callee-create-role/SKILL.md", destination: ".opencode/skills/callee-create-role/SKILL.md"},
 	{source: "assets/opencode/commands/callee.md", destination: ".opencode/commands/callee.md"},
 	{source: "assets/opencode/commands/callee-promptkit.md", destination: ".opencode/commands/callee-promptkit.md"},
 }

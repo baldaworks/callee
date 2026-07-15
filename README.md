@@ -23,11 +23,11 @@ From the repository you want to work in, install a host plugin and create
 `.callee/roles/reviewer.md`:
 
 ```bash
-npx --yes @baldaworks/callee@0.7.0 setup codex
-# or: npx --yes @baldaworks/callee@0.7.0 setup claude
-# or: npx --yes @baldaworks/callee@0.7.0 setup grok
-# or: npx --yes @baldaworks/callee@0.7.0 setup copilot
-# or: npx --yes @baldaworks/callee@0.7.0 setup opencode
+npx --yes @baldaworks/callee@0.8.0 setup codex
+# or: npx --yes @baldaworks/callee@0.8.0 setup claude
+# or: npx --yes @baldaworks/callee@0.8.0 setup grok
+# or: npx --yes @baldaworks/callee@0.8.0 setup copilot
+# or: npx --yes @baldaworks/callee@0.8.0 setup opencode
 ```
 
 For Codex, this creates the following project-local reviewer. The other setup
@@ -54,16 +54,16 @@ Do not modify files. Return concrete, evidence-backed findings.
 Start a fresh host session and describe the outcome you want:
 
 ```text
-$callee Review the current changes.
-$callee Review the current changes and fix any verified findings.
-$callee With the reviewer role, review the current changes.
-$callee-promptkit Create a Go code-review role from a PromptKit template for Codex.
+$callee-run-role Review the current changes.
+$callee-run-role Review the current changes and fix any verified findings.
+$callee-run-role With the reviewer role, review the current changes.
+$callee-create-role Create a Go code-review role for Codex.
 ```
 
-`$callee <task>` runs existing roles. It discovers the role catalog for a new
-task, matches its descriptions to the requested work, and can combine
-independent and dependent stages. `$callee-promptkit <role request>` authors a
-new role from a PromptKit template. A user can naturally name a role as a
+`$callee-run-role <task>` runs existing roles. It discovers the role catalog
+for a new task, matches its descriptions to the requested work, and can combine
+independent and dependent stages. `$callee-create-role <role request>` authors
+a new role from a PromptKit template. A user can naturally name a role as a
 required first stage; the plugin resolves it from the catalog and asks for
 clarification instead of substituting an ambiguous name. It keeps role IDs and
 conversation handles internal. The editable reviewer created by setup is a
@@ -80,7 +80,7 @@ go install github.com/baldaworks/callee/cmd/callee@latest
 Or run the published command directly:
 
 ```bash
-npx --yes @baldaworks/callee@0.7.0 --version
+npx --yes @baldaworks/callee@0.8.0 --version
 ```
 
 Prompt a role:
@@ -178,7 +178,9 @@ Install a plugin manually when you do not want to create the sample role:
 
 ```bash
 # Codex
-codex plugin marketplace add baldaworks/callee --sparse .agents/plugins
+codex plugin marketplace add baldaworks/callee \
+  --sparse .agents/plugins \
+  --sparse plugins/callee
 codex plugin add callee@callee
 
 # Grok Build
@@ -189,6 +191,9 @@ grok plugin install callee@callee --trust
 copilot plugin marketplace add baldaworks/callee
 copilot plugin install callee@callee
 ```
+
+Rerun `setup codex` to migrate an existing pre-0.8.0 marketplace snapshot. It
+replaces the old sparse registration before installing the plugin again.
 
 For Claude Code:
 
@@ -201,13 +206,13 @@ For Claude Code:
 For OpenCode, install the project-local skills and commands:
 
 ```bash
-npx --yes @baldaworks/callee@0.7.0 setup opencode
+npx --yes @baldaworks/callee@0.8.0 setup opencode
 ```
 
-OpenCode then supports natural-language skill use such as `$callee Review the
-current changes.`, plus `/callee Review the current changes` and
-`/callee-promptkit Create a reviewer role`. The installer creates no JavaScript
-plugin or custom tools.
+OpenCode then supports natural-language skill use such as `$callee-run-role
+Review the current changes.` and `$callee-create-role Create a reviewer role`,
+plus the compatible `/callee` and `/callee-promptkit` commands. The installer
+creates no JavaScript plugin or custom tools.
 
 ## Roles
 

@@ -1,6 +1,6 @@
 {
   "name": "callee",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Run provider-aware subagent roles described in Markdown.",
   "author": {
     "name": "Baldaworks",
@@ -19,10 +19,9 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "$callee Review the current changes.",
-      "$callee Review the current changes and fix any verified findings.",
-      "$callee With the reviewer role, review the current changes.",
-      "$callee-promptkit Create a Go code-review role from a PromptKit template for Codex."
+      "$callee-run-role Review the current changes.",
+      "$callee-run-role Review the changes and fix verified findings.",
+      "$callee-create-role Create a Go code-review role for Codex."
     ]
   }
 }

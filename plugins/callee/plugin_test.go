@@ -8,19 +8,18 @@ import (
 	"testing"
 )
 
-const releaseVersion = "0.7.0"
+const releaseVersion = "0.8.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "callee", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join("skills", "callee-run-role", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(data)
 	for _, want := range []string{
-		"name: callee",
-		"user-invocable: true",
-		"Use `$callee <task>`",
+		"name: callee-run-role",
+		"Use `$callee-run-role <task>`",
 		"@baldaworks/callee@" + releaseVersion + " role list --json",
 		"`params` object containing",
 		"role view \"<selected-role-id>\" --json",
@@ -45,7 +44,7 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		}
 	}
 
-	for _, forbidden := range []string{"role:<", "mcp", "reset:", "acp"} {
+	for _, forbidden := range []string{"role:<", "mcp", "reset:", "acp", "user-invocable:"} {
 		if strings.Contains(strings.ToLower(text), forbidden) {
 			t.Fatalf("skill retains removed or user-visible syntax %q", forbidden)
 		}
@@ -61,16 +60,16 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 }
 
 func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "callee-promptkit", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join("skills", "callee-create-role", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(data)
 	for _, want := range []string{
-		"name: callee-promptkit",
-		"user-invocable: true",
-		"Use `$callee-promptkit <role request>`",
+		"name: callee-create-role",
+		"Use `$callee-create-role <role request>`",
+		"`$callee-run-role <task>` to run existing roles",
 		"@baldaworks/callee@" + releaseVersion + " promptkit search",
 		"@baldaworks/callee@" + releaseVersion + " promptkit show",
 		"@baldaworks/callee@" + releaseVersion + " promptkit role create",
@@ -91,9 +90,66 @@ func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
 		}
 	}
 
-	for _, forbidden := range []string{"mcp", "type: gemini", "role:<"} {
+	for _, forbidden := range []string{"mcp", "type: gemini", "role:<", "user-invocable:"} {
 		if strings.Contains(strings.ToLower(text), forbidden) {
 			t.Errorf("PromptKit skill contains forbidden syntax %q", forbidden)
+		}
+	}
+}
+
+func TestPluginContainsOnlyTheNamedSkills(t *testing.T) {
+	entries, err := os.ReadDir("skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entries) != 2 {
+		t.Fatalf("skills directory contains %d entries, want 2", len(entries))
+	}
+
+	want := map[string]bool{
+		"callee-create-role": false,
+		"callee-run-role":    false,
+	}
+	for _, entry := range entries {
+		if _, ok := want[entry.Name()]; !ok {
+			t.Errorf("unexpected skill directory %q", entry.Name())
+
+			continue
+		}
+
+		want[entry.Name()] = true
+	}
+
+	for name, found := range want {
+		if !found {
+			t.Errorf("skill directory %q is missing", name)
+		}
+	}
+}
+
+func TestCodexSkillMetadataUsesPublicNames(t *testing.T) {
+	for path, fields := range map[string][]string{
+		filepath.Join("skills", "callee-run-role", "agents", "openai.yaml"): {
+			`display_name: "Callee Run Role"`,
+			`short_description: "Run and combine project-defined Callee roles"`,
+			`default_prompt: "Use $callee-run-role to review the current changes."`,
+		},
+		filepath.Join("skills", "callee-create-role", "agents", "openai.yaml"): {
+			`display_name: "Callee Create Role"`,
+			`short_description: "Create Callee roles from PromptKit templates"`,
+			`default_prompt: "Use $callee-create-role to create a Go code-review role for Codex."`,
+		},
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, field := range fields {
+			if !strings.Contains(string(data), field) {
+				t.Errorf("%s is missing %q", path, field)
+			}
 		}
 	}
 }
@@ -201,10 +257,9 @@ func TestCodexStarterPromptsUseNaturalLanguage(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"$callee Review the current changes.",
-		"$callee Review the current changes and fix any verified findings.",
-		"$callee With the reviewer role, review the current changes.",
-		"$callee-promptkit Create a Go code-review role from a PromptKit template for Codex.",
+		"$callee-run-role Review the current changes.",
+		"$callee-run-role Review the changes and fix verified findings.",
+		"$callee-create-role Create a Go code-review role for Codex.",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("Codex plugin is missing starter prompt %q", want)
@@ -213,6 +268,19 @@ func TestCodexStarterPromptsUseNaturalLanguage(t *testing.T) {
 
 	if strings.Contains(string(data), "role:") {
 		t.Error("Codex plugin retains role-specific starter syntax")
+	}
+
+	var manifest struct {
+		Interface struct {
+			DefaultPrompt []string `json:"defaultPrompt"`
+		} `json:"interface"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(manifest.Interface.DefaultPrompt) != 3 {
+		t.Errorf("Codex plugin has %d starter prompts, want 3", len(manifest.Interface.DefaultPrompt))
 	}
 }
 
@@ -226,7 +294,8 @@ func TestDistributionMetadataMatchesRelease(t *testing.T) {
 		filepath.Join(".codex-plugin", "plugin.json"),
 		filepath.Join(".grok-plugin", "plugin.json"),
 		filepath.Join(".plugin", "plugin.json"),
-		filepath.Join("skills", "callee", "SKILL.md"),
+		filepath.Join("skills", "callee-run-role", "SKILL.md"),
+		filepath.Join("skills", "callee-create-role", "SKILL.md"),
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)

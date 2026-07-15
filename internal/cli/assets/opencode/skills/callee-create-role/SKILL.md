@@ -1,15 +1,14 @@
 ---
-name: callee-promptkit
-description: Create a new Callee Markdown role from a PromptKit template. Use when the user asks to generate, scaffold, or author a Callee role with PromptKit.
-user-invocable: true
+name: callee-create-role
+description: Create a project-defined Callee Markdown role from an embedded PromptKit template. Use when the user asks to generate, scaffold, or author a new Callee role.
 ---
 
-# Callee PromptKit
+# Create a Callee role
 
 ## Invocation
 
-Use `$callee-promptkit <role request>`. This skill authors role files; use
-`$callee <task>` to run existing roles.
+Use `$callee-create-role <role request>`. This skill authors role files; use
+`$callee-run-role <task>` to run existing roles.
 
 ## Gather the role contract
 
@@ -17,8 +16,8 @@ Identify a PromptKit template that fits the request. Search or inspect the
 PromptKit catalog when the user did not name a template:
 
 ```bash
-npx --yes @baldaworks/callee@0.7.0 promptkit search "<capability>" --type template
-npx --yes @baldaworks/callee@0.7.0 promptkit show "<template>"
+npx --yes @baldaworks/callee@0.8.0 promptkit search "<capability>" --type template
+npx --yes @baldaworks/callee@0.8.0 promptkit show "<template>"
 ```
 
 Collect the Callee role ID, a concise description, template parameters, and
@@ -42,7 +41,7 @@ time with `--persona`. Never expose persona as a runtime role parameter.
 Run the generated command from the project directory:
 
 ```bash
-npx --yes @baldaworks/callee@0.7.0 promptkit role create "<role-id>" \
+npx --yes @baldaworks/callee@0.8.0 promptkit role create "<role-id>" \
   --template "<promptkit-template>" \
   --description "<role-description>" \
   --type "<codex|claude|opencode|copilot|grok|generic_acp>" \

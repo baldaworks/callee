@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,7 +24,8 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 			name:   "codex",
 			target: "codex",
 			wantCommands: [][]string{
-				{"codex", "plugin", "marketplace", "add", "baldaworks/callee", "--sparse", ".agents/plugins"},
+				{"codex", "plugin", "marketplace", "remove", "callee"},
+				{"codex", "plugin", "marketplace", "add", "baldaworks/callee", "--sparse", ".agents/plugins", "--sparse", "plugins/callee"},
 				{"codex", "plugin", "add", "callee@callee"},
 			},
 			wantType: "type: codex",
@@ -104,6 +107,50 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				t.Fatalf("stdout = %q", stdout.String())
 			}
 		})
+	}
+}
+
+func TestPrepareCodexMarketplaceIgnoresMissingRegistration(t *testing.T) {
+	original := runSetupCommand
+
+	t.Cleanup(func() { runSetupCommand = original })
+
+	runSetupCommand = func(_ context.Context, _ io.Writer, stderr io.Writer, _ string, _ ...string) error {
+		_, _ = fmt.Fprintln(stderr, "Error: marketplace `callee` is not configured or installed")
+
+		return errors.New("exit status 1")
+	}
+
+	var stderr bytes.Buffer
+	if err := prepareCodexMarketplace(context.Background(), &stderr); err != nil {
+		t.Fatal(err)
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestPrepareCodexMarketplaceReportsUnexpectedFailure(t *testing.T) {
+	original := runSetupCommand
+
+	t.Cleanup(func() { runSetupCommand = original })
+
+	runSetupCommand = func(_ context.Context, _ io.Writer, stderr io.Writer, _ string, _ ...string) error {
+		_, _ = fmt.Fprintln(stderr, "permission denied")
+
+		return errors.New("exit status 1")
+	}
+
+	var stderr bytes.Buffer
+
+	err := prepareCodexMarketplace(context.Background(), &stderr)
+	if err == nil || !strings.Contains(err.Error(), "remove existing Codex marketplace") {
+		t.Fatalf("prepareCodexMarketplace() error = %v", err)
+	}
+
+	if !strings.Contains(stderr.String(), "permission denied") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
@@ -190,8 +237,8 @@ func TestOpenCodeSetupPreservesAssetsUnlessForced(t *testing.T) {
 
 func TestOpenCodeSkillAssetsMatchPluginSkills(t *testing.T) {
 	for source, pluginPath := range map[string]string{
-		"assets/opencode/skills/callee/SKILL.md":           filepath.Join("..", "..", "plugins", "callee", "skills", "callee", "SKILL.md"),
-		"assets/opencode/skills/callee-promptkit/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "skills", "callee-promptkit", "SKILL.md"),
+		"assets/opencode/skills/callee-run-role/SKILL.md":    filepath.Join("..", "..", "plugins", "callee", "skills", "callee-run-role", "SKILL.md"),
+		"assets/opencode/skills/callee-create-role/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "skills", "callee-create-role", "SKILL.md"),
 	} {
 		want, err := os.ReadFile(pluginPath)
 		if err != nil {
@@ -211,8 +258,8 @@ func TestOpenCodeSkillAssetsMatchPluginSkills(t *testing.T) {
 
 func TestOpenCodeCommandAssetsLoadTheMatchingSkill(t *testing.T) {
 	for source, skill := range map[string]string{
-		"assets/opencode/commands/callee.md":           "callee",
-		"assets/opencode/commands/callee-promptkit.md": "callee-promptkit",
+		"assets/opencode/commands/callee.md":           "callee-run-role",
+		"assets/opencode/commands/callee-promptkit.md": "callee-create-role",
 	} {
 		data, err := openCodeAssets.ReadFile(source)
 		if err != nil {

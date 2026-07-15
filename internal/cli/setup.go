@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ const (
 
 type setupTarget struct {
 	name     string
+	prepare  func(context.Context, io.Writer) error
 	commands [][]string
 	role     string
 	install  func(bool) (setupInstallResult, error)
@@ -69,6 +71,12 @@ func setupCommand() *cobra.Command {
 }
 
 func installSetupTarget(ctx context.Context, stdout, stderr io.Writer, target setupTarget, force bool) error {
+	if target.prepare != nil {
+		if err := target.prepare(ctx, stderr); err != nil {
+			return err
+		}
+	}
+
 	for _, command := range target.commands {
 		if err := runSetupCommand(ctx, stdout, stderr, command[0], command[1:]...); err != nil {
 			return err
@@ -107,9 +115,10 @@ func setupTargetFor(name string) (setupTarget, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "codex":
 		return setupTarget{
-			name: "Codex",
+			name:    "Codex",
+			prepare: prepareCodexMarketplace,
 			commands: [][]string{
-				{"codex", "plugin", "marketplace", "add", "baldaworks/callee", "--sparse", ".agents/plugins"},
+				{"codex", "plugin", "marketplace", "add", "baldaworks/callee", "--sparse", ".agents/plugins", "--sparse", "plugins/callee"},
 				{"codex", "plugin", "add", "callee@callee"},
 			},
 			role: codexReviewerRole,
@@ -150,6 +159,34 @@ func setupTargetFor(name string) (setupTarget, error) {
 	default:
 		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, grok, copilot, or opencode)", name)
 	}
+}
+
+func prepareCodexMarketplace(ctx context.Context, stderr io.Writer) error {
+	var diagnostics bytes.Buffer
+
+	err := runSetupCommand(
+		ctx,
+		io.Discard,
+		&diagnostics,
+		"codex",
+		"plugin",
+		"marketplace",
+		"remove",
+		"callee",
+	)
+	if err != nil && strings.Contains(diagnostics.String(), "not configured or installed") {
+		return nil
+	}
+
+	if _, writeErr := io.Copy(stderr, &diagnostics); writeErr != nil {
+		return fmt.Errorf("write Codex marketplace diagnostics: %w", writeErr)
+	}
+
+	if err != nil {
+		return fmt.Errorf("remove existing Codex marketplace: %w", err)
+	}
+
+	return nil
 }
 
 func runSetupCommandDefault(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {

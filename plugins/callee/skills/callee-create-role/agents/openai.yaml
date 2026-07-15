@@ -1,0 +1,4 @@
+interface:
+  display_name: "Callee Create Role"
+  short_description: "Create Callee roles from PromptKit templates"
+  default_prompt: "Use $callee-create-role to create a Go code-review role for Codex."
