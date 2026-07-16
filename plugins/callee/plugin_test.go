@@ -28,9 +28,14 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"callee exec --role \"<selected-role-id>\"",
 		"--param \"<name>=<value>\" --json",
 		"callee agent --role \"<selected-role-id>\"",
-		"Configure the process runner to allocate a TTY.",
+		"Treat controlling-terminal support as a launch prerequisite, not a runtime",
+		"Before invoking `callee agent`, select and configure a process runner",
+		"Do not launch with a generic PTY merely to",
+		"Start the role only after the runner guarantees this arrangement.",
+		"terminal channel available for the lifetime of the process",
+		"capture stdout and stderr separately from terminal interaction.",
 		"Keep the same `callee agent` process alive",
-		"process writes that final Markdown artifact to stdout",
+		"final Markdown artifact to stdout",
 		"supply every parameter declared by the selected role",
 		"Do not pass `--param` or `--param-file` when continuing a thread.",
 		"setup <codex|claude|grok|copilot|opencode>",
@@ -55,7 +60,11 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		}
 	}
 
-	for _, forbidden := range []string{"role:<", "mcp", "reset:", "acp", "user-invocable:"} {
+	for _, forbidden := range []string{
+		"role:<", "mcp", "reset:", "acp", "user-invocable:",
+		"exec_command", "write_stdin", "session_id", "script -q", "/dev/tty",
+		"setsid", "tiocsctty", "openpty",
+	} {
 		if strings.Contains(strings.ToLower(text), forbidden) {
 			t.Fatalf("skill retains removed or user-visible syntax %q", forbidden)
 		}

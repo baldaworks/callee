@@ -116,21 +116,31 @@ callee agent --role "<selected-role-id>" \
   --param "<name>=<value>"
 ```
 
-Configure the process runner to allocate a TTY. Callee uses that terminal to
-collect missing declared parameters, present the role's follow-up questions,
-and receive answers. Supply parameter values already explicit in the request;
-let the TTY collect only values that remain missing. Do not treat missing
-declared parameters as evidence that a non-REPL role should be interactive.
-Keep stdout and stderr separately captured while providing the controlling
-TTY. Never use the combined TTY transcript as the stage result; consume the
-final artifact from stdout.
+Treat controlling-terminal support as a launch prerequisite, not a runtime
+probe. Before invoking `callee agent`, select and configure a process runner
+whose behavior guarantees that the child starts with a controlled PTY whose
+slave is its controlling terminal. Do not launch with a generic PTY merely to
+discover whether it is sufficient, and do not assume that an interactive input
+stream provides a controlling terminal. The child must be able to open its
+controlling terminal independently of stdin, stdout, and stderr.
 
-Keep the same `callee agent` process alive while its role asks follow-up
-questions. Send answers to that process's TTY; do not restart the command for
-each answer. While a role response requests information, answer it. Once the
-response is a completed artifact rather than a question, send `quit`. The
-process writes that final Markdown artifact to stdout and writes diagnostics to
-stderr. Use that Markdown as the stage result.
+Start the role only after the runner guarantees this arrangement. Keep a
+bidirectional terminal channel available for the lifetime of the process, and
+capture stdout and stderr separately from terminal interaction. If no available
+runner can make those guarantees, report that the interactive stage is
+unavailable; do not switch to `callee exec` or treat a combined transcript as
+the result.
+
+Supply parameter values already explicit in the request, and let the terminal
+collect only values that remain missing. Do not treat missing declared
+parameters as evidence that a non-REPL role should be interactive. Read role
+responses from the terminal channel and write answers back through that same
+channel. Keep the same `callee agent` process alive throughout the exchange;
+do not restart it for each answer. While a response requests information,
+answer it. Once the response is a completed artifact rather than a question,
+write `quit` to the terminal and wait for the process to exit. The process
+writes that final Markdown artifact to stdout and diagnostics to stderr. Use
+only that Markdown as the stage result.
 
 Do not pass `--thread-id` to start a replacement interactive process. REPL
 continuation happens inside the live TTY process. If that process is no longer
