@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -236,8 +237,9 @@ Task: {{ .Input }}
 		t.Errorf("stdout = %q, want %q", got, want)
 	}
 
+	diagnostics := stripANSI(stderr.String())
 	for _, want := range []string{"INF running agent", "id=roles/worker", "kind=Role", "visit=1", "INF agent finished", "status=completed", "outcome=return"} {
-		if !strings.Contains(stderr.String(), want) {
+		if !strings.Contains(diagnostics, want) {
 			t.Errorf("stderr = %q, want containing %q", stderr.String(), want)
 		}
 	}
@@ -249,6 +251,12 @@ Task: {{ .Input }}
 	if !process.closed {
 		t.Errorf("provider process was not closed before command return")
 	}
+}
+
+var ansiCSIPattern = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+
+func stripANSI(value string) string {
+	return ansiCSIPattern.ReplaceAllString(value, "")
 }
 
 func TestAgentRunRequiresTTYBeforeProviderFactory(t *testing.T) {

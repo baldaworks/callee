@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -67,9 +68,15 @@ func TestInitWritesHumanReadableConsoleDurations(t *testing.T) {
 
 	log.Info().Dur("duration", humanDuration).Msg("agent finished")
 
-	if got := output.String(); !strings.Contains(got, "duration=43.453998585s") {
+	if got := stripANSI(output.String()); !strings.Contains(got, "duration=43.453998585s") {
 		t.Fatalf("console output = %q, want human-readable duration", got)
 	}
+}
+
+var ansiCSIPattern = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+
+func stripANSI(value string) string {
+	return ansiCSIPattern.ReplaceAllString(value, "")
 }
 
 func TestJSONLineWriterWrapsCompleteAndPartialLines(t *testing.T) {

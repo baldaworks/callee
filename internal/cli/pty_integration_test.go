@@ -117,14 +117,15 @@ spec:
 		t.Errorf("stdout = %q, want %q", got, want)
 	}
 
+	diagnostics := stripANSI(stderr.String())
 	for _, expected := range []string{"INF running agent", "id=roles/worker", "kind=Role", "visit=1", "INF agent finished", "status=completed", "outcome=return"} {
-		if !strings.Contains(stderr.String(), expected) {
+		if !strings.Contains(diagnostics, expected) {
 			t.Errorf("stderr = %q, want containing %q", stderr.String(), expected)
 		}
 	}
 
 	for _, expected := range []string{"INF entering repl", "INF exiting repl"} {
-		contains := strings.Contains(stderr.String(), expected)
+		contains := strings.Contains(diagnostics, expected)
 		if contains != repl {
 			t.Errorf("stderr contains %q = %t, want %t; stderr=%q", expected, contains, repl, stderr.String())
 		}
