@@ -32,12 +32,12 @@ func promptKitCommand() *cobra.Command {
 
 func promptKitRoleCreateCommand() *cobra.Command {
 	var (
-		template, description, roleType, promptParam, output string
-		model, reasoning, mode, runtimeCommand               string
-		persona, format                                      string
-		bindings, bindingFiles, extraArgs                    []string
-		protocols, taxonomies                                []string
-		dryRun, force, noFormat, repl                        bool
+		template, description, providerType, promptParam, output string
+		model, reasoning, mode, runtimeCommand                   string
+		persona, format                                          string
+		bindings, bindingFiles, extraArgs                        []string
+		protocols, taxonomies                                    []string
+		dryRun, force, noFormat, repl                            bool
 	)
 
 	cmd := &cobra.Command{
@@ -96,7 +96,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 					Description: description,
 					REPL:        replValue,
 					Provider: &resource.Provider{
-						Type:      roleType,
+						Type:      providerType,
 						Cmd:       runtimeCommand,
 						Model:     model,
 						Reasoning: reasoning,
@@ -114,7 +114,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 
 	cmd.Flags().StringVar(&template, "template", "", "PromptKit template name")
 	cmd.Flags().StringVar(&description, "description", "", "role description")
-	cmd.Flags().StringVar(&roleType, "type", "", "Callee runtime type")
+	cmd.Flags().StringVar(&providerType, "provider", "", "Callee provider type")
 	cmd.Flags().StringVar(&promptParam, "prompt-param", "", "PromptKit parameter supplied by the user message")
 	cmd.Flags().StringArrayVar(&bindings, "bind", nil, "bind a PromptKit parameter as key=value; repeatable")
 	cmd.Flags().StringArrayVar(&bindingFiles, "bind-file", nil, "bind a PromptKit parameter as key=path; repeatable")
@@ -135,7 +135,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("format", "no-format")
 	_ = cmd.MarkFlagRequired("template")
 	_ = cmd.MarkFlagRequired("description")
-	_ = cmd.MarkFlagRequired("type")
+	_ = cmd.MarkFlagRequired("provider")
 	_ = cmd.MarkFlagRequired("prompt-param")
 
 	return cmd

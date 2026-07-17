@@ -46,6 +46,68 @@ func TestPromptKitCatalogCommandUsesPromptKitty(t *testing.T) {
 	}
 }
 
+func TestPromptKitRoleCreateUsesProviderFlag(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"promptkit", "role", "create", "--help"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute(promptkit role create --help) returned unexpected error: %v", err)
+	}
+
+	help := stdout.String()
+	if !strings.Contains(help, "--provider string") {
+		t.Errorf("promptkit role create help is missing --provider:\n%s", help)
+	}
+
+	if strings.Contains(help, "--type string") {
+		t.Errorf("promptkit role create help retains --type:\n%s", help)
+	}
+}
+
+func TestPromptKitRoleCreateRejectsTypeFlag(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"promptkit", "role", "create", "reviewer", "--type", "codex"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --type") {
+		t.Fatalf("Execute(promptkit role create --type) error = %v, want unknown flag", err)
+	}
+}
+
+func TestPromptKitRoleCreateRequiresProviderFlag(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"promptkit", "role", "create", "reviewer",
+		"--template", "review-code",
+		"--description", "Reviews code changes.",
+		"--prompt-param", "code",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `required flag(s) "provider" not set`) {
+		t.Fatalf("Execute(promptkit role create without --provider) error = %v, want required flag", err)
+	}
+}
+
+func TestPromptKitSearchRetainsComponentTypeFlag(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"promptkit", "search", "code review", "--type", "template", "--json"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute(promptkit search --type) returned unexpected error: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), `"type": "template"`) {
+		t.Errorf("promptkit search --type output does not contain templates:\n%s", stdout.String())
+	}
+}
+
 func TestPromptKitRoleCreate(t *testing.T) {
 	t.Chdir(t.TempDir())
 	contextPath := filepath.Join(t.TempDir(), "context.txt")
@@ -60,7 +122,7 @@ func TestPromptKitRoleCreate(t *testing.T) {
 		"promptkit", "role", "create", "reviewer",
 		"--template", "review-code",
 		"--description", "Reviews code changes.",
-		"--type", "codex",
+		"--provider", "codex",
 		"--repl",
 		"--prompt-param", "code",
 		"--bind", "language=Go",
@@ -144,7 +206,7 @@ func TestPromptKitRoleCreateDryRun(t *testing.T) {
 		"promptkit", "role", "create", "reviewer",
 		"--template", "review-code",
 		"--description", "Reviews code changes.",
-		"--type", "codex",
+		"--provider", "codex",
 		"--prompt-param", "code",
 		"--bind", "language=Go",
 		"--bind", "context=repository",

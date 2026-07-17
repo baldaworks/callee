@@ -263,7 +263,7 @@ callee promptkit show review-code
 callee promptkit role create go-reviewer \
   --template review-code \
   --description "Reviews Go code" \
-  --type codex \
+  --provider codex \
   --prompt-param code \
   --bind language=Go
 ```
