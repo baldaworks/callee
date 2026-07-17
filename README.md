@@ -77,7 +77,9 @@ callee agent run workflows/pipeline \
 
 Agents are discovered recursively below the user Callee config root and project `.callee`. Lowercase `.md`, `.yaml`, and `.yml` extensions are supported. Directories such as `roles/` and `workflows/` are optional ID namespaces; `kind` alone determines behavior. The final extension is removed from the ID, so `.callee/roles/reviewer.md` and `.callee/roles/reviewer.yaml` both have ID `roles/reviewer` and conflict if both exist. IDs must be unique across roots and formats.
 
-All agents use the same Kubernetes-style envelope and fixed [Draft 2020-12 JSON Schema](https://callee.metalagman.dev/schema/v1alpha1/agent.json). In Markdown, the physical body is canonical `spec.body` and must not also appear in frontmatter. A YAML file is one complete object and must author `spec.body` directly.
+All agents use the same Kubernetes-style `apiVersion`/`kind`/`spec` envelope.
+
+## Agent kinds
 
 ### Role
 
@@ -89,11 +91,6 @@ spec:
   description: Reviews changes.
   provider:
     type: codex
-    model: gpt-5.6-sol
-    reasoning: high
-    mode: review
-    timeout: 15m
-  repl: false
   params:
     focus: Review focus
 ---
@@ -108,26 +105,9 @@ Focus:
 
 A Role body must contain exactly one unconditional bare `{{ .Prompt }}` or `{{ .Input }}` insertion. `.Prompt` is the immutable original root prompt; `.Input` is this node occurrence's rendered input.
 
-The same Role as a complete YAML object is:
-
-```yaml
-# yaml-language-server: $schema=https://callee.metalagman.dev/schema/v1alpha1/agent.json
-apiVersion: callee.metalagman.dev/v1alpha1
-kind: Role
-spec:
-  description: Reviews changes.
-  provider:
-    type: codex
-  body: |
-    You are a reviewer.
-
-    Task:
-    {{ .Input }}
-```
-
-`agent validate` performs schema, semantic, state, and template validation for exactly one file. It intentionally does not resolve workflow child references; use `agent view <id>` or `doctor` to validate the discovered graph.
-
 Supported provider types are `codex`, `claude`, `opencode`, `copilot`, `grok`, and `generic_acp`. `generic_acp` requires `spec.provider.cmd`. Gemini is not supported.
+
+See the runnable [`reviewer`](examples/roles/reviewer.md) example.
 
 ### Sequential
 
@@ -157,9 +137,79 @@ spec:
 
 ### Loop
 
-See [`examples/workflows/goalkeeper.md`](examples/workflows/goalkeeper.md). A `Loop` repeats its ordered children up to `maxIterations`. It consumes escalation from a direct child and completes. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1.
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Loop
+spec:
+  description: Repeats a worker and validator until the validator escalates.
+  children:
+    - ref: roles/implementer
+      alias: worker
+      input: |
+        Goal:
+        {{ .Input }}
+
+        {{ with index .State.outputs "validator" }}
+        Previous validation:
+        {{ . }}
+        {{ end }}
+    - ref: roles/reviewer
+      alias: validator
+      input: |
+        Goal:
+        {{ .Input }}
+
+        Worker result:
+        {{ .State.outputs.worker }}
+
+        Validate the result. If it satisfies the goal, return your validation
+        and escalate to finish the loop. Otherwise return actionable feedback
+        normally so the next iteration can improve it.
+  maxIterations: 5
+  onExhausted: fail
+  output: |
+    GoalKeeper finished with result:
+    {{ .State.outputs.validator }}
+---
+{{ .Input }}
+```
+
+A `Loop` repeats its ordered children up to `maxIterations`. It consumes escalation from a direct child and completes. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
+
+### Children and composition
 
 Children may reference any supported kind, including another `Loop`. A child mapping supports `ref`, optional globally unique `alias`, `input`, shallow `state`, and Role-only `params`. Aliases match `^[a-z][a-z0-9_]*$` and replace the occurrence's effective ID.
+
+## YAML representation and JSON Schema
+
+Markdown is the canonical authoring format: its physical body becomes `spec.body` and `spec.body` must not also appear in frontmatter. A `.yaml` or `.yml` file represents the same complete resource object and must author `spec.body` inline.
+
+Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. For editor integration, use the raw schema from the repository:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Reviews changes.
+  provider:
+    type: codex
+  params:
+    focus: Review focus
+  body: |
+    You are a reviewer.
+
+    Task:
+    {{ .Input }}
+
+    Focus:
+    {{ .Params.focus }}
+```
+
+This YAML object is canonically identical to the Markdown Role above. The same representation rule applies to `Sequential` and `Loop`.
+
+`agent validate` performs schema, semantic, state, and template validation for exactly one file. It intentionally does not resolve workflow child references; use `agent view <id>` or `doctor` to validate the discovered graph.
 
 ## Templates and state
 

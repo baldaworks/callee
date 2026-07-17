@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/baldaworks/callee/internal/agent"
 )
 
 const releaseVersion = "0.10.0"
@@ -275,6 +278,123 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 			t.Errorf("README is missing audited text %q", want)
 		}
 	}
+}
+
+func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(data)
+	headings := []string{
+		"### Role",
+		"### Sequential",
+		"### Loop",
+		"## YAML representation and JSON Schema",
+	}
+
+	previous := -1
+
+	for _, heading := range headings {
+		index := strings.Index(text, heading)
+		if index < 0 {
+			t.Fatalf("README is missing heading %q", heading)
+		}
+
+		if index <= previous {
+			t.Fatalf("README heading %q is out of kind-first order", heading)
+		}
+
+		previous = index
+	}
+
+	markdownExamples := []struct {
+		id           string
+		startHeading string
+		endHeading   string
+		wantKind     agent.Kind
+	}{
+		{id: "roles/reviewer", startHeading: "### Role", endHeading: "### Sequential", wantKind: agent.RoleKind},
+		{id: "workflows/pipeline", startHeading: "### Sequential", endHeading: "### Loop", wantKind: agent.SequentialKind},
+		{id: "workflows/goalkeeper", startHeading: "### Loop", endHeading: "### Children and composition", wantKind: agent.LoopKind},
+	}
+
+	var markdownRole agent.Resource
+
+	for _, example := range markdownExamples {
+		encoded := readmeFence(t, text, example.startHeading, example.endHeading, "markdown")
+
+		resource, err := agent.DecodeMarkdown(example.id, example.id+".md", []byte(encoded))
+		if err != nil {
+			t.Fatalf("decode README %s example: %v", example.wantKind, err)
+		}
+
+		if resource.Kind != example.wantKind {
+			t.Errorf("README %s example kind = %s", example.wantKind, resource.Kind)
+		}
+
+		if resource.Kind == agent.RoleKind {
+			markdownRole = resource
+		}
+	}
+
+	yamlExample := readmeFence(t, text, "## YAML representation and JSON Schema", "## Templates and state", "yaml")
+
+	yamlRole, err := agent.DecodeYAML("roles/reviewer", "roles/reviewer.yaml", []byte(yamlExample))
+	if err != nil {
+		t.Fatalf("decode README YAML Role example: %v", err)
+	}
+
+	markdownRole.Source = ""
+
+	yamlRole.Source = ""
+	if !reflect.DeepEqual(yamlRole, markdownRole) {
+		t.Errorf("README YAML Role does not match Markdown Role:\nYAML:     %#v\nMarkdown: %#v", yamlRole, markdownRole)
+	}
+
+	const rawSchemaURL = "https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json"
+	if !strings.Contains(text, rawSchemaURL) {
+		t.Errorf("README is missing raw schema URL %q", rawSchemaURL)
+	}
+
+	const unavailableSchemaURL = "https://callee.metalagman.dev/schema/v1alpha1/agent.json"
+	if strings.Contains(text, unavailableSchemaURL) {
+		t.Errorf("README contains unavailable schema URL %q", unavailableSchemaURL)
+	}
+}
+
+func readmeFence(t *testing.T, text, startHeading, endHeading, language string) string {
+	t.Helper()
+
+	start := strings.Index(text, startHeading)
+	if start < 0 {
+		t.Fatalf("README is missing section %q", startHeading)
+	}
+
+	section := text[start:]
+
+	end := strings.Index(section, "\n"+endHeading)
+	if end < 0 {
+		t.Fatalf("README section %q is missing end heading %q", startHeading, endHeading)
+	}
+
+	section = section[:end]
+	opener := "```" + language + "\n"
+
+	codeStart := strings.Index(section, opener)
+	if codeStart < 0 {
+		t.Fatalf("README section %q is missing a %s fence", startHeading, language)
+	}
+
+	code := section[codeStart+len(opener):]
+
+	codeEnd := strings.Index(code, "\n```")
+	if codeEnd < 0 {
+		t.Fatalf("README section %q has an unterminated %s fence", startHeading, language)
+	}
+
+	return code[:codeEnd]
 }
 
 func TestPluginHasNoLegacyCommands(t *testing.T) {
