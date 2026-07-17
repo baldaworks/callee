@@ -55,11 +55,11 @@ func writeSetupFile(path string, content []byte, force bool) (bool, error) {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), reviewerDirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), setupDirMode); err != nil {
 		return false, fmt.Errorf("create parent directory: %w", err)
 	}
 
-	if err := os.WriteFile(path, content, reviewerFileMode); err != nil {
+	if err := os.WriteFile(path, content, setupFileMode); err != nil {
 		return false, fmt.Errorf("write file: %w", err)
 	}
 

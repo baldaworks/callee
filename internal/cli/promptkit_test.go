@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/baldaworks/callee/internal/role"
+	"github.com/baldaworks/callee/internal/agent"
 	"github.com/baldaworks/promptkitty"
 )
 
@@ -87,53 +87,53 @@ func TestPromptKitRoleCreate(t *testing.T) {
 		t.Fatalf("os.ReadFile(generated role) returned unexpected error: %v", err)
 	}
 
-	generated, err := role.Parse("reviewer", data, role.Defaults{API: role.CurrentAPI, Kind: role.RoleKind})
+	generated, err := agent.DecodeMarkdown("reviewer", "reviewer.md", data)
 	if err != nil {
-		t.Fatalf("role.Parse(generated role) returned unexpected error: %v", err)
+		t.Fatalf("agent.DecodeMarkdown(generated role) returned unexpected error: %v", err)
 	}
 
-	if generated.API() != role.CurrentAPI || generated.Kind() != role.RoleKind {
-		t.Fatalf("generated identity = %q/%q", generated.API(), generated.Kind())
+	if generated.APIVersion != agent.APIVersion || generated.Kind != agent.RoleKind {
+		t.Fatalf("generated identity = %q/%q", generated.APIVersion, generated.Kind)
 	}
 
-	if !generated.Metadata.REPL {
+	if !generated.REPL() {
 		t.Fatal("generated repl = false, want true")
 	}
 
-	wantProvider := role.Provider{
+	wantProvider := &agent.Provider{
 		Type: "codex", Model: "gpt-5-codex", Reasoning: "high",
 		Mode: "review", ExtraArgs: []string{"--sandbox"},
 	}
-	if !reflect.DeepEqual(generated.Metadata.Provider, wantProvider) {
-		t.Fatalf("generated provider = %#v, want %#v", generated.Metadata.Provider, wantProvider)
+	if !reflect.DeepEqual(generated.Spec.Provider, wantProvider) {
+		t.Fatalf("generated provider = %#v, want %#v", generated.Spec.Provider, wantProvider)
 	}
 
 	wantParams := map[string]string{
 		"additional_protocols": "Optional — specific protocols to apply (e.g., memory-safety-c, thread-safety)",
 		"review_focus":         "What to focus on — e.g., correctness, security, performance, all",
 	}
-	if !reflect.DeepEqual(generated.Metadata.Params, wantParams) {
-		t.Errorf("generated params = %#v, want %#v", generated.Metadata.Params, wantParams)
+	if !reflect.DeepEqual(generated.Spec.Params, wantParams) {
+		t.Errorf("generated params = %#v, want %#v", generated.Spec.Params, wantParams)
 	}
 
-	if got := strings.Count(generated.Template, "{{ prompt }}"); got != 1 {
+	if got := strings.Count(generated.Spec.Body, "{{ .Input }}"); got != 1 {
 		t.Errorf("generated prompt placeholder count = %d, want 1", got)
 	}
 
 	for _, name := range sortedKeys(wantParams) {
-		if got := strings.Count(generated.Template, "{{ "+name+" }}"); got != 1 {
+		if got := strings.Count(generated.Spec.Body, `{{ index .Params "`+name+`" }}`); got != 1 {
 			t.Errorf("generated %q placeholder count = %d, want 1", name, got)
 		}
 	}
 
 	for _, want := range []string{contextValue, "the user message supplied in the Runtime Input section", "the `review_focus` value supplied in the Runtime Input section"} {
-		if !strings.Contains(generated.Template, want) {
+		if !strings.Contains(generated.Spec.Body, want) {
 			t.Errorf("generated role does not contain %q", want)
 		}
 	}
 
-	if strings.Contains(generated.Template, "{{ language }}") || strings.Contains(generated.Template, "{{ context }}") {
-		t.Errorf("generated role retained a compile-time binding:\n%s", generated.Template)
+	if strings.Contains(generated.Spec.Body, "{{ language }}") || strings.Contains(generated.Spec.Body, "{{ context }}") {
+		t.Errorf("generated role retained a compile-time binding:\n%s", generated.Spec.Body)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestPromptKitRoleCreateDryRun(t *testing.T) {
 		t.Errorf("dry run created %q: %v", output, err)
 	}
 
-	if !strings.Contains(stdout.String(), "# Runtime Input") || !strings.Contains(stdout.String(), "{{ prompt }}") {
+	if !strings.Contains(stdout.String(), "# Runtime Input") || !strings.Contains(stdout.String(), "{{ .Input }}") {
 		t.Errorf("dry-run output is not a role:\n%s", stdout.String())
 	}
 
@@ -284,13 +284,22 @@ func TestEveryPromptKitTemplateCompilesToRole(t *testing.T) {
 				t.Fatalf("Library.Assemble(%q) returned unexpected error: %v", template.Name, err)
 			}
 
-			generated := role.Role{
-				ID:       template.Name,
-				Metadata: role.Metadata{API: role.CurrentAPI, Kind: role.RoleKind, Description: template.Description, Provider: role.Provider{Type: "codex"}, Params: params},
-				Template: promptKitRoleBody(promptParam, params, assembled.Markdown),
+			repl := false
+
+			generated := agent.Resource{
+				ID:         template.Name,
+				APIVersion: agent.APIVersion,
+				Kind:       agent.RoleKind,
+				Spec: agent.Spec{
+					Description: template.Description,
+					Provider:    &agent.Provider{Type: "codex"},
+					REPL:        &repl,
+					Params:      params,
+					Body:        promptKitRoleBody(promptParam, params, assembled.Markdown),
+				},
 			}
 			if err := generated.Validate(); err != nil {
-				t.Errorf("generated Role.Validate(%q) returned unexpected error: %v", template.Name, err)
+				t.Errorf("generated Resource.Validate(%q) returned unexpected error: %v", template.Name, err)
 			}
 		})
 	}

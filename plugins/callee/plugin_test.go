@@ -19,71 +19,28 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	text := string(data)
 	for _, want := range []string{
 		"name: run-role",
-		"Try `callee --version`.",
 		"npx --yes @baldaworks/callee@" + releaseVersion,
-		"callee role list --json",
-		"`params` object containing",
-		"role view \"<selected-role-id>\" --json",
-		"top-level `repl` value as",
-		"callee exec --role \"<selected-role-id>\"",
-		"--param \"<name>=<value>\" --json",
-		"callee agent --role \"<selected-role-id>\"",
-		"Treat controlling-terminal support as a launch prerequisite, not a runtime",
-		"Before invoking `callee agent`, select and configure a process runner",
-		"Do not launch with a generic PTY merely to",
-		"Start the role only after the runner guarantees this arrangement.",
-		"terminal channel available for the lifetime of the process",
-		"capture stdout and stderr separately from terminal interaction.",
-		"Keep the same `callee agent` process alive",
-		"final Markdown artifact to stdout",
-		"supply every parameter declared by the selected role",
-		"Do not pass `--param` or `--param-file` when continuing a thread.",
+		"callee agent list --json",
+		"callee agent view \"<agent-id>\" --json",
+		"callee agent run \"<agent-id>\"",
+		"--param \"<effective-node-id>.<name>=<value>\"",
+		"real controlling PTY",
+		"Keep terminal interaction separate from stdout and stderr.",
+		"Do not send `quit`, `exit`, `/done`",
+		"artifact is written to stdout only after provider cleanup succeeds",
+		"does not define `Parallel`",
 		"setup <codex|claude|grok|copilot|opencode>",
-		"--thread-id \"<opaque-thread-handle>\" --message \"<stage task>\"",
-		"Do not pass `--timeout` on the first attempt.",
-		"Callee uses `provider.timeout`",
-		"otherwise uses the CLI default of 15 minutes.",
-		"first attempt ends specifically because its timeout expired, retry the same",
-		"stage with an explicit, larger `--timeout`.",
-		"Run independent discovery or review stages in parallel.",
-		"When the user naturally names a role, resolve that mention against the",
-		"Run that role as the required first stage. Do not silently substitute a",
-		"A naturally named role is a first-stage constraint, not an exclusive lock.",
-		"If a named role has no unambiguous catalog match, ask a concise clarification",
-		"For a dependent stage, include the original task and a concise handoff with",
-		"actionable findings, evidence and provenance, relevant files, constraints, and",
-		"Keep only this short-lived routing state in the current host conversation",
-		"continued in a new conversation. Do not expose handles, role IDs, or",
+		"Do not add Gemini",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("skill is missing %q", want)
 		}
 	}
 
-	for _, forbidden := range []string{
-		"role:<", "mcp", "reset:", "acp", "user-invocable:",
-		"exec_command", "write_stdin", "session_id", "script -q", "/dev/tty",
-		"setsid", "tiocsctty", "openpty",
-	} {
+	for _, forbidden := range []string{"callee exec", "callee role", "--thread-id", "--role", "type: gemini"} {
 		if strings.Contains(strings.ToLower(text), forbidden) {
 			t.Fatalf("skill retains removed or user-visible syntax %q", forbidden)
 		}
-	}
-
-	if strings.Contains(text, "--thread-id <thread-id>") {
-		t.Fatal("skill exposes an explicit user thread syntax")
-	}
-
-	if !strings.Contains(text, "--param \"<name>=<value>\" --json") {
-		t.Fatal("one-shot dispatch must use JSON output")
-	}
-
-	if strings.Contains(text, "callee prompt --role") || strings.Contains(text, "provider.repl") {
-		t.Fatal("skill retains the removed prompt command or nested REPL field")
-	}
-
-	if strings.Contains(text, "--timeout 15m") {
-		t.Fatal("skill overrides the role and CLI timeout on its first attempt")
 	}
 }
 
@@ -96,43 +53,23 @@ func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
 	text := string(data)
 	for _, want := range []string{
 		"name: create-role",
-		"Try `callee --version`.",
 		"npx --yes @baldaworks/callee@" + releaseVersion,
-		"two to four short capability queries",
-		"callee promptkit search \"<capability>\" --type template --json",
-		"callee promptkit list --json",
-		"callee promptkit show \"<template>\" --json",
-		"Present at most three candidates.",
-		"wait for the user to confirm",
-		"author-requirements-doc",
-		"author-design-doc",
-		"author-architecture-spec",
 		"callee promptkit role create",
-		"--prompt-param",
-		"--bind",
-		"--bind-file",
-		"top-level `params` map",
-		"--persona",
-		"--protocol",
-		"--taxonomy",
-		"--no-format",
-		"default or infer a type.",
-		"nested `provider` section",
-		"## Decide the interaction mode",
-		"expected to ask model-led follow-up questions",
-		"Do not enable REPL merely because the role has unbound runtime parameters.",
-		"Pass `--repl` only for a positive decision.",
-		"PromptKit does not perform this semantic",
-		"--repl",
-		"--dry-run",
+		"apiVersion: callee.metalagman.dev/v1alpha1",
+		"kind: Role",
+		"spec.provider",
+		"{{ .Input }}",
+		"{{ .Params.focus }}",
+		"exactly one unconditional bare",
+		"callee agent view \"<resource-id>\" --json",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("PromptKit skill is missing %q", want)
 		}
 	}
 
-	for _, forbidden := range []string{"mcp", "type: gemini", "role:<", "user-invocable:"} {
-		if strings.Contains(strings.ToLower(text), forbidden) {
+	for _, forbidden := range []string{"type: gemini", "api: callee", "kind: role", "{{ prompt }}"} {
+		if strings.Contains(text, forbidden) {
 			t.Errorf("PromptKit skill contains forbidden syntax %q", forbidden)
 		}
 	}
@@ -232,7 +169,7 @@ func TestCodexSkillMetadataUsesPublicNames(t *testing.T) {
 
 func TestPublicMetadataUsesProviderAwarePositioning(t *testing.T) {
 	for path, want := range map[string]string{
-		filepath.Join("..", "..", "README.md"):                             "## Provider-aware subagent roles, described in Markdown",
+		filepath.Join("..", "..", "README.md"):                             "## Markdown-defined agents and deterministic workflows",
 		filepath.Join(".claude-plugin", "plugin.json"):                     "Run provider-aware subagent roles described in Markdown.",
 		filepath.Join(".codex-plugin", "plugin.json"):                      "Provider-aware subagent roles in Markdown.",
 		filepath.Join(".grok-plugin", "plugin.json"):                       "Run provider-aware subagent roles described in Markdown.",
@@ -284,18 +221,6 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	}
 
 	text := string(data)
-	quickStartStart := strings.Index(text, "## Quick start")
-	wedgeStart := strings.Index(text, "## The wedge")
-	integrationsStart := strings.Index(text, "## Host integrations")
-	rolesStart := strings.Index(text, "## Roles")
-
-	if quickStartStart < 0 || wedgeStart < 0 || integrationsStart < 0 || rolesStart < 0 {
-		t.Fatal("README is missing a required landing-page section")
-	}
-
-	hero := text[:quickStartStart]
-	quickStart := text[quickStartStart:wedgeStart]
-	integrations := text[integrationsStart:rolesStart]
 	hosts := []struct {
 		name   string
 		target string
@@ -307,54 +232,23 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 		{name: "OpenCode", target: "opencode"},
 	}
 
-	for _, section := range []struct {
-		name string
-		text string
-	}{
-		{name: "hero", text: hero},
-		{name: "host integrations", text: integrations},
-	} {
-		previous := -1
-
-		for _, host := range hosts {
-			row := "| " + host.name + " | `npx --yes @baldaworks/callee@latest setup " + host.target + "` |"
-			index := strings.Index(section.text, row)
-
-			if index < 0 {
-				t.Errorf("README %s is missing setup row %q", section.name, row)
-
-				continue
-			}
-
-			if index <= previous {
-				t.Errorf("README %s places %s outside the canonical host order", section.name, host.name)
-			}
-
-			previous = index
-		}
-	}
-
 	previous := -1
 
 	for _, host := range hosts {
-		heading := "#### " + host.name
-		index := strings.Index(integrations, heading)
+		row := "| " + host.name + " | `callee setup " + host.target + "` |"
+		index := strings.Index(text, row)
 
 		if index < 0 {
-			t.Errorf("README manual installation is missing heading %q", heading)
+			t.Errorf("README is missing setup row %q", row)
 
 			continue
 		}
 
 		if index <= previous {
-			t.Errorf("README manual installation places %s outside the canonical host order", host.name)
+			t.Errorf("README places %s outside the canonical host order", host.name)
 		}
 
 		previous = index
-	}
-
-	if strings.Contains(strings.ToLower(quickStart), "codex") {
-		t.Error("README quick start singles out Codex")
 	}
 
 	for _, forbidden := range []string{
@@ -362,8 +256,9 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 		"setup <host>",
 		"@0.10.0 setup",
 		"Flat frontmatter",
-		"--type codex",
 		"For Codex:",
+		"callee exec --role",
+		"{{ prompt }}",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("README contains host-biased or stale text %q", forbidden)
@@ -371,9 +266,10 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"Nested provider frontmatter",
-		"Supported types: `codex`, `claude`, `grok`, `copilot`, `opencode`, and",
-		"--type generic_acp",
+		"apiVersion: callee.metalagman.dev/v1alpha1",
+		"kind: Role",
+		"callee agent run workflows/goalkeeper",
+		"callee doctor --graph mermaid",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("README is missing audited text %q", want)

@@ -5,26 +5,23 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 const (
-	reviewerRolePath = ".callee/roles/reviewer.md"
-	reviewerDirMode  = 0o755
-	reviewerFileMode = 0o644
+	setupDirMode  = 0o755
+	setupFileMode = 0o644
 )
 
 type setupTarget struct {
-	name     string
-	prepare  func(context.Context, io.Writer) error
-	commands [][]string
-	role     string
-	install  func(bool) (setupInstallResult, error)
+	name         string
+	prepare      func(context.Context, io.Writer) error
+	commands     [][]string
+	providerType string
+	install      func(bool) (setupInstallResult, error)
 }
 
 type setupInstallResult struct {
@@ -39,7 +36,7 @@ func setupCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "setup <codex|claude|grok|copilot|opencode>",
-		Short: "Install a host integration and create a reviewer role",
+		Short: "Install a host integration and starter agents",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target, err := setupTargetFor(args[0])
@@ -51,18 +48,12 @@ func setupCommand() *cobra.Command {
 				return err
 			}
 
-			created, err := writeReviewerRole(target.role, force)
+			result, err := writeStarterAgents(target.providerType, force)
 			if err != nil {
 				return err
 			}
 
-			if created {
-				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Created %s for %s.\n", reviewerRolePath, target.name)
-			} else {
-				_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s already exists; leaving it unchanged.\n", reviewerRolePath)
-			}
-
-			return err
+			return reportStarterAgentInstall(cmd.OutOrStdout(), target.name, result)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing setup files")
@@ -115,46 +106,46 @@ func setupTargetFor(name string) (setupTarget, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "codex":
 		return setupTarget{
-			name:    "Codex",
-			prepare: prepareCodexMarketplace,
+			name:         "Codex",
+			providerType: "codex",
+			prepare:      prepareCodexMarketplace,
 			commands: [][]string{
 				{"codex", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"codex", "plugin", "add", "callee@callee"},
 			},
-			role: codexReviewerRole,
 		}, nil
 	case "claude":
 		return setupTarget{
-			name: "Claude Code",
+			name:         "Claude Code",
+			providerType: "claude",
 			commands: [][]string{
 				{"claude", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"claude", "plugin", "install", "callee@callee", "--scope", "project"},
 			},
-			role: claudeReviewerRole,
 		}, nil
 	case "grok":
 		return setupTarget{
-			name: "Grok Build",
+			name:         "Grok Build",
+			providerType: "grok",
 			commands: [][]string{
 				{"grok", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"grok", "plugin", "install", "callee@callee", "--trust"},
 			},
-			role: grokReviewerRole,
 		}, nil
 	case "copilot":
 		return setupTarget{
-			name: "Copilot CLI",
+			name:         "Copilot CLI",
+			providerType: "copilot",
 			commands: [][]string{
 				{"copilot", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"copilot", "plugin", "install", "callee@callee"},
 			},
-			role: copilotReviewerRole,
 		}, nil
 	case "opencode":
 		return setupTarget{
-			name:    "OpenCode",
-			role:    openCodeReviewerRole,
-			install: writeOpenCodeIntegration,
+			name:         "OpenCode",
+			providerType: "opencode",
+			install:      writeOpenCodeIntegration,
 		}, nil
 	default:
 		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, grok, copilot, or opencode)", name)
@@ -200,112 +191,3 @@ func runSetupCommandDefault(ctx context.Context, stdout, stderr io.Writer, name 
 
 	return nil
 }
-
-func writeReviewerRole(content string, force bool) (bool, error) {
-	path := filepath.FromSlash(reviewerRolePath)
-	if !force {
-		if _, err := os.Stat(path); err == nil {
-			return false, nil
-		} else if !os.IsNotExist(err) {
-			return false, fmt.Errorf("check existing reviewer role: %w", err)
-		}
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), reviewerDirMode); err != nil {
-		return false, fmt.Errorf("create reviewer role directory: %w", err)
-	}
-
-	if err := os.WriteFile(path, []byte(content), reviewerFileMode); err != nil {
-		return false, fmt.Errorf("write reviewer role: %w", err)
-	}
-
-	return true, nil
-}
-
-const codexReviewerRole = `---
-api: callee.metalagman.dev
-kind: role
-description: Reviews code changes for correctness and regressions.
-provider:
-  type: codex
-  model: gpt-5-codex
-  reasoning: high
-  mode: review
----
-
-You are an independent code reviewer.
-
-Review the following task:
-
-{{ prompt }}
-
-Do not modify files. Return concrete, evidence-backed findings.
-`
-
-const claudeReviewerRole = `---
-api: callee.metalagman.dev
-kind: role
-description: Reviews code changes for correctness and regressions.
-provider:
-  type: claude
----
-
-You are an independent code reviewer.
-
-Review the following task:
-
-{{ prompt }}
-
-Do not modify files. Return concrete, evidence-backed findings.
-`
-
-const grokReviewerRole = `---
-api: callee.metalagman.dev
-kind: role
-description: Reviews code changes for correctness and regressions.
-provider:
-  type: grok
----
-
-You are an independent code reviewer.
-
-Review the following task:
-
-{{ prompt }}
-
-Do not modify files. Return concrete, evidence-backed findings.
-`
-
-const copilotReviewerRole = `---
-api: callee.metalagman.dev
-kind: role
-description: Reviews code changes for correctness and regressions.
-provider:
-  type: copilot
----
-
-You are an independent code reviewer.
-
-Review the following task:
-
-{{ prompt }}
-
-Do not modify files. Return concrete, evidence-backed findings.
-`
-
-const openCodeReviewerRole = `---
-api: callee.metalagman.dev
-kind: role
-description: Reviews code changes for correctness and regressions.
-provider:
-  type: opencode
----
-
-You are an independent code reviewer.
-
-Review the following task:
-
-{{ prompt }}
-
-Do not modify files. Return concrete, evidence-backed findings.
-`

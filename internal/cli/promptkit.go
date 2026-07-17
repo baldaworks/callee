@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/baldaworks/callee/internal/role"
+	resource "github.com/baldaworks/callee/internal/agent"
 	"github.com/baldaworks/promptkitty"
 	promptkittycli "github.com/baldaworks/promptkitty/cli"
 	"github.com/spf13/cobra"
@@ -81,24 +81,34 @@ func promptKitRoleCreateCommand() *cobra.Command {
 				return fmt.Errorf("PromptKit output must not include YAML frontmatter")
 			}
 
-			metadata := role.Metadata{
-				API:         role.CurrentAPI,
-				Kind:        role.RoleKind,
-				Description: description,
-				REPL:        repl,
-				Provider: role.Provider{
-					Type:      roleType,
-					Cmd:       runtimeCommand,
-					Model:     model,
-					Reasoning: reasoning,
-					Mode:      mode,
-					ExtraArgs: extraArgs,
-				},
-				Params: runtimeParams,
-			}
-			body := promptKitRoleBody(promptParam, runtimeParams, assembled.Markdown)
+			var replValue *bool
 
-			return writePromptKitRole(cmd, args[0], output, body, metadata, dryRun, force)
+			if repl {
+				enabled := true
+				replValue = &enabled
+			}
+
+			generated := resource.Resource{
+				APIVersion: resource.APIVersion,
+				Kind:       resource.RoleKind,
+				ID:         args[0],
+				Spec: resource.Spec{
+					Description: description,
+					REPL:        replValue,
+					Provider: &resource.Provider{
+						Type:      roleType,
+						Cmd:       runtimeCommand,
+						Model:     model,
+						Reasoning: reasoning,
+						Mode:      mode,
+						ExtraArgs: extraArgs,
+					},
+					Params: runtimeParams,
+				},
+			}
+			generated.Spec.Body = promptKitRoleBody(promptParam, runtimeParams, assembled.Markdown)
+
+			return writePromptKitRole(cmd, args[0], output, generated, dryRun, force)
 		},
 	}
 
@@ -236,22 +246,36 @@ func promptKitRoleBody(promptParam string, params map[string]string, assembled s
 	var body strings.Builder
 	body.WriteString("# Runtime Input\n\nPromptKit parameter `")
 	body.WriteString(promptParam)
-	body.WriteString("`:\n\n{{ prompt }}")
+	body.WriteString("`:\n\n{{ .Input }}")
 
 	for _, name := range sortedKeys(params) {
 		body.WriteString("\n\nPromptKit parameter `")
 		body.WriteString(name)
 		body.WriteString("` — ")
 		body.WriteString(params[name])
-		body.WriteString(":\n\n{{ ")
-		body.WriteString(name)
+		body.WriteString(":\n\n{{ index .Params ")
+		body.WriteString(fmt.Sprintf("%q", name))
 		body.WriteString(" }}")
 	}
 
 	body.WriteString("\n\n---\n\n")
-	body.WriteString(assembled)
+	body.WriteString(escapeGoTemplateText(assembled))
 
 	return body.String()
+}
+
+func escapeGoTemplateText(value string) string {
+	const (
+		openMarker  = "\ufdd0CALLEE_OPEN_TEMPLATE\ufdd1"
+		closeMarker = "\ufdd0CALLEE_CLOSE_TEMPLATE\ufdd1"
+	)
+
+	value = strings.ReplaceAll(value, "{{", openMarker)
+	value = strings.ReplaceAll(value, "}}", closeMarker)
+	value = strings.ReplaceAll(value, openMarker, `{{ "{{" }}`)
+	value = strings.ReplaceAll(value, closeMarker, `{{ "}}" }}`)
+
+	return value
 }
 
 func sortedKeys(values map[string]string) []string {
@@ -265,24 +289,24 @@ func sortedKeys(values map[string]string) []string {
 	return keys
 }
 
-func writePromptKitRole(cmd *cobra.Command, roleID, output, body string, metadata role.Metadata, dryRun, force bool) error {
+func writePromptKitRole(cmd *cobra.Command, roleID, output string, generated resource.Resource, dryRun, force bool) error {
 	path, err := generatedRolePath(roleID, output)
 	if err != nil {
 		return err
 	}
 
-	generated, err := marshalPromptKitRole(role.Role{ID: roleID, Metadata: metadata, Template: body})
+	contents, err := marshalPromptKitRole(generated)
 	if err != nil {
 		return err
 	}
 
 	if dryRun {
-		_, err = cmd.OutOrStdout().Write(generated)
+		_, err = cmd.OutOrStdout().Write(contents)
 
 		return err
 	}
 
-	if err := writeGeneratedRole(path, generated, force); err != nil {
+	if err := writeGeneratedRole(path, contents, force); err != nil {
 		return err
 	}
 
@@ -291,16 +315,12 @@ func writePromptKitRole(cmd *cobra.Command, roleID, output, body string, metadat
 	return err
 }
 
-func marshalPromptKitRole(generated role.Role) ([]byte, error) {
-	if strings.HasPrefix(strings.TrimSpace(generated.Template), "---") {
+func marshalPromptKitRole(generated resource.Resource) ([]byte, error) {
+	if strings.HasPrefix(strings.TrimSpace(generated.Spec.Body), "---") {
 		return nil, fmt.Errorf("PromptKit output must not include YAML frontmatter")
 	}
 
-	if err := generated.Validate(); err != nil {
-		return nil, err
-	}
-
-	return generated.MarshalMarkdown()
+	return resource.EncodeMarkdown(generated)
 }
 
 func generatedRolePath(roleID, output string) (string, error) {

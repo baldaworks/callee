@@ -1,5 +1,5 @@
 ---
-description: Route a task through configured Callee roles.
+description: Route a task through configured Callee agents and workflows.
 ---
 
 Load the `callee-run-role` skill and follow its routing workflow exactly. Treat

@@ -56,6 +56,8 @@ func Init(setters ...Option) error {
 		return err
 	}
 
+	zerolog.DurationFieldFormat = zerolog.DurationFormatString
+
 	zerolog.SetGlobalLevel(zeroLevel)
 
 	writer := opts.writer

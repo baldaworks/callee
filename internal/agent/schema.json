@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://callee.metalagman.dev/schema/v1alpha1/agent.json",
+  "oneOf": [
+    { "$ref": "#/$defs/role" },
+    { "$ref": "#/$defs/sequential" },
+    { "$ref": "#/$defs/loop" }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" }
+      },
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["codex", "claude", "opencode", "copilot", "grok", "generic_acp"] },
+        "cmd": { "type": "string" },
+        "model": { "type": "string" },
+        "reasoning": { "type": "string" },
+        "mode": { "type": "string" },
+        "extraArgs": { "type": "array", "items": { "type": "string" } },
+        "timeout": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "stateValue": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "array", "items": { "$ref": "#/$defs/stateValue" } },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/stateValue" }
+        }
+      ]
+    },
+    "state": {
+      "type": "object",
+      "not": { "required": ["outputs"] },
+      "additionalProperties": { "$ref": "#/$defs/stateValue" }
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "child": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "required": ["ref"],
+          "properties": {
+            "ref": { "type": "string", "minLength": 1 },
+            "alias": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+            "input": { "type": "string" },
+            "state": { "$ref": "#/$defs/state" },
+            "params": { "$ref": "#/$defs/params" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "role": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "Role" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "provider", "body"],
+          "properties": {
+            "description": { "type": "string" },
+            "provider": { "$ref": "#/$defs/provider" },
+            "repl": { "type": "boolean" },
+            "params": { "$ref": "#/$defs/params" },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "sequential": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "Sequential" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "children", "body"],
+          "properties": {
+            "description": { "type": "string" },
+            "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 },
+            "output": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "loop": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "Loop" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "children", "body", "maxIterations"],
+          "properties": {
+            "description": { "type": "string" },
+            "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/child" } },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 },
+            "output": { "type": "string" },
+            "maxIterations": { "type": "integer", "minimum": 1 },
+            "onExhausted": { "enum": ["fail", "complete"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

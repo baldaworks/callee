@@ -1,11 +1,11 @@
-// Package runtime adapts Callee roles to Norma Runtime ACP conversations.
+// Package runtime adapts Callee agents to Norma Runtime ACP processes.
 package runtime
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/baldaworks/callee/internal/role"
+	resource "github.com/baldaworks/callee/internal/agent"
 	"github.com/normahq/runtime/v2/agentconfig"
 )
 
@@ -29,16 +29,20 @@ func (p Provider) Type() string {
 	return p.typeName
 }
 
-// ProviderFor returns the reusable ACP process configuration for a role.
-func ProviderFor(r role.Role) (Provider, error) {
-	cfg, err := Normalize(r)
+// ProviderForAgent returns the reusable ACP process configuration for a Role.
+func ProviderForAgent(r resource.Resource) (Provider, error) {
+	if r.Kind != resource.RoleKind || r.Spec.Provider == nil {
+		return Provider{}, fmt.Errorf("agent %q is not a provider-backed Role", r.ID)
+	}
+
+	cfg, err := NormalizeAgent(r)
 	if err != nil {
 		return Provider{}, err
 	}
 
 	resolved, err := agentconfig.NormalizeConfig(cfg, "")
 	if err != nil {
-		return Provider{}, fmt.Errorf("resolve provider for role %q: %w", r.ID, err)
+		return Provider{}, fmt.Errorf("resolve provider for agent %q: %w", r.ID, err)
 	}
 
 	command := append([]string(nil), resolved.Command...)
@@ -48,23 +52,26 @@ func ProviderFor(r role.Role) (Provider, error) {
 		GenericACP: &agentconfig.ACPConfig{Cmd: command},
 	}
 	if err := providerConfig.Validate(); err != nil {
-		return Provider{}, fmt.Errorf("validate provider for role %q: %w", r.ID, err)
+		return Provider{}, fmt.Errorf("validate provider for agent %q: %w", r.ID, err)
 	}
 
-	return Provider{typeName: r.Metadata.Provider.Type, command: command, config: providerConfig}, nil
+	return Provider{typeName: r.Spec.Provider.Type, command: command, config: providerConfig}, nil
 }
 
 func providerKey(typeName string, command []string) string {
 	return typeName + "\x00" + strings.Join(command, "\x00")
 }
 
-// Normalize returns the official Norma Runtime configuration for a role.
-func Normalize(r role.Role) (agentconfig.Config, error) {
-	provider := r.Metadata.Provider
+// NormalizeAgent returns the Norma Runtime session configuration for a Role.
+func NormalizeAgent(r resource.Resource) (agentconfig.Config, error) {
+	provider := r.Spec.Provider
+	if provider == nil {
+		return agentconfig.Config{}, fmt.Errorf("agent %q: missing spec.provider", r.ID)
+	}
 
-	runtimeType, ok := role.RuntimeType(provider.Type)
+	runtimeType, ok := resource.RuntimeType(provider.Type)
 	if !ok {
-		return agentconfig.Config{}, fmt.Errorf("role %q: unsupported provider.type %q", r.ID, provider.Type)
+		return agentconfig.Config{}, fmt.Errorf("agent %q: unsupported spec.provider.type %q", r.ID, provider.Type)
 	}
 
 	block := &agentconfig.ACPConfig{
@@ -95,7 +102,7 @@ func Normalize(r role.Role) (agentconfig.Config, error) {
 	}
 
 	if err := cfg.Validate(); err != nil {
-		return agentconfig.Config{}, fmt.Errorf("role %q: invalid runtime configuration: %w", r.ID, err)
+		return agentconfig.Config{}, fmt.Errorf("agent %q: invalid runtime configuration: %w", r.ID, err)
 	}
 
 	return cfg, nil

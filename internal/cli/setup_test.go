@@ -11,14 +11,17 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/baldaworks/callee/internal/agent"
+	"github.com/baldaworks/callee/internal/registry"
 )
 
-func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
+func TestSetupCommandInstallsPluginAndStarterAgents(t *testing.T) {
 	tests := []struct {
 		name         string
 		target       string
 		wantCommands [][]string
-		wantType     string
+		wantProvider string
 	}{
 		{
 			name:   "codex",
@@ -28,7 +31,7 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"codex", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"codex", "plugin", "add", "callee@callee"},
 			},
-			wantType: "  type: codex",
+			wantProvider: "codex",
 		},
 		{
 			name:   "claude",
@@ -37,7 +40,7 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"claude", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"claude", "plugin", "install", "callee@callee", "--scope", "project"},
 			},
-			wantType: "  type: claude",
+			wantProvider: "claude",
 		},
 		{
 			name:   "grok",
@@ -46,7 +49,7 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"grok", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"grok", "plugin", "install", "callee@callee", "--trust"},
 			},
-			wantType: "  type: grok",
+			wantProvider: "grok",
 		},
 		{
 			name:   "copilot",
@@ -55,18 +58,19 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				{"copilot", "plugin", "marketplace", "add", "baldaworks/callee"},
 				{"copilot", "plugin", "install", "callee@callee"},
 			},
-			wantType: "  type: copilot",
+			wantProvider: "copilot",
 		},
 		{
-			name:     "opencode",
-			target:   "opencode",
-			wantType: "  type: opencode",
+			name:         "opencode",
+			target:       "opencode",
+			wantProvider: "opencode",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Chdir(t.TempDir())
+			root := t.TempDir()
+			t.Chdir(root)
 
 			original := runSetupCommand
 
@@ -94,21 +98,92 @@ func TestSetupCommandInstallsPluginAndCreatesReviewer(t *testing.T) {
 				t.Fatalf("commands = %#v, want %#v", gotCommands, test.wantCommands)
 			}
 
-			role, err := os.ReadFile(filepath.FromSlash(reviewerRolePath))
+			configured, err := registry.LoadAgents(registry.AgentLoadOptions{
+				UserDir:    filepath.Join(root, "missing-user-agents"),
+				ProjectDir: filepath.Join(root, ".callee"),
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			for _, want := range []string{"api: callee.metalagman.dev", "kind: role", "provider:\n", test.wantType, "{{ prompt }}"} {
-				if !strings.Contains(string(role), want) {
-					t.Fatalf("reviewer role does not contain %q: %q", want, role)
-				}
+			wantIDs := []string{
+				"roles/architect",
+				"roles/explorer",
+				"roles/implementer",
+				"roles/reviewer",
+				"workflows/goalkeeper",
+				"workflows/investigate",
+			}
+			if got := configured.IDs(); !reflect.DeepEqual(got, wantIDs) {
+				t.Fatalf("agent IDs = %#v, want %#v", got, wantIDs)
 			}
 
-			if !strings.Contains(stdout.String(), "Created "+reviewerRolePath) {
-				t.Fatalf("stdout = %q", stdout.String())
-			}
+			assertStarterRoleProviders(t, configured, wantIDs[:4], test.wantProvider)
+
+			assertStarterWorkflowTree(t, configured, "workflows/investigate", agent.SequentialKind, []string{"explorer", "architect"})
+			assertStarterWorkflowTree(t, configured, "workflows/goalkeeper", agent.LoopKind, []string{"worker", "validator"})
+			assertStarterInstallOutput(t, stdout.String())
 		})
+	}
+}
+
+func assertStarterRoleProviders(t *testing.T, configured *registry.AgentRegistry, ids []string, providerType string) {
+	t.Helper()
+
+	for _, id := range ids {
+		role, err := configured.GetAgent(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := &agent.Provider{Type: providerType}
+		if !reflect.DeepEqual(role.Spec.Provider, want) {
+			t.Errorf("%s provider = %#v, want %#v", id, role.Spec.Provider, want)
+		}
+	}
+}
+
+func assertStarterInstallOutput(t *testing.T, output string) {
+	t.Helper()
+
+	for _, want := range []string{
+		"Installed starter agents for ",
+		".callee/roles/reviewer.md",
+		".callee/workflows/investigate.md",
+		"callee agent list",
+		"callee agent view workflows/investigate",
+		"callee agent run workflows/investigate",
+		"workflows/goalkeeper for iterative implementation and review",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("stdout = %q, want containing %q", output, want)
+		}
+	}
+
+	if strings.Contains(output, "resource") {
+		t.Fatalf("stdout = %q", output)
+	}
+}
+
+func assertStarterWorkflowTree(t *testing.T, configured *registry.AgentRegistry, id string, kind agent.Kind, childIDs []string) {
+	t.Helper()
+
+	root, err := configured.Resolve(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if root.Kind != kind {
+		t.Errorf("%s kind = %q, want %q", id, root.Kind, kind)
+	}
+
+	got := make([]string, 0, len(root.Children))
+	for _, child := range root.Children {
+		got = append(got, child.EffectiveID)
+	}
+
+	if !reflect.DeepEqual(got, childIDs) {
+		t.Errorf("%s children = %#v, want %#v", id, got, childIDs)
 	}
 }
 
@@ -187,11 +262,11 @@ func TestOpenCodeSetupPreservesAssetsUnlessForced(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	path := filepath.FromSlash(".opencode/commands/callee.md")
-	if err := os.MkdirAll(filepath.Dir(path), reviewerDirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), setupDirMode); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(path, []byte("custom"), reviewerFileMode); err != nil {
+	if err := os.WriteFile(path, []byte("custom"), setupFileMode); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,15 +351,16 @@ func TestOpenCodeCommandAssetsLoadTheMatchingSkill(t *testing.T) {
 	}
 }
 
-func TestSetupCommandLeavesExistingReviewerUntouched(t *testing.T) {
-	t.Chdir(t.TempDir())
+func TestSetupCommandPreservesExistingAgentAndAddsMissingAgents(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
 
-	path := filepath.FromSlash(reviewerRolePath)
-	if err := os.MkdirAll(filepath.Dir(path), reviewerDirMode); err != nil {
+	path := filepath.FromSlash(".callee/roles/reviewer.md")
+	if err := os.MkdirAll(filepath.Dir(path), setupDirMode); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(path, []byte("existing"), reviewerFileMode); err != nil {
+	if err := os.WriteFile(path, []byte("existing"), setupFileMode); err != nil {
 		t.Fatal(err)
 	}
 
@@ -313,8 +389,130 @@ func TestSetupCommandLeavesExistingReviewerUntouched(t *testing.T) {
 		t.Fatalf("reviewer role = %q, want existing", role)
 	}
 
-	if !strings.Contains(stdout.String(), "already exists") {
-		t.Fatalf("stdout = %q", stdout.String())
+	for _, file := range starterAgentFiles {
+		if file.destination == ".callee/roles/reviewer.md" {
+			continue
+		}
+
+		if _, err := os.Stat(filepath.FromSlash(file.destination)); err != nil {
+			t.Errorf("missing starter agent %s: %v", file.destination, err)
+		}
+	}
+
+	for _, want := range []string{"Existing starter agents left unchanged:", ".callee/roles/reviewer.md"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout = %q, want containing %q", stdout.String(), want)
+		}
+	}
+
+	if _, err := registry.LoadAgents(registry.AgentLoadOptions{
+		UserDir:    filepath.Join(root, "missing-user-agents"),
+		ProjectDir: filepath.Join(root, ".callee"),
+	}); err == nil || !strings.Contains(err.Error(), "reviewer") {
+		t.Fatalf("LoadAgents() error = %v, want preserved invalid reviewer to remain visible to doctor", err)
+	}
+}
+
+func TestSetupCommandForceReplacesExistingStarterAgents(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	path := filepath.FromSlash(".callee/roles/reviewer.md")
+	if err := os.MkdirAll(filepath.Dir(path), setupDirMode); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, []byte("existing"), setupFileMode); err != nil {
+		t.Fatal(err)
+	}
+
+	original := runSetupCommand
+
+	t.Cleanup(func() { runSetupCommand = original })
+
+	runSetupCommand = func(context.Context, io.Writer, io.Writer, string, ...string) error { return nil }
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"setup", "codex", "--force"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	role, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(role) == "existing" {
+		t.Fatal("reviewer role was not replaced")
+	}
+}
+
+func TestStarterAgentAssetsMatchExamples(t *testing.T) {
+	for _, file := range starterAgentFiles {
+		want, err := starterAgentAssets.ReadFile(file.source)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		examplePath := filepath.Join("..", "..", "examples", strings.TrimPrefix(file.source, starterAssetRoot))
+
+		got, err := os.ReadFile(examplePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(got, want) {
+			t.Errorf("example %s differs from embedded starter agent %s", examplePath, file.source)
+		}
+	}
+}
+
+func TestCheckedInExamplesFormValidAgentRegistry(t *testing.T) {
+	configured, err := registry.LoadAgents(registry.AgentLoadOptions{
+		UserDir:    filepath.Join(t.TempDir(), "missing-user-agents"),
+		ProjectDir: filepath.Join("..", "..", "examples"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertStarterWorkflowTree(t, configured, "workflows/investigate", agent.SequentialKind, []string{"explorer", "architect"})
+	assertStarterWorkflowTree(t, configured, "workflows/goalkeeper", agent.LoopKind, []string{"worker", "validator"})
+}
+
+func TestWriteStarterAgentsIsRepeatable(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	first, err := writeStarterAgents("codex", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(first.created) != len(starterAgentFiles) || len(first.unchanged) != 0 {
+		t.Fatalf("first install result = %#v", first)
+	}
+
+	second, err := writeStarterAgents("codex", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(second.created) != 0 || len(second.unchanged) != len(starterAgentFiles) {
+		t.Fatalf("second install result = %#v", second)
+	}
+}
+
+func TestWriteStarterAgentsValidatesBeforeWriting(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	if _, err := writeStarterAgents("unknown", false); err == nil || !strings.Contains(err.Error(), "embedded starter agent") {
+		t.Fatalf("writeStarterAgents() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, ".callee")); !os.IsNotExist(err) {
+		t.Fatalf("starter directory exists after validation failure: %v", err)
 	}
 }
 

@@ -7,9 +7,13 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
+
+const humanDuration = 43*time.Second + 453998585*time.Nanosecond
 
 func TestInitConfiguresZerologAndSlog(t *testing.T) {
 	t.Cleanup(func() { _ = Init(WithLevel(LevelInfo)) })
@@ -20,6 +24,10 @@ func TestInitConfiguresZerologAndSlog(t *testing.T) {
 
 	if zerolog.GlobalLevel() != zerolog.DebugLevel {
 		t.Fatalf("zerolog level = %s", zerolog.GlobalLevel())
+	}
+
+	if zerolog.DurationFieldFormat != zerolog.DurationFormatString {
+		t.Fatalf("zerolog duration format = %q, want string", zerolog.DurationFieldFormat)
 	}
 
 	if !slog.Default().Handler().Enabled(context.Background(), slog.LevelDebug) {
@@ -36,15 +44,31 @@ func TestInitWithJSONWritesStructuredLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	slog.Info("starting role", slog.String("role", "reviewer"))
+	slog.Info("starting role", slog.String("role", "reviewer"), slog.Duration("duration", humanDuration))
 
 	var event map[string]any
 	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
 		t.Fatalf("unmarshal JSON log: %v\n%s", err, output.String())
 	}
 
-	if event["level"] != "info" || event["message"] != "starting role" || event["role"] != "reviewer" {
+	if event["level"] != "info" || event["message"] != "starting role" || event["role"] != "reviewer" || event["duration"] != "43.453998585s" {
 		t.Fatalf("event = %#v", event)
+	}
+}
+
+func TestInitWritesHumanReadableConsoleDurations(t *testing.T) {
+	var output bytes.Buffer
+
+	t.Cleanup(func() { _ = Init(WithLevel(LevelInfo)) })
+
+	if err := Init(WithLevel(LevelInfo), WithWriter(&output)); err != nil {
+		t.Fatal(err)
+	}
+
+	log.Info().Dur("duration", humanDuration).Msg("agent finished")
+
+	if got := output.String(); !strings.Contains(got, "duration=43.453998585s") {
+		t.Fatalf("console output = %q, want human-readable duration", got)
 	}
 }
 

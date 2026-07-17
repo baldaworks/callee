@@ -1,12 +1,27 @@
 # Callee agent guidance
 
-- Preserve the CLI-only surface: `callee agent --role <role> --message <task>`, `callee exec --role <role> --message <task>`, `callee role list`, `callee role view <role>`, `callee doctor`, and `callee setup`.
-- Keep provider configuration nested under the `provider` section in role
-  frontmatter. Do not accept legacy flat provider fields. The optional `api`,
-  `kind`, `repl`, and `params` fields remain top-level.
-- Do not add Gemini support.
-- Do not add a server transport, Callee thread store, or handle binding without an explicit product decision.
-- Keep role output on stdout and diagnostics on stderr.
+- Preserve the CLI-only surface: `callee agent run <agent> [--message <task>]`,
+  `callee agent list [--kind <kind>] [--json]`,
+  `callee agent view <agent> [--json]`,
+  `callee agent validate <path>`,
+  `callee doctor [--graph text|mermaid|dot]`, `callee promptkit`, and `callee setup`.
+- Treat the Workflows API as a clean break. Do not add compatibility aliases for
+  `callee exec`, `callee role`, selector-based `callee agent --role`, thread
+  flags, or unversioned role resources.
+- Keep agent resources under lowercase `.callee/**/*.md`, `.callee/**/*.yaml`,
+  or `.callee/**/*.yml`. Require
+  `apiVersion: callee.metalagman.dev/v1alpha1`, a singular CamelCase `kind`
+  (`Role`, `Sequential`, or `Loop`), and configuration nested under `spec`.
+  The Markdown body is the canonical physical representation of `spec.body`;
+  YAML files contain the complete object with `spec.body` inline.
+- Keep provider configuration nested under `spec.provider`. Do not accept
+  legacy flat provider fields or legacy frontmatter layouts.
+- Do not add `Parallel` workflows or Gemini support.
+- Do not add a server transport, Callee thread store, or handle binding without
+  an explicit product decision. Each workflow run owns one shared state object;
+  child roles use fresh provider sessions.
+- Keep the final agent artifact on stdout and diagnostics on stderr. Interactive
+  role input and REPL traffic use the controlling terminal rather than stdout.
 - Use Norma Runtime for ACP process logic rather than duplicating it.
 - Run `go test ./...` and `go test -race ./...` before completion.
 
