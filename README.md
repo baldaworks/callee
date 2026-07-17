@@ -28,6 +28,7 @@ npx --yes @baldaworks/callee@latest setup codex
 | Grok Build | `callee setup grok` |
 | Copilot CLI | `callee setup copilot` |
 | OpenCode | `callee setup opencode` |
+| Cursor | `callee setup cursor` |
 
 Setup installs a thin host integration and six editable starter agents:
 
@@ -36,7 +37,7 @@ Setup installs a thin host integration and six editable starter agents:
 | `workflows/investigate` | `roles/explorer -> roles/architect` | Read-only codebase investigation and an implementation-ready plan |
 | `workflows/goalkeeper` | `roles/implementer -> roles/reviewer -> repeat` | Iterative implementation until the reviewer accepts the result |
 
-Generated Roles set only the selected host's `provider.type`; provider defaults choose the model and mode. Existing starter files are left unchanged while missing files are added. Use `--force` to replace the complete starter pack. Provider CLIs and credentials remain external.
+Generated Roles set only the selected host's `provider.type`; provider defaults choose the model and mode. OpenCode setup writes skills and commands below `.opencode`; Cursor setup writes native skills below `.cursor/skills`. The same Cursor skills are exposed through the repository's `.cursor-plugin/marketplace.json` for marketplace imports. Existing integration and starter files are left unchanged while missing files are added. Use `--force` to replace them. Provider CLIs and credentials remain external.
 
 ## Quick start
 
@@ -105,7 +106,7 @@ Focus:
 
 A Role body must contain exactly one unconditional bare `{{ .Prompt }}` or `{{ .Input }}` insertion. `.Prompt` is the immutable original root prompt; `.Input` is this node occurrence's rendered input.
 
-Supported provider types are `codex`, `claude`, `opencode`, `copilot`, `grok`, and `generic_acp`. `generic_acp` requires `spec.provider.cmd`. Gemini is not supported.
+Supported provider types are `codex`, `claude`, `opencode`, `copilot`, `grok`, `cursor`, and `generic_acp`. Cursor defaults to the official Cursor CLI ACP command, `agent acp`; install the CLI and authenticate it as described in the [Cursor ACP documentation](https://cursor.com/docs/cli/acp). `generic_acp` requires `spec.provider.cmd`. Gemini is not supported.
 
 See the runnable [`reviewer`](examples/roles/reviewer.md) example.
 

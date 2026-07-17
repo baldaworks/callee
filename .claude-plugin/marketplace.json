@@ -4,13 +4,13 @@
     "name": "Baldaworks"
   },
   "metadata": {
-    "description": "Provider-aware Markdown subagent roles for Claude Code.",
+    "description": "Markdown-defined agents and deterministic workflows for Claude Code.",
     "version": "0.10.0"
   },
   "plugins": [
     {
       "name": "callee",
-      "description": "Run provider-aware subagent roles described in Markdown.",
+      "description": "Run Markdown-defined agents and deterministic workflows.",
       "version": "0.10.0",
       "author": {
         "name": "Baldaworks"

@@ -19,7 +19,7 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": { "enum": ["codex", "claude", "opencode", "copilot", "grok", "generic_acp"] },
+        "type": { "enum": ["codex", "claude", "opencode", "copilot", "grok", "cursor", "generic_acp"] },
         "cmd": { "type": "string" },
         "model": { "type": "string" },
         "reasoning": { "type": "string" },

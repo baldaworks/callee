@@ -1,7 +1,7 @@
 {
   "name": "callee",
   "version": "0.10.0",
-  "description": "Run provider-aware subagent roles described in Markdown.",
+  "description": "Run Markdown-defined agents and deterministic workflows.",
   "author": {
     "name": "Baldaworks",
     "url": "https://github.com/baldaworks"
@@ -9,19 +9,19 @@
   "homepage": "https://github.com/baldaworks/callee",
   "repository": "https://github.com/baldaworks/callee",
   "license": "MIT",
-  "keywords": ["markdown", "multi-provider", "subagents", "cli", "roles"],
+  "keywords": ["markdown", "agents", "workflows", "cli", "acp"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Callee",
-    "shortDescription": "Provider-aware subagent roles in Markdown.",
-    "longDescription": "Run natural-language workflows through project-defined, provider-aware subagent roles.",
+    "shortDescription": "Markdown agents and deterministic workflows.",
+    "longDescription": "Run project-defined provider-backed agents and compose Sequential and Loop workflows.",
     "developerName": "Baldaworks",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "$callee:run-role Review the current changes.",
-      "$callee:run-role Review the changes and fix verified findings.",
-      "$callee:create-role Create a Go code-review role for Codex."
+      "$callee:run-agent Review the current changes.",
+      "$callee:run-agent Review the changes and fix verified findings.",
+      "$callee:create-agent Create a Go code-review agent for Codex."
     ]
   }
 }

@@ -4,13 +4,13 @@
     "name": "Baldaworks"
   },
   "metadata": {
-    "description": "Provider-aware Markdown subagent roles for GitHub Copilot CLI.",
+    "description": "Markdown-defined agents and deterministic workflows for GitHub Copilot CLI.",
     "version": "0.10.0"
   },
   "plugins": [
     {
       "name": "callee",
-      "description": "Run provider-aware subagent roles described in Markdown.",
+      "description": "Run Markdown-defined agents and deterministic workflows.",
       "version": "0.10.0",
       "source": "./plugins/callee",
       "author": {
@@ -20,7 +20,7 @@
       "homepage": "https://github.com/baldaworks/callee",
       "repository": "https://github.com/baldaworks/callee",
       "license": "MIT",
-      "keywords": ["markdown", "multi-provider", "subagents", "cli", "roles"]
+      "keywords": ["markdown", "agents", "workflows", "cli", "acp"]
     }
   ]
 }

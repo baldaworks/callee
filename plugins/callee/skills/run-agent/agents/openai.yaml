@@ -1,0 +1,4 @@
+interface:
+  display_name: "Callee Run Agent"
+  short_description: "Run and combine project-defined Callee agents"
+  default_prompt: "Use $callee:run-agent to review the current changes."

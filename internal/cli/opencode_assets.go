@@ -7,33 +7,46 @@ import (
 	"path/filepath"
 )
 
-//go:embed assets/opencode/skills/callee-run-role/SKILL.md assets/opencode/skills/callee-create-role/SKILL.md assets/opencode/commands/callee.md assets/opencode/commands/callee-promptkit.md
-var openCodeAssets embed.FS
+//go:embed assets/opencode assets/cursor
+var localIntegrationAssets embed.FS
 
-type openCodeAsset struct {
+type localIntegrationAsset struct {
 	source      string
 	destination string
 }
 
-var openCodeAssetFiles = []openCodeAsset{
-	{source: "assets/opencode/skills/callee-run-role/SKILL.md", destination: ".opencode/skills/callee-run-role/SKILL.md"},
-	{source: "assets/opencode/skills/callee-create-role/SKILL.md", destination: ".opencode/skills/callee-create-role/SKILL.md"},
+var openCodeAssetFiles = []localIntegrationAsset{
+	{source: "assets/opencode/skills/callee-run-agent/SKILL.md", destination: ".opencode/skills/callee-run-agent/SKILL.md"},
+	{source: "assets/opencode/skills/callee-create-agent/SKILL.md", destination: ".opencode/skills/callee-create-agent/SKILL.md"},
 	{source: "assets/opencode/commands/callee.md", destination: ".opencode/commands/callee.md"},
-	{source: "assets/opencode/commands/callee-promptkit.md", destination: ".opencode/commands/callee-promptkit.md"},
+	{source: "assets/opencode/commands/callee-create-agent.md", destination: ".opencode/commands/callee-create-agent.md"},
+}
+
+var cursorAssetFiles = []localIntegrationAsset{
+	{source: "assets/cursor/skills/callee-run-agent/SKILL.md", destination: ".cursor/skills/callee-run-agent/SKILL.md"},
+	{source: "assets/cursor/skills/callee-create-agent/SKILL.md", destination: ".cursor/skills/callee-create-agent/SKILL.md"},
 }
 
 func writeOpenCodeIntegration(force bool) (setupInstallResult, error) {
+	return writeLocalIntegration("OpenCode", openCodeAssetFiles, force)
+}
+
+func writeCursorIntegration(force bool) (setupInstallResult, error) {
+	return writeLocalIntegration("Cursor", cursorAssetFiles, force)
+}
+
+func writeLocalIntegration(host string, assets []localIntegrationAsset, force bool) (setupInstallResult, error) {
 	result := setupInstallResult{}
 
-	for _, asset := range openCodeAssetFiles {
-		content, err := openCodeAssets.ReadFile(asset.source)
+	for _, asset := range assets {
+		content, err := localIntegrationAssets.ReadFile(asset.source)
 		if err != nil {
-			return setupInstallResult{}, fmt.Errorf("read embedded OpenCode asset %q: %w", asset.source, err)
+			return setupInstallResult{}, fmt.Errorf("read embedded %s asset %q: %w", host, asset.source, err)
 		}
 
 		created, err := writeSetupFile(filepath.FromSlash(asset.destination), content, force)
 		if err != nil {
-			return setupInstallResult{}, fmt.Errorf("write OpenCode asset %q: %w", asset.destination, err)
+			return setupInstallResult{}, fmt.Errorf("write %s asset %q: %w", host, asset.destination, err)
 		}
 
 		if created {

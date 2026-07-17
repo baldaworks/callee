@@ -1,0 +1,17 @@
+{
+  "name": "callee",
+  "displayName": "Callee",
+  "version": "0.10.0",
+  "description": "Run Markdown-defined agents and deterministic workflows.",
+  "author": {
+    "name": "Baldaworks"
+  },
+  "publisher": "Baldaworks",
+  "homepage": "https://github.com/baldaworks/callee",
+  "repository": "https://github.com/baldaworks/callee",
+  "license": "MIT",
+  "keywords": ["markdown", "agents", "workflows", "cli", "acp"],
+  "category": "developer-tools",
+  "tags": ["agents", "workflows", "orchestration"],
+  "skills": "./prefixed-skills/"
+}

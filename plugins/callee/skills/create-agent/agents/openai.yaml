@@ -1,0 +1,4 @@
+interface:
+  display_name: "Callee Create Agent"
+  short_description: "Create Callee agents and deterministic workflows"
+  default_prompt: "Use $callee:create-agent to create a Go code-review agent for Codex."

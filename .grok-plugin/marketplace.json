@@ -4,15 +4,15 @@
     "name": "Baldaworks",
     "url": "https://github.com/baldaworks"
   },
-  "description": "Marketplace for provider-aware Markdown subagent roles in Grok Build.",
+  "description": "Marketplace for Markdown-defined agents and deterministic workflows in Grok Build.",
   "plugins": [
     {
       "name": "callee",
-      "description": "Run provider-aware subagent roles described in Markdown.",
+      "description": "Run Markdown-defined agents and deterministic workflows.",
       "version": "0.10.0",
       "source": "./plugins/callee",
       "homepage": "https://github.com/baldaworks/callee",
-      "keywords": ["markdown", "multi-provider", "subagents", "cli", "roles"]
+      "keywords": ["markdown", "agents", "workflows", "cli", "acp"]
     }
   ]
 }

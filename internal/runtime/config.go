@@ -84,6 +84,10 @@ func NormalizeAgent(r resource.Resource) (agentconfig.Config, error) {
 		block.Cmd = []string{command}
 	}
 
+	if provider.Type == "cursor" && len(block.Cmd) == 0 {
+		block.Cmd = []string{"agent", "acp"}
+	}
+
 	cfg := agentconfig.Config{Type: runtimeType}
 	switch runtimeType {
 	case agentconfig.AgentTypeCodexACP:

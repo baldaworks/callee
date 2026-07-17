@@ -1,0 +1,16 @@
+{
+  "name": "callee",
+  "owner": {
+    "name": "Baldaworks"
+  },
+  "metadata": {
+    "description": "Markdown-defined agents and deterministic workflows for Cursor."
+  },
+  "plugins": [
+    {
+      "name": "callee",
+      "source": "./plugins/callee",
+      "description": "Run Markdown-defined agents and deterministic workflows."
+    }
+  ]
+}

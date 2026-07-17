@@ -85,6 +85,7 @@ func RuntimeType(providerType string) (string, bool) {
 		"opencode":    "opencode_acp",
 		"copilot":     "copilot_acp",
 		"grok":        "grok_acp",
+		"cursor":      "generic_acp",
 		"generic_acp": "generic_acp",
 	}
 
@@ -95,7 +96,7 @@ func RuntimeType(providerType string) (string, bool) {
 
 // SupportedProviderTypes returns public provider names in stable order.
 func SupportedProviderTypes() []string {
-	return []string{"codex", "claude", "opencode", "copilot", "grok", "generic_acp"}
+	return []string{"codex", "claude", "opencode", "copilot", "grok", "cursor", "generic_acp"}
 }
 
 // Validate checks semantic constraints not expressible in the JSON Schema.

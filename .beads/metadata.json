@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "callee",
+  "project_id": "6399cc0f-3e61-4e24-8d3d-c7c2a43db82a"
+}

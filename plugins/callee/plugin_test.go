@@ -14,14 +14,14 @@ import (
 const releaseVersion = "0.10.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "run-role", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join("skills", "run-agent", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(data)
 	for _, want := range []string{
-		"name: run-role",
+		"name: run-agent",
 		"npx --yes @baldaworks/callee@" + releaseVersion,
 		"callee agent list --json",
 		"callee agent view \"<agent-id>\" --json",
@@ -32,7 +32,7 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"Do not send `quit`, `exit`, `/done`",
 		"artifact is written to stdout only after provider cleanup succeeds",
 		"does not define `Parallel`",
-		"setup <codex|claude|grok|copilot|opencode>",
+		"setup <codex|claude|grok|copilot|opencode|cursor>",
 		"Do not add Gemini",
 	} {
 		if !strings.Contains(text, want) {
@@ -47,41 +47,48 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	}
 }
 
-func TestPromptKitSkillAuthorsRolesThroughTheCLI(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "create-role", "SKILL.md"))
+func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(data)
 	for _, want := range []string{
-		"name: create-role",
+		"name: create-agent",
 		"npx --yes @baldaworks/callee@" + releaseVersion,
+		"callee agent list --json",
+		"callee promptkit search",
 		"callee promptkit role create",
 		"apiVersion: callee.metalagman.dev/v1alpha1",
 		"kind: Role",
+		"kind: Sequential",
+		"kind: Loop",
+		"maxIterations: 5",
+		"onExhausted: fail",
 		"spec.provider",
 		"{{ .Input }}",
 		"{{ .Params.focus }}",
 		"exactly one unconditional bare",
-		"callee agent view \"<resource-id>\" --json",
+		"callee agent validate",
+		"callee agent view \"<agent-id>\" --json",
 	} {
 		if !strings.Contains(text, want) {
-			t.Errorf("PromptKit skill is missing %q", want)
+			t.Errorf("create-agent skill is missing %q", want)
 		}
 	}
 
 	for _, forbidden := range []string{"type: gemini", "api: callee", "kind: role", "{{ prompt }}"} {
 		if strings.Contains(text, forbidden) {
-			t.Errorf("PromptKit skill contains forbidden syntax %q", forbidden)
+			t.Errorf("create-agent skill contains forbidden syntax %q", forbidden)
 		}
 	}
 }
 
 func TestPluginContainsOnlyTheNamedSkills(t *testing.T) {
 	for directory, names := range map[string][]string{
-		"skills":          {"create-role", "run-role"},
-		"prefixed-skills": {"callee-create-role", "callee-run-role"},
+		"skills":          {"create-agent", "run-agent"},
+		"prefixed-skills": {"callee-create-agent", "callee-run-agent"},
 	} {
 		entries, err := os.ReadDir(directory)
 		if err != nil {
@@ -102,13 +109,14 @@ func TestPluginContainsOnlyTheNamedSkills(t *testing.T) {
 
 func TestSkillVariantsHaveMatchingBodies(t *testing.T) {
 	for shortName, prefixedName := range map[string]string{
-		"create-role": "callee-create-role",
-		"run-role":    "callee-run-role",
+		"create-agent": "callee-create-agent",
+		"run-agent":    "callee-run-agent",
 	} {
 		paths := []string{
 			filepath.Join("skills", shortName, "SKILL.md"),
 			filepath.Join("prefixed-skills", prefixedName, "SKILL.md"),
 			filepath.Join("..", "..", "internal", "cli", "assets", "opencode", "skills", prefixedName, "SKILL.md"),
+			filepath.Join("..", "..", "internal", "cli", "assets", "cursor", "skills", prefixedName, "SKILL.md"),
 		}
 
 		var want string
@@ -146,15 +154,15 @@ func skillBody(t *testing.T, data []byte) string {
 
 func TestCodexSkillMetadataUsesPublicNames(t *testing.T) {
 	for path, fields := range map[string][]string{
-		filepath.Join("skills", "run-role", "agents", "openai.yaml"): {
-			`display_name: "Callee Run Role"`,
-			`short_description: "Run and combine project-defined Callee roles"`,
-			`default_prompt: "Use $callee:run-role to review the current changes."`,
+		filepath.Join("skills", "run-agent", "agents", "openai.yaml"): {
+			`display_name: "Callee Run Agent"`,
+			`short_description: "Run and combine project-defined Callee agents"`,
+			`default_prompt: "Use $callee:run-agent to review the current changes."`,
 		},
-		filepath.Join("skills", "create-role", "agents", "openai.yaml"): {
-			`display_name: "Callee Create Role"`,
-			`short_description: "Create Callee roles from PromptKit templates"`,
-			`default_prompt: "Use $callee:create-role to create a Go code-review role for Codex."`,
+		filepath.Join("skills", "create-agent", "agents", "openai.yaml"): {
+			`display_name: "Callee Create Agent"`,
+			`short_description: "Create Callee agents and deterministic workflows"`,
+			`default_prompt: "Use $callee:create-agent to create a Go code-review agent for Codex."`,
 		},
 	} {
 		data, err := os.ReadFile(path)
@@ -170,16 +178,18 @@ func TestCodexSkillMetadataUsesPublicNames(t *testing.T) {
 	}
 }
 
-func TestPublicMetadataUsesProviderAwarePositioning(t *testing.T) {
+func TestPublicMetadataUsesAgentPositioning(t *testing.T) {
 	for path, want := range map[string]string{
 		filepath.Join("..", "..", "README.md"):                             "## Markdown-defined agents and deterministic workflows",
-		filepath.Join(".claude-plugin", "plugin.json"):                     "Run provider-aware subagent roles described in Markdown.",
-		filepath.Join(".codex-plugin", "plugin.json"):                      "Provider-aware subagent roles in Markdown.",
-		filepath.Join(".grok-plugin", "plugin.json"):                       "Run provider-aware subagent roles described in Markdown.",
-		filepath.Join(".plugin", "plugin.json"):                            "Run provider-aware subagent roles described in Markdown.",
-		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"):    "Provider-aware Markdown subagent roles for Claude Code.",
-		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"):      "Marketplace for provider-aware Markdown subagent roles in Grok Build.",
-		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"): "Provider-aware Markdown subagent roles for GitHub Copilot CLI.",
+		filepath.Join(".claude-plugin", "plugin.json"):                     "Run Markdown-defined agents and deterministic workflows.",
+		filepath.Join(".codex-plugin", "plugin.json"):                      "Markdown agents and deterministic workflows.",
+		filepath.Join(".cursor-plugin", "plugin.json"):                     "Run Markdown-defined agents and deterministic workflows.",
+		filepath.Join(".grok-plugin", "plugin.json"):                       "Run Markdown-defined agents and deterministic workflows.",
+		filepath.Join(".plugin", "plugin.json"):                            "Run Markdown-defined agents and deterministic workflows.",
+		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"):    "Markdown-defined agents and deterministic workflows for Claude Code.",
+		filepath.Join("..", "..", ".cursor-plugin", "marketplace.json"):    "Markdown-defined agents and deterministic workflows for Cursor.",
+		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"):      "Marketplace for Markdown-defined agents and deterministic workflows in Grok Build.",
+		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"): "Markdown-defined agents and deterministic workflows for GitHub Copilot CLI.",
 	} {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -195,9 +205,11 @@ func TestPublicMetadataUsesProviderAwarePositioning(t *testing.T) {
 		filepath.Join("..", "..", "README.md"),
 		filepath.Join(".claude-plugin", "plugin.json"),
 		filepath.Join(".codex-plugin", "plugin.json"),
+		filepath.Join(".cursor-plugin", "plugin.json"),
 		filepath.Join(".grok-plugin", "plugin.json"),
 		filepath.Join(".plugin", "plugin.json"),
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".cursor-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
 	} {
@@ -217,6 +229,91 @@ func TestPublicMetadataUsesProviderAwarePositioning(t *testing.T) {
 	}
 }
 
+func TestCursorManifestsUseSupportedFields(t *testing.T) {
+	pluginPath := filepath.Join(".cursor-plugin", "plugin.json")
+	plugin := readJSONObject(t, pluginPath)
+	assertJSONFields(t, pluginPath, plugin, []string{
+		"name",
+		"displayName",
+		"version",
+		"description",
+		"author",
+		"publisher",
+		"homepage",
+		"repository",
+		"license",
+		"keywords",
+		"category",
+		"tags",
+		"skills",
+	})
+	assertJSONString(t, pluginPath, plugin, "name", "callee")
+	assertJSONString(t, pluginPath, plugin, "version", releaseVersion)
+	assertJSONString(t, pluginPath, plugin, "skills", "./prefixed-skills/")
+
+	marketplacePath := filepath.Join("..", "..", ".cursor-plugin", "marketplace.json")
+	marketplace := readJSONObject(t, marketplacePath)
+	assertJSONFields(t, marketplacePath, marketplace, []string{"name", "owner", "metadata", "plugins"})
+	assertJSONString(t, marketplacePath, marketplace, "name", "callee")
+
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(marketplace["plugins"], &entries); err != nil {
+		t.Fatalf("parse %s plugins: %v", marketplacePath, err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("%s has %d plugins, want 1", marketplacePath, len(entries))
+	}
+
+	assertJSONFields(t, marketplacePath+" plugin", entries[0], []string{"name", "source", "description"})
+	assertJSONString(t, marketplacePath, entries[0], "name", "callee")
+	assertJSONString(t, marketplacePath, entries[0], "source", "./plugins/callee")
+}
+
+func readJSONObject(t *testing.T, path string) map[string]json.RawMessage {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(data, &object); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	return object
+}
+
+func assertJSONFields(t *testing.T, path string, object map[string]json.RawMessage, fields []string) {
+	t.Helper()
+
+	allowed := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		allowed[field] = true
+	}
+
+	for field := range object {
+		if !allowed[field] {
+			t.Errorf("%s contains unsupported field %q", path, field)
+		}
+	}
+}
+
+func assertJSONString(t *testing.T, path string, object map[string]json.RawMessage, field, want string) {
+	t.Helper()
+
+	var got string
+	if err := json.Unmarshal(object[field], &got); err != nil {
+		t.Fatalf("parse %s field %s: %v", path, field, err)
+	}
+
+	if got != want {
+		t.Errorf("%s field %s = %q, want %q", path, field, got, want)
+	}
+}
+
 func TestREADMEPresentsHostsEqually(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
@@ -233,6 +330,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 		{name: "Grok Build", target: "grok"},
 		{name: "Copilot CLI", target: "copilot"},
 		{name: "OpenCode", target: "opencode"},
+		{name: "Cursor", target: "cursor"},
 	}
 
 	previous := -1
@@ -409,6 +507,7 @@ func TestPluginManifestsExposeHostAppropriateSkills(t *testing.T) {
 	for path, want := range map[string]string{
 		filepath.Join(".claude-plugin", "plugin.json"): `"skills": "./skills/"`,
 		filepath.Join(".codex-plugin", "plugin.json"):  `"skills": "./skills/"`,
+		filepath.Join(".cursor-plugin", "plugin.json"): `"skills": "./prefixed-skills/"`,
 		filepath.Join(".grok-plugin", "plugin.json"):   `"skills": "./prefixed-skills/"`,
 		filepath.Join(".plugin", "plugin.json"):        `"skills": "./prefixed-skills/"`,
 	} {
@@ -427,6 +526,7 @@ func TestPluginAssetsHaveNoMCPConfiguration(t *testing.T) {
 	paths := []string{
 		filepath.Join(".claude-plugin", "plugin.json"),
 		filepath.Join(".codex-plugin", "plugin.json"),
+		filepath.Join(".cursor-plugin", "plugin.json"),
 		filepath.Join(".grok-plugin", "plugin.json"),
 		filepath.Join(".plugin", "plugin.json"),
 	}
@@ -453,9 +553,9 @@ func TestCodexStarterPromptsUseNaturalLanguage(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"$callee:run-role Review the current changes.",
-		"$callee:run-role Review the changes and fix verified findings.",
-		"$callee:create-role Create a Go code-review role for Codex.",
+		"$callee:run-agent Review the current changes.",
+		"$callee:run-agent Review the changes and fix verified findings.",
+		"$callee:create-agent Create a Go code-review agent for Codex.",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("Codex plugin is missing starter prompt %q", want)
@@ -487,12 +587,13 @@ func TestDistributionMetadataMatchesRelease(t *testing.T) {
 		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
 		filepath.Join(".claude-plugin", "plugin.json"),
 		filepath.Join(".codex-plugin", "plugin.json"),
+		filepath.Join(".cursor-plugin", "plugin.json"),
 		filepath.Join(".grok-plugin", "plugin.json"),
 		filepath.Join(".plugin", "plugin.json"),
-		filepath.Join("skills", "run-role", "SKILL.md"),
-		filepath.Join("skills", "create-role", "SKILL.md"),
-		filepath.Join("prefixed-skills", "callee-run-role", "SKILL.md"),
-		filepath.Join("prefixed-skills", "callee-create-role", "SKILL.md"),
+		filepath.Join("skills", "run-agent", "SKILL.md"),
+		filepath.Join("skills", "create-agent", "SKILL.md"),
+		filepath.Join("prefixed-skills", "callee-run-agent", "SKILL.md"),
+		filepath.Join("prefixed-skills", "callee-create-agent", "SKILL.md"),
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
@@ -510,6 +611,7 @@ func TestMarketplaceCatalogsReferenceCalleePlugin(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join("..", "..", ".agents", "plugins", "marketplace.json"),
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
+		filepath.Join("..", "..", ".cursor-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
 	} {

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Callee Run Role"
-  short_description: "Run and combine project-defined Callee roles"
-  default_prompt: "Use $callee:run-role to review the current changes."

@@ -74,6 +74,7 @@ func TestProviderForAgentUsesRuntimeCommands(t *testing.T) {
 	}{
 		{name: "codex", want: []string{"npx", "-y", "@normahq/codex-acp-bridge@1.7.4"}},
 		{name: "grok", want: []string{"grok", "agent", "stdio"}},
+		{name: "cursor", want: []string{"agent", "acp"}},
 	}
 
 	for _, test := range tests {

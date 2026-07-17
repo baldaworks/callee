@@ -17,11 +17,13 @@ const (
 )
 
 type setupTarget struct {
-	name         string
-	prepare      func(context.Context, io.Writer) error
-	commands     [][]string
-	providerType string
-	install      func(bool) (setupInstallResult, error)
+	name             string
+	prepare          func(context.Context, io.Writer) error
+	commands         [][]string
+	providerType     string
+	install          func(bool) (setupInstallResult, error)
+	installedMessage string
+	unchangedMessage string
 }
 
 type setupInstallResult struct {
@@ -35,7 +37,7 @@ func setupCommand() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "setup <codex|claude|grok|copilot|opencode>",
+		Use:   "setup <codex|claude|grok|copilot|opencode|cursor>",
 		Short: "Install a host integration and starter agents",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -83,18 +85,18 @@ func installSetupTarget(ctx context.Context, stdout, stderr io.Writer, target se
 		return err
 	}
 
-	return reportOpenCodeInstall(stdout, result)
+	return reportLocalIntegrationInstall(stdout, target, result)
 }
 
-func reportOpenCodeInstall(stdout io.Writer, result setupInstallResult) error {
+func reportLocalIntegrationInstall(stdout io.Writer, target setupTarget, result setupInstallResult) error {
 	if len(result.created) > 0 {
-		if _, err := fmt.Fprintln(stdout, "Installed OpenCode skills and commands."); err != nil {
+		if _, err := fmt.Fprintln(stdout, target.installedMessage); err != nil {
 			return err
 		}
 	}
 
 	if len(result.unchanged) > 0 {
-		if _, err := fmt.Fprintln(stdout, "Existing OpenCode skills and commands were left unchanged."); err != nil {
+		if _, err := fmt.Fprintln(stdout, target.unchangedMessage); err != nil {
 			return err
 		}
 	}
@@ -143,12 +145,22 @@ func setupTargetFor(name string) (setupTarget, error) {
 		}, nil
 	case "opencode":
 		return setupTarget{
-			name:         "OpenCode",
-			providerType: "opencode",
-			install:      writeOpenCodeIntegration,
+			name:             "OpenCode",
+			providerType:     "opencode",
+			install:          writeOpenCodeIntegration,
+			installedMessage: "Installed OpenCode skills and commands.",
+			unchangedMessage: "Existing OpenCode skills and commands were left unchanged.",
+		}, nil
+	case "cursor":
+		return setupTarget{
+			name:             "Cursor",
+			providerType:     "cursor",
+			install:          writeCursorIntegration,
+			installedMessage: "Installed Cursor skills.",
+			unchangedMessage: "Existing Cursor skills were left unchanged.",
 		}, nil
 	default:
-		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, grok, copilot, or opencode)", name)
+		return setupTarget{}, fmt.Errorf("unsupported setup target %q (want codex, claude, grok, copilot, opencode, or cursor)", name)
 	}
 }
 
