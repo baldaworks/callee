@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -25,39 +26,51 @@ func TestAgentRunUsesControllingPTYWithSeparateStreams(t *testing.T) {
 	if mode := os.Getenv(agentPTYHelper); mode != "" {
 		newWorkflowFactory = func(io.Writer, *terminalInteractor, *workflow.PauseController) runtime.ProcessFactory {
 			responses := []string{"implemented"}
+			wantEscalate := false
+
 			if mode == "repl" {
 				responses = []string{
 					"Which target?\n\ncallee.control.v1.await",
 					"Final implementation\n\ncallee.control.v1.return",
 				}
+			} else if mode == "loop" {
+				responses = []string{"implemented\n\ncallee.control.v1.escalate"}
+				wantEscalate = true
 			}
 
-			return ptyTestFactory{process: &ptyTestProcess{responses: responses}}
+			return ptyTestFactory{process: &ptyTestProcess{responses: responses, wantEscalate: wantEscalate}}
 		}
 
-		code := Run(context.Background(), []string{"agent", "run", "roles/worker", "--message", "build"}, os.Stdout, os.Stderr)
+		agentID := "roles/worker"
+		if mode == "loop" {
+			agentID = "workflows/loop"
+		}
+
+		code := Run(context.Background(), []string{"agent", "run", agentID, "--message", "build"}, os.Stdout, os.Stderr)
 		os.Exit(code)
 	}
 
 	for _, test := range []struct {
 		name       string
-		repl       bool
+		mode       string
 		terminalIn string
 		want       string
 	}{
-		{name: "non-REPL", want: "implemented"},
-		{name: "REPL await", repl: true, terminalIn: "linux\n", want: "Final implementation"},
+		{name: "root Role", mode: "direct", want: "implemented"},
+		{name: "root REPL await", mode: "repl", terminalIn: "linux\n", want: "Final implementation"},
+		{name: "Loop child escalation", mode: "loop", want: "implemented"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			runAgentPTYTest(t, test.repl, test.terminalIn, test.want)
+			runAgentPTYTest(t, test.mode, test.terminalIn, test.want)
 		})
 	}
 }
 
-func runAgentPTYTest(t *testing.T, repl bool, terminalInput, want string) {
+func runAgentPTYTest(t *testing.T, mode, terminalInput, want string) {
 	t.Helper()
 
 	project := t.TempDir()
+	repl := mode == "repl"
 
 	replDeclaration := ""
 	if repl {
@@ -75,6 +88,23 @@ spec:
 {{ .Input }}
 `)
 
+	if mode == "loop" {
+		writeVersionedAgent(t, filepath.Join(project, ".callee"), "workflows/loop.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Loop
+spec:
+  description: Runs a worker until it escalates.
+  children:
+    - ref: roles/worker
+      alias: worker
+  maxIterations: 2
+  onExhausted: fail
+  output: '{{ .State.outputs.worker }}'
+---
+{{ .Input }}
+`)
+	}
+
 	terminal, childTerminal, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open() error: %v", err)
@@ -84,11 +114,6 @@ spec:
 
 	command := exec.Command(os.Args[0], "-test.run=^TestAgentRunUsesControllingPTYWithSeparateStreams$")
 	command.Dir = project
-
-	mode := "direct"
-	if repl {
-		mode = "repl"
-	}
 
 	command.Env = append(os.Environ(), agentPTYHelper+"="+mode, "XDG_CONFIG_HOME="+filepath.Join(project, "xdg"))
 	command.Stdin = childTerminal
@@ -118,10 +143,23 @@ spec:
 	}
 
 	diagnostics := stripANSI(stderr.String())
-	for _, expected := range []string{"INF running agent", "id=roles/worker", "kind=Role", "visit=1", "INF agent finished", "status=completed", "outcome=return"} {
-		if !strings.Contains(diagnostics, expected) {
-			t.Errorf("stderr = %q, want containing %q", stderr.String(), expected)
+
+	roleID := "roles/worker"
+	if mode == "loop" {
+		roleID = "worker"
+	}
+
+	requireDiagnosticLine(t, diagnostics, "INF running agent", "id="+roleID, "kind=Role", "visit=1")
+
+	if mode == "loop" {
+		requireDiagnosticLine(t, diagnostics, "INF agent finished", "id=worker", "kind=Role", "visit=1", "status=completed", "outcome=escalate")
+		requireDiagnosticLine(t, diagnostics, "INF agent finished", "id=workflows/loop", "kind=Loop", "visit=1", "status=completed", "outcome=return")
+
+		if strings.Contains(diagnostics, "visit=2") {
+			t.Errorf("Loop executed an unexpected second visit; stderr=%q", stderr.String())
 		}
+	} else {
+		requireDiagnosticLine(t, diagnostics, "INF agent finished", "id=roles/worker", "kind=Role", "visit=1", "status=completed", "outcome=return")
 	}
 
 	for _, expected := range []string{"INF entering repl", "INF exiting repl"} {
@@ -136,13 +174,38 @@ spec:
 	}
 }
 
+func requireDiagnosticLine(t *testing.T, diagnostics string, fields ...string) {
+	t.Helper()
+
+	for line := range strings.SplitSeq(diagnostics, "\n") {
+		matches := true
+
+		for _, field := range fields {
+			if !strings.Contains(line, field) {
+				matches = false
+
+				break
+			}
+		}
+
+		if matches {
+			return
+		}
+	}
+
+	t.Errorf("diagnostics have no line containing %q:\n%s", fields, diagnostics)
+}
+
 type ptyTestFactory struct{ process *ptyTestProcess }
 
 func (f ptyTestFactory) Start(context.Context, runtime.Provider) (runtime.ProviderProcess, error) {
 	return f.process, nil
 }
 
-type ptyTestProcess struct{ responses []string }
+type ptyTestProcess struct {
+	responses    []string
+	wantEscalate bool
+}
 
 func (p *ptyTestProcess) NewSession(context.Context, agent.Resource) (runtime.AgentSession, error) {
 	return &ptyTestSession{process: p}, nil
@@ -154,7 +217,12 @@ type ptyTestSession struct{ process *ptyTestProcess }
 
 func (s *ptyTestSession) Prepare(context.Context) error { return nil }
 
-func (s *ptyTestSession) Turn(context.Context, string) (string, error) {
+func (s *ptyTestSession) Turn(_ context.Context, prompt string) (string, error) {
+	hasEscalation := strings.Contains(prompt, "callee.control.v1.escalate")
+	if hasEscalation != s.process.wantEscalate {
+		return "", fmt.Errorf("prompt escalation presence = %t, want %t", hasEscalation, s.process.wantEscalate)
+	}
+
 	if len(s.process.responses) == 0 {
 		return "", io.EOF
 	}

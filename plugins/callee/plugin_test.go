@@ -11,7 +11,7 @@ import (
 	"github.com/baldaworks/callee/internal/agent"
 )
 
-const releaseVersion = "0.11.0"
+const releaseVersion = "0.12.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "run-agent", "SKILL.md"))
@@ -355,7 +355,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	for _, forbidden := range []string{
 		"--sparse",
 		"setup <host>",
-		"@0.11.0 setup",
+		"@0.12.0 setup",
 		"Flat frontmatter",
 		"For Codex:",
 		"callee exec --role",
@@ -603,6 +603,34 @@ func TestDistributionMetadataMatchesRelease(t *testing.T) {
 
 		if strings.Contains(string(data), "0.4.1") || !strings.Contains(string(data), releaseVersion) {
 			t.Errorf("%s does not match release version %s", path, releaseVersion)
+		}
+	}
+}
+
+func TestVecgoLicenseIsIncludedInNPMArtifacts(t *testing.T) {
+	root := filepath.Join("..", "..")
+	for path, wants := range map[string][]string{
+		filepath.Join(root, "THIRD_PARTY_NOTICES.md"): {
+			"vecgo", "v0.0.15", "third_party/vecgo/LICENSE",
+		},
+		filepath.Join(root, "third_party", "vecgo", "LICENSE"): {
+			"Apache License", "Version 2.0", "Copyright 2025 Frank Hübner",
+		},
+		filepath.Join(root, ".github", "workflows", "omnidist-release.yml"): {
+			"Include vecgo license in npm artifacts",
+			"Third-party component: vecgo v0.0.15",
+			"cat third_party/vecgo/LICENSE",
+		},
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, want := range wants {
+			if !strings.Contains(string(data), want) {
+				t.Errorf("%s is missing %q", path, want)
+			}
 		}
 	}
 }

@@ -131,27 +131,33 @@ func controlArtifact(prefix string) (string, error) {
 	}
 }
 
-func controlInstructions(repl bool) string {
+func controlInstructions(repl, canEscalate bool) string {
 	if repl {
-		return `
+		instructions := []string{
+			"Finish every assistant response with exactly one control record on its own final line, separated from preceding text by one empty line:",
+			"- callee.control.v1.await — ask the operator for another turn; preceding text is required.",
+			"- callee.control.v1.return — finish this role successfully; preceding artifact is required.",
+		}
+		if canEscalate {
+			instructions = append(instructions, "- callee.control.v1.escalate — return control to the nearest Loop; preceding artifact is optional.")
+		}
 
----
-Callee workflow control protocol:
-Finish every assistant response with exactly one control record on its own final line, separated from preceding text by one empty line:
-- callee.control.v1.await — ask the operator for another turn; preceding text is required.
-- callee.control.v1.return — finish this role successfully; preceding artifact is required.
-- callee.control.v1.escalate — return control to the nearest Loop; preceding artifact is optional.
-- callee.control.v1.fail — fail the workflow; preceding diagnostic detail is optional.`
+		instructions = append(instructions, "- callee.control.v1.fail — fail the workflow; preceding diagnostic detail is optional.")
+
+		return "\n\n---\nCallee workflow control protocol:\n" + strings.Join(instructions, "\n")
 	}
 
-	return `
+	instructions := []string{"Return the requested artifact normally."}
+	if canEscalate {
+		instructions = append(instructions, "To return control to the nearest Loop, finish with callee.control.v1.escalate on its own final line.")
+	}
 
----
-Callee workflow control protocol:
-Return the requested artifact normally.
-To return control to the nearest Loop, finish with callee.control.v1.escalate on its own final line.
-To fail the workflow, finish with callee.control.v1.fail on its own final line.
-Separate a preceding artifact or diagnostic from the record by one empty line.`
+	instructions = append(instructions,
+		"To fail the workflow, finish with callee.control.v1.fail on its own final line.",
+		"Separate a preceding artifact or diagnostic from the record by one empty line.",
+	)
+
+	return "\n\n---\nCallee workflow control protocol:\n" + strings.Join(instructions, "\n")
 }
 
 func replReminder() string {

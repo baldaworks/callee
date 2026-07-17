@@ -9,7 +9,7 @@
     {
       "name": "callee",
       "description": "Run Markdown-defined agents and deterministic workflows.",
-      "version": "0.11.0",
+      "version": "0.12.0",
       "source": "./plugins/callee",
       "homepage": "https://github.com/baldaworks/callee",
       "keywords": ["markdown", "agents", "workflows", "cli", "acp"]

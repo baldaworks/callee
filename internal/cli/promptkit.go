@@ -21,13 +21,32 @@ const (
 
 func promptKitCommand() *cobra.Command {
 	cmd := promptkittycli.NewCommand(promptkittycli.Options{Use: "promptkit"})
-	cmd.Short = "Browse PromptKit, assemble prompts, and generate Callee roles"
+	for _, child := range cmd.Commands() {
+		switch child.Name() {
+		case "list", "search", "show":
+		default:
+			cmd.RemoveCommand(child)
+		}
+	}
 
-	roleCommand := &cobra.Command{Use: "role", Short: "Generate a Callee role", Args: cobra.NoArgs}
+	cmd.Short = "Browse the PromptKit catalog and generate Callee roles"
+	cmd.Args = cobra.NoArgs
+	cmd.RunE = promptKitGroupHelp
+
+	roleCommand := &cobra.Command{
+		Use:   "role",
+		Short: "Generate a Callee role",
+		Args:  cobra.NoArgs,
+		RunE:  promptKitGroupHelp,
+	}
 	roleCommand.AddCommand(promptKitRoleCreateCommand())
 	cmd.AddCommand(roleCommand)
 
 	return cmd
+}
+
+func promptKitGroupHelp(cmd *cobra.Command, _ []string) error {
+	return cmd.Help()
 }
 
 func promptKitRoleCreateCommand() *cobra.Command {

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,21 +14,66 @@ import (
 	"github.com/baldaworks/promptkitty"
 )
 
-func TestPromptKitCommandMountsReusableCLI(t *testing.T) {
+func TestPromptKitCommandExposesCatalogAndRoleCommands(t *testing.T) {
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"promptkit", "--help"})
 
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute(promptkit --help) returned unexpected error: %v", err)
+	promptKit, _, err := cmd.Find([]string{"promptkit"})
+	if err != nil {
+		t.Fatalf("Find(promptkit) returned unexpected error: %v", err)
 	}
 
-	for _, command := range []string{"assemble", "list", "role", "search", "show"} {
-		if !strings.Contains(stdout.String(), command) {
-			t.Errorf("promptkit help does not contain %q:\n%s", command, stdout.String())
-		}
+	commands := promptKit.Commands()
+
+	got := make([]string, 0, len(commands))
+	for _, command := range commands {
+		got = append(got, command.Name())
+	}
+
+	want := []string{"list", "role", "search", "show"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("promptkit commands = %q, want %q", got, want)
+	}
+}
+
+func TestPromptKitCommandGroupsShowHelpWithoutArguments(t *testing.T) {
+	for _, args := range [][]string{
+		{"promptkit"},
+		{"promptkit", "role"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			code := Run(context.Background(), args, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("Run(%q) exit = %d, want 0; stderr = %q", args, code, stderr.String())
+			}
+
+			if !strings.Contains(stdout.String(), "Available Commands:") {
+				t.Errorf("Run(%q) stdout does not contain command help:\n%s", args, stdout.String())
+			}
+		})
+	}
+}
+
+func TestPromptKitCommandGroupsRejectUnknownCommands(t *testing.T) {
+	for _, args := range [][]string{
+		{"promptkit", "assemble"},
+		{"promptkit", "setup"},
+		{"promptkit", "unknown"},
+		{"promptkit", "role", "unknown"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			code := Run(context.Background(), args, &stdout, &stderr)
+			if code != exitError {
+				t.Fatalf("Run(%q) exit = %d, want %d", args, code, exitError)
+			}
+
+			if !strings.Contains(stderr.String(), "unknown command") {
+				t.Errorf("Run(%q) stderr = %q, want unknown command", args, stderr.String())
+			}
+		})
 	}
 }
 
@@ -92,9 +139,9 @@ func TestPromptKitRoleCreateRequiresProviderFlag(t *testing.T) {
 	}
 }
 
-func TestPromptKitSearchRetainsComponentTypeFlag(t *testing.T) {
+func TestPromptKitSearchRanksNaturalLanguageIntent(t *testing.T) {
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"promptkit", "search", "code review", "--type", "template", "--json"})
+	cmd.SetArgs([]string{"promptkit", "search", "write requirements document", "--type", "template", "--json"})
 
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
@@ -103,8 +150,23 @@ func TestPromptKitSearchRetainsComponentTypeFlag(t *testing.T) {
 		t.Fatalf("Execute(promptkit search --type) returned unexpected error: %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), `"type": "template"`) {
-		t.Errorf("promptkit search --type output does not contain templates:\n%s", stdout.String())
+	var components []promptkitty.Component
+	if err := json.Unmarshal(stdout.Bytes(), &components); err != nil {
+		t.Fatalf("decode promptkit search output: %v", err)
+	}
+
+	if len(components) == 0 || components[0].Name != "author-requirements-doc" {
+		t.Fatalf("promptkit search first result = %#v, want author-requirements-doc", components)
+	}
+
+	for _, component := range components {
+		if component.Type != promptkitty.ComponentTemplate {
+			t.Errorf("promptkit search component %q type = %q, want template", component.Name, component.Type)
+		}
+	}
+
+	if strings.Contains(stdout.String(), `"score"`) {
+		t.Errorf("promptkit search exposes internal score:\n%s", stdout.String())
 	}
 }
 

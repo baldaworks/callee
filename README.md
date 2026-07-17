@@ -259,7 +259,7 @@ Callee embeds the pinned PromptKit catalog through [PromptKitty](https://github.
 
 ```bash
 callee promptkit list
-callee promptkit search "code review" --type template
+callee promptkit search "write requirements document" --type template
 callee promptkit show review-code
 callee promptkit role create go-reviewer \
   --template review-code \
@@ -269,6 +269,13 @@ callee promptkit role create go-reviewer \
   --bind language=Go
 ```
 
+`search` uses PromptKitty's deterministic, in-memory BM25 index from vecgo. It
+ranks component names, descriptions, metadata, and complete Markdown bodies
+with weights `4 / 2 / 1 / 1`, while preserving the existing table and JSON
+component shapes. Callee exposes catalog `list`, `search`, and `show` commands
+plus its own `role create`; PromptKitty's standalone `assemble` and `setup`
+commands are not mounted.
+
 Generated Roles use the v1alpha1 envelope and Go templates. Unbound PromptKit parameters become `spec.params`; literal template examples in assembled PromptKit text are escaped safely.
 
 ## Distribution and limits
@@ -277,4 +284,6 @@ Callee publishes CGO-disabled native executables for macOS and Linux on AMD64/AR
 
 ## License
 
-Callee is released under the [MIT License](LICENSE).
+Callee is released under the [MIT License](LICENSE). See
+[Third-party notices](THIRD_PARTY_NOTICES.md) for embedded and statically linked
+dependencies.

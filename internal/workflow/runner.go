@@ -75,7 +75,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		}
 	}()
 
-	result, err := run.node(ctx, r.Root, prompt)
+	result, err := run.node(ctx, r.Root, prompt, false)
 	if err != nil {
 		return "", err
 	}
@@ -126,7 +126,7 @@ type runState struct {
 	pauses     *PauseController
 }
 
-func (r *runState) node(ctx context.Context, node *registry.ResolvedNode, input string) (result nodeResult, resultErr error) {
+func (r *runState) node(ctx context.Context, node *registry.ResolvedNode, input string, canEscalate bool) (result nodeResult, resultErr error) {
 	r.visits[node.EffectiveID]++
 
 	logger := r.lifecycleLogger(ctx, node)
@@ -144,9 +144,9 @@ func (r *runState) node(ctx context.Context, node *registry.ResolvedNode, input 
 
 	switch node.Kind {
 	case agent.RoleKind:
-		return r.role(ctx, node, input)
+		return r.role(ctx, node, input, canEscalate)
 	case agent.SequentialKind:
-		return r.sequential(ctx, node, input)
+		return r.sequential(ctx, node, input, canEscalate)
 	case agent.LoopKind:
 		return r.loop(ctx, node, input)
 	default:
@@ -185,7 +185,7 @@ func writeLifecycleFinish(logger zerolog.Logger, message string, result nodeResu
 	event.Dur("duration", time.Since(started)).Msg(message)
 }
 
-func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input string) (result nodeResult, resultErr error) {
+func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input string, canEscalate bool) (result nodeResult, resultErr error) {
 	params, err := r.roleParams(ctx, node, input)
 	if err != nil {
 		return nodeResult{}, err
@@ -235,7 +235,7 @@ func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input 
 		}()
 	}
 
-	turnInput := body + controlInstructions(node.Resource.REPL())
+	turnInput := body + controlInstructions(node.Resource.REPL(), canEscalate)
 	for {
 		turnCtx, cancelTurn := withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
 		content, err := session.Turn(turnCtx, turnInput)
@@ -291,7 +291,7 @@ func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input 
 	}
 }
 
-func (r *runState) sequential(ctx context.Context, node *registry.ResolvedNode, input string) (nodeResult, error) {
+func (r *runState) sequential(ctx context.Context, node *registry.ResolvedNode, input string, canEscalate bool) (nodeResult, error) {
 	localInput, err := r.compositeInput(node, input)
 	if err != nil {
 		return nodeResult{}, err
@@ -312,7 +312,7 @@ func (r *runState) sequential(ctx context.Context, node *registry.ResolvedNode, 
 			return nodeResult{}, err
 		}
 
-		childResult, err := r.node(ctx, child, childInput)
+		childResult, err := r.node(ctx, child, childInput, canEscalate)
 		if err != nil {
 			return nodeResult{}, err
 		}
@@ -364,7 +364,7 @@ func (r *runState) loop(ctx context.Context, node *registry.ResolvedNode, input 
 				return nodeResult{}, err
 			}
 
-			childResult, err := r.node(ctx, child, childInput)
+			childResult, err := r.node(ctx, child, childInput, true)
 			if err != nil {
 				return nodeResult{}, err
 			}

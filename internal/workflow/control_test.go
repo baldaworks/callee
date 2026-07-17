@@ -53,3 +53,35 @@ func TestParseResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestControlInstructionsScopeEscalationToLoopDescendants(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name          string
+		repl          bool
+		canEscalate   bool
+		wantEscalate  bool
+		wantMandatory []string
+	}{
+		{name: "root one shot", wantMandatory: []string{"Return the requested artifact normally.", controlFail}},
+		{name: "loop one shot", canEscalate: true, wantEscalate: true, wantMandatory: []string{"Return the requested artifact normally.", controlFail}},
+		{name: "root repl", repl: true, wantMandatory: []string{controlAwait, controlReturn, controlFail}},
+		{name: "loop repl", repl: true, canEscalate: true, wantEscalate: true, wantMandatory: []string{controlAwait, controlReturn, controlFail}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := controlInstructions(test.repl, test.canEscalate)
+			if strings.Contains(got, controlEscalate) != test.wantEscalate {
+				t.Errorf("controlInstructions() escalation presence = %t, want %t:\n%s", strings.Contains(got, controlEscalate), test.wantEscalate, got)
+			}
+
+			for _, want := range test.wantMandatory {
+				if !strings.Contains(got, want) {
+					t.Errorf("controlInstructions() is missing %q:\n%s", want, got)
+				}
+			}
+		})
+	}
+}

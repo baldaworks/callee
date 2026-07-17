@@ -88,6 +88,236 @@ func TestRunnerLoopConsumesEscalation(t *testing.T) {
 	if len(validatorPrompts) != 2 || !strings.Contains(validatorPrompts[1], "draft two") {
 		t.Errorf("validator prompts = %v, want second worker output", validatorPrompts)
 	}
+
+	if !strings.Contains(validatorPrompts[1], controlEscalate) {
+		t.Errorf("validator prompt does not allow escalation beneath Loop:\n%s", validatorPrompts[1])
+	}
+}
+
+func TestRunnerLoopMakesEscalationAvailableThroughSequential(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/reviewer", false, nil, "{{ .Input }}"),
+		compositeResource(t, "workflows/review", agent.SequentialKind, []agent.Child{
+			{Ref: "roles/reviewer", Alias: "reviewer"},
+		}, 0, "{{ .Input }}", ""),
+		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+			{Ref: "workflows/review", Alias: "review"},
+		}, 1, "{{ .Input }}", "{{ .State.outputs.reviewer }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/reviewer": {{"approved\n\n" + controlEscalate}},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "review")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "approved" {
+		t.Errorf("Runner.Run() = %q, want approved", got)
+	}
+
+	if prompt := process.prompts["roles/reviewer"][0]; !strings.Contains(prompt, controlEscalate) {
+		t.Errorf("reviewer prompt does not allow escalation through Sequential beneath Loop:\n%s", prompt)
+	}
+}
+
+func TestRunnerSequentialContinuesAfterNestedLoopEscalation(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/refiner", false, nil, "Refine: {{ .Input }}"),
+		roleResource(t, "roles/publisher", false, nil, "Publish: {{ .Input }}"),
+		compositeResource(t, "workflows/refinement", agent.LoopKind, []agent.Child{
+			{Ref: "roles/refiner", Alias: "refiner"},
+		}, 3, "{{ .Input }}", "refined={{ .State.outputs.refiner }}"),
+		compositeResource(t, "workflows/pipeline", agent.SequentialKind, []agent.Child{
+			{Ref: "workflows/refinement", Alias: "refinement"},
+			{Ref: "roles/publisher", Alias: "publisher"},
+		}, 0, "{{ .Input }}", ""),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/refiner":   {{"draft\n\n" + controlEscalate}},
+		"roles/publisher": {{"published"}},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "write")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "published" {
+		t.Errorf("Runner.Run() = %q, want published", got)
+	}
+
+	if prompt := process.prompts["roles/refiner"][0]; !strings.Contains(prompt, controlEscalate) {
+		t.Errorf("refiner prompt does not allow escalation inside nested Loop:\n%s", prompt)
+	}
+
+	publisherPrompt := process.prompts["roles/publisher"][0]
+	if strings.Contains(publisherPrompt, controlEscalate) {
+		t.Errorf("publisher prompt unexpectedly allows escalation outside Loop:\n%s", publisherPrompt)
+	}
+
+	if !strings.Contains(publisherPrompt, "Publish: refined=draft") {
+		t.Errorf("publisher prompt = %q, want nested Loop output", publisherPrompt)
+	}
+}
+
+func TestRunnerOuterLoopConsumesStickySequentialEscalation(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/evaluator", false, nil, "Evaluate: {{ .Input }}"),
+		roleResource(t, "roles/recorder", false, nil, "Record: {{ .Input }}"),
+		compositeResource(t, "workflows/phase", agent.SequentialKind, []agent.Child{
+			{Ref: "roles/evaluator", Alias: "evaluator"},
+			{Ref: "roles/recorder", Alias: "recorder"},
+		}, 0, "{{ .Input }}", ""),
+		compositeResource(t, "workflows/outer", agent.LoopKind, []agent.Child{
+			{Ref: "workflows/phase", Alias: "phase"},
+		}, 3, "{{ .Input }}", "result={{ .State.outputs.recorder }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/evaluator": {{"ready\n\n" + controlEscalate}},
+		"roles/recorder":  {{"recorded"}},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "evaluate")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "result=recorded" {
+		t.Errorf("Runner.Run() = %q, want result=recorded", got)
+	}
+
+	if prompt := process.prompts["roles/recorder"][0]; !strings.Contains(prompt, "Record: ready") {
+		t.Errorf("recorder prompt = %q, want escalator artifact", prompt)
+	}
+
+	for _, roleID := range []string{"roles/evaluator", "roles/recorder"} {
+		if prompt := process.prompts[roleID][0]; !strings.Contains(prompt, controlEscalate) {
+			t.Errorf("%s prompt does not preserve Loop escalation capability:\n%s", roleID, prompt)
+		}
+	}
+}
+
+func TestRunnerNestedLoopEscalationStopsNearestLoopOnly(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/inner-worker", false, nil, "Inner: {{ .Input }}"),
+		roleResource(t, "roles/gate", false, nil, "Gate: {{ .Input }}"),
+		compositeResource(t, "workflows/inner", agent.LoopKind, []agent.Child{
+			{Ref: "roles/inner-worker", Alias: "inner_worker"},
+		}, 2, "{{ .Input }}", "inner={{ .State.outputs.inner_worker }}"),
+		compositeResource(t, "workflows/outer", agent.LoopKind, []agent.Child{
+			{Ref: "workflows/inner", Alias: "inner_loop"},
+			{Ref: "roles/gate", Alias: "gate"},
+		}, 3, "{{ .Input }}", "outer={{ .State.outputs.gate }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/inner-worker": {
+			{"draft-one\n\n" + controlEscalate},
+			{"draft-two\n\n" + controlEscalate},
+		},
+		"roles/gate": {
+			{"continue"},
+			{"done\n\n" + controlEscalate},
+		},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "iterate")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "outer=done" {
+		t.Errorf("Runner.Run() = %q, want outer=done", got)
+	}
+
+	if process.sessions != 4 {
+		t.Errorf("provider sessions = %d, want 4", process.sessions)
+	}
+
+	gatePrompts := process.prompts["roles/gate"]
+	if len(gatePrompts) != 2 {
+		t.Fatalf("gate prompts = %d, want 2", len(gatePrompts))
+	}
+
+	for index, want := range []string{"Gate: inner=draft-one", "Gate: inner=draft-two"} {
+		if !strings.Contains(gatePrompts[index], want) {
+			t.Errorf("gate prompt %d = %q, want containing %q", index, gatePrompts[index], want)
+		}
+	}
+}
+
+func TestRunnerFailureOverridesStickyEscalationInsideLoop(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/evaluator", false, nil, "{{ .Input }}"),
+		roleResource(t, "roles/validator", false, nil, "{{ .Input }}"),
+		compositeResource(t, "workflows/phase", agent.SequentialKind, []agent.Child{
+			{Ref: "roles/evaluator", Alias: "evaluator"},
+			{Ref: "roles/validator", Alias: "validator"},
+		}, 0, "{{ .Input }}", ""),
+		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+			{Ref: "workflows/phase", Alias: "phase"},
+		}, 3, "{{ .Input }}", ""),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/evaluator": {{"candidate\n\n" + controlEscalate}},
+		"roles/validator": {{"invalid\n\n" + controlFail}},
+	}}
+
+	_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "evaluate")
+	if err == nil || !strings.Contains(err.Error(), `agent "validator" failed: invalid`) {
+		t.Fatalf("Runner.Run() error = %v, want validator failure", err)
+	}
+
+	if len(process.prompts["roles/validator"]) != 1 {
+		t.Errorf("validator turns = %d, want 1", len(process.prompts["roles/validator"]))
+	}
+
+	for _, roleID := range []string{"roles/evaluator", "roles/validator"} {
+		if prompt := process.prompts[roleID][0]; !strings.Contains(prompt, controlEscalate) {
+			t.Errorf("%s prompt does not preserve Loop escalation capability:\n%s", roleID, prompt)
+		}
+	}
+}
+
+func TestRunnerREPLRoleCanEscalateOnlyInsideLoop(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/reviewer", true, nil, "Review: {{ .Input }}"),
+		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+			{Ref: "roles/reviewer", Alias: "reviewer"},
+		}, 2, "{{ .Input }}", "{{ .State.outputs.reviewer }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/reviewer": {{"approved\n\n" + controlEscalate}},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "review")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "approved" {
+		t.Errorf("Runner.Run() = %q, want approved", got)
+	}
+
+	prompt := process.prompts["roles/reviewer"][0]
+	for _, want := range []string{controlAwait, controlReturn, controlEscalate, controlFail} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("reviewer REPL prompt is missing %q:\n%s", want, prompt)
+		}
+	}
 }
 
 func TestRunnerSequentialStickyEscalationRunsRemainingChildren(t *testing.T) {
@@ -121,6 +351,10 @@ func TestRunnerSequentialStickyEscalationRunsRemainingChildren(t *testing.T) {
 	if len(process.prompts["roles/implementer"]) != 1 {
 		t.Errorf("implementer turns = %d, want 1", len(process.prompts["roles/implementer"]))
 	}
+
+	if prompt := process.prompts["roles/planner"][0]; strings.Contains(prompt, controlEscalate) {
+		t.Errorf("planner prompt unexpectedly allows escalation without a Loop ancestor:\n%s", prompt)
+	}
 }
 
 func TestRunnerREPLRetainsVisitSession(t *testing.T) {
@@ -147,6 +381,10 @@ func TestRunnerREPLRetainsVisitSession(t *testing.T) {
 
 	if len(interactor.displayed) != 1 || interactor.displayed[0] != "Which target?" {
 		t.Errorf("displayed = %v, want question", interactor.displayed)
+	}
+
+	if prompt := process.prompts["roles/planner"][0]; strings.Contains(prompt, controlEscalate) {
+		t.Errorf("root REPL prompt unexpectedly allows escalation:\n%s", prompt)
 	}
 }
 

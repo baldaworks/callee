@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/baldaworks/promptkitty v0.2.1
+	github.com/baldaworks/promptkitty v0.4.2
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/creack/pty v1.1.24
 	github.com/normahq/go-adk-acpagent/v2 v2.2.1
@@ -138,6 +138,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
+	github.com/hupe1980/vecgo v0.0.15 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jgautheron/goconst v1.10.0 // indirect
 	github.com/jjti/go-spancheck v0.6.5 // indirect
