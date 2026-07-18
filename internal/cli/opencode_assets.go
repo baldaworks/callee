@@ -18,6 +18,7 @@ type localIntegrationAsset struct {
 var openCodeAssetFiles = []localIntegrationAsset{
 	{source: "assets/opencode/skills/callee-run-agent/SKILL.md", destination: ".opencode/skills/callee-run-agent/SKILL.md"},
 	{source: "assets/opencode/skills/callee-create-agent/SKILL.md", destination: ".opencode/skills/callee-create-agent/SKILL.md"},
+	{source: "assets/opencode/skills/callee-create-agent/references/workflows.md", destination: ".opencode/skills/callee-create-agent/references/workflows.md"},
 	{source: "assets/opencode/commands/callee.md", destination: ".opencode/commands/callee.md"},
 	{source: "assets/opencode/commands/callee-create-agent.md", destination: ".opencode/commands/callee-create-agent.md"},
 }
@@ -25,6 +26,7 @@ var openCodeAssetFiles = []localIntegrationAsset{
 var cursorAssetFiles = []localIntegrationAsset{
 	{source: "assets/cursor/skills/callee-run-agent/SKILL.md", destination: ".cursor/skills/callee-run-agent/SKILL.md"},
 	{source: "assets/cursor/skills/callee-create-agent/SKILL.md", destination: ".cursor/skills/callee-create-agent/SKILL.md"},
+	{source: "assets/cursor/skills/callee-create-agent/references/workflows.md", destination: ".cursor/skills/callee-create-agent/references/workflows.md"},
 }
 
 func writeOpenCodeIntegration(force bool) (setupInstallResult, error) {

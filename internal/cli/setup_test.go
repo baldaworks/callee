@@ -373,10 +373,20 @@ func testLocalIntegrationPreservesAssetsUnlessForced(
 
 func TestLocalSkillAssetsMatchPluginSkills(t *testing.T) {
 	for source, pluginPath := range map[string]string{
-		"assets/opencode/skills/callee-run-agent/SKILL.md":    filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-run-agent", "SKILL.md"),
-		"assets/opencode/skills/callee-create-agent/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-create-agent", "SKILL.md"),
-		"assets/cursor/skills/callee-run-agent/SKILL.md":      filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-run-agent", "SKILL.md"),
-		"assets/cursor/skills/callee-create-agent/SKILL.md":   filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-create-agent", "SKILL.md"),
+		"assets/opencode/skills/callee-run-agent/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-run-agent", "SKILL.md"),
+		"assets/opencode/skills/callee-create-agent/SKILL.md": filepath.Join(
+			"..", "..", "plugins", "callee", "prefixed-skills", "callee-create-agent", "SKILL.md",
+		),
+		"assets/opencode/skills/callee-create-agent/references/workflows.md": filepath.Join(
+			"..", "..", "plugins", "callee", "prefixed-skills", "callee-create-agent", "references", "workflows.md",
+		),
+		"assets/cursor/skills/callee-run-agent/SKILL.md": filepath.Join("..", "..", "plugins", "callee", "prefixed-skills", "callee-run-agent", "SKILL.md"),
+		"assets/cursor/skills/callee-create-agent/SKILL.md": filepath.Join(
+			"..", "..", "plugins", "callee", "prefixed-skills", "callee-create-agent", "SKILL.md",
+		),
+		"assets/cursor/skills/callee-create-agent/references/workflows.md": filepath.Join(
+			"..", "..", "plugins", "callee", "prefixed-skills", "callee-create-agent", "references", "workflows.md",
+		),
 	} {
 		want, err := os.ReadFile(pluginPath)
 		if err != nil {

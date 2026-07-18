@@ -67,14 +67,12 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"callee agent run",
 		"apiVersion: callee.metalagman.dev/v1alpha1",
 		"kind: Role",
-		"kind: Sequential",
-		"kind: Loop",
-		"maxIterations: 5",
-		"onExhausted: fail",
 		"spec.provider",
 		"{{ .Input }}",
 		"{{ .Params.focus }}",
 		"exactly one unconditional bare",
+		"For every `Sequential`, `Loop`, or nested-composite request",
+		"[references/workflows.md](references/workflows.md)",
 		"callee agent validate \"<written-agent-path>\"",
 		"actual generated `.md`, `.yaml`, or `.yml` path",
 		"callee agent view \"<agent-id>\" --json",
@@ -87,6 +85,104 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 	for _, forbidden := range []string{"type: gemini", "api: callee", "kind: role", "{{ prompt }}"} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("create-agent skill contains forbidden syntax %q", forbidden)
+		}
+	}
+}
+
+func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "references", "workflows.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := strings.Join(strings.Fields(string(data)), " ")
+	for _, want := range []string{
+		"## Contents",
+		"[Place and represent files](#place-and-represent-files)",
+		"[Compose the resolved tree](#compose-the-resolved-tree)",
+		"[Author a Sequential workflow](#author-a-sequential-workflow)",
+		"[Author a Loop workflow](#author-a-loop-workflow)",
+		"[Finish the workflow](#finish-the-workflow)",
+		"below `.callee/`",
+		"`.md`, `.yaml`, or `.yml`",
+		"do not also write `spec.body`",
+		"kind: Sequential",
+		"kind: Loop",
+		"workflow child may reference any supported kind",
+		"unique across the entire resolved tree",
+		"`params` only when that child resolves directly to a `Role`",
+		"Never author the reserved `outputs` key",
+		"{{ index .State.outputs \"validator\" }}",
+		"{{ with index .State.outputs \"validator\" }}",
+		"maxIterations: 5",
+		"onExhausted: fail",
+		"set it to `complete` only when",
+		"escalate to finish the loop",
+		"nested `Loop` is an ordinary child",
+		"callee agent validate",
+		"callee agent view",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("workflow reference is missing %q", want)
+		}
+	}
+
+	if strings.Contains(text, "kind: Parallel") {
+		t.Error("workflow reference authors unsupported Parallel syntax")
+	}
+}
+
+func TestCreateAgentWorkflowReferenceVariantsMatch(t *testing.T) {
+	paths := []string{
+		filepath.Join("skills", "create-agent", "references", "workflows.md"),
+		filepath.Join("prefixed-skills", "callee-create-agent", "references", "workflows.md"),
+		filepath.Join("..", "..", "internal", "cli", "assets", "opencode", "skills", "callee-create-agent", "references", "workflows.md"),
+		filepath.Join("..", "..", "internal", "cli", "assets", "cursor", "skills", "callee-create-agent", "references", "workflows.md"),
+	}
+
+	want, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range paths[1:] {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s differs from %s", path, paths[0])
+		}
+	}
+}
+
+func TestCreateAgentWorkflowReferenceExamplesValidate(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "references", "workflows.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sections := strings.Split(string(data), "```markdown\n")
+	if len(sections) != 3 {
+		t.Fatalf("workflow reference contains %d Markdown examples, want 2", len(sections)-1)
+	}
+
+	wantKinds := []agent.Kind{agent.SequentialKind, agent.LoopKind}
+
+	for index, section := range sections[1:] {
+		example, _, ok := strings.Cut(section, "\n```")
+		if !ok {
+			t.Fatalf("Markdown example %d has no closing fence", index)
+		}
+
+		resource, err := agent.Decode("reference/example", "example.md", []byte(example))
+		if err != nil {
+			t.Fatalf("decode Markdown example %d: %v", index, err)
+		}
+
+		if resource.Kind != wantKinds[index] {
+			t.Errorf("Markdown example %d kind = %q, want %q", index, resource.Kind, wantKinds[index])
 		}
 	}
 }

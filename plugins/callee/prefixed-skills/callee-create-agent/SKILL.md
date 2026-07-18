@@ -63,63 +63,11 @@ Focus:
 
 Keep provider configuration under `spec.provider`. Set `spec.repl: true` on a directly authored Role only when it must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
 
-## Author a composite
+## Author a workflow
 
-Resolve every referenced child with `callee agent view "<child-id>" --json`. If the request also needs new child Roles or composites, create and validate those first. Use aliases for repeated refs or when a short stable output key improves templates; aliases must be globally unique in the resolved tree.
+For every `Sequential`, `Loop`, or nested-composite request, read [references/workflows.md](references/workflows.md) completely before writing. Follow its placement, representation, child-wiring, state, parameter, loop-control, and output rules.
 
-Sequential skeleton:
-
-```markdown
----
-apiVersion: callee.metalagman.dev/v1alpha1
-kind: Sequential
-spec:
-  description: <ordered workflow description>
-  children:
-    - ref: <first-agent-id>
-      alias: first
-    - ref: <second-agent-id>
-      alias: second
-      input: |
-        Goal:
-        {{ .Input }}
-
-        First result:
-        {{ .State.outputs.first }}
-  output: |
-    {{ .State.outputs.second }}
----
-{{ .Input }}
-```
-
-Loop skeleton:
-
-```markdown
----
-apiVersion: callee.metalagman.dev/v1alpha1
-kind: Loop
-spec:
-  description: <bounded loop description>
-  children:
-    - ref: <worker-agent-id>
-      alias: worker
-    - ref: <validator-agent-id>
-      alias: validator
-      input: |
-        Goal:
-        {{ .Input }}
-
-        Worker result:
-        {{ .State.outputs.worker }}
-  maxIterations: 5
-  onExhausted: fail
-  output: |
-    {{ .State.outputs.validator }}
----
-{{ .Input }}
-```
-
-Use `.Input` for the current node input, `.Prompt` only when the immutable root prompt is specifically required, `.State.outputs.<alias>` for last successful child artifacts, and `.Params` only in Roles. Never author `.State.outputs` through a state modifier.
+Resolve every referenced child with `callee agent view "<child-id>" --json`. If the request also needs new child Roles or workflows, create and validate those first. Then author the root workflow from the reference and validate the complete resolved tree.
 
 ## Validate the result
 
