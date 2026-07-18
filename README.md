@@ -13,6 +13,20 @@ Callee lets a repository define provider-backed `Role`, `Sequential`, and `Loop`
 
 Callee remains CLI-only. It uses [Norma Runtime](https://github.com/normahq/runtime) for ACP provider processes and Go ADK-aligned escalation semantics. It has no server, durable thread store, or handle binding.
 
+## OpenAI Build Week
+
+Callee was built during OpenAI Build Week using Codex and GPT-5.6 as the primary development system. The project was directed by a human operator, but the implementation loop, design iteration, CLI behavior, workflow semantics, graph tooling, setup flows, examples, and documentation were produced through sustained collaboration with Codex and GPT-5.6.
+
+Codex and GPT-5.6 were used to:
+
+- design the `Role`, `Sequential`, and `Loop` agent model;
+- implement CLI commands, runtime behavior, and validation flows;
+- build graph inspection, doctor checks, and setup integrations;
+- create starter agents, examples, and user-facing documentation;
+- refine repository UX, packaging, and release-facing presentation.
+
+The human role remained product direction, architecture review, scope control, and final acceptance of what shipped.
+
 ## Install and set up
 
 ```bash
