@@ -11,7 +11,7 @@ import (
 	"github.com/baldaworks/callee/internal/agent"
 )
 
-const releaseVersion = "0.12.0"
+const releaseVersion = "0.13.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "run-agent", "SKILL.md"))
@@ -457,7 +457,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	for _, forbidden := range []string{
 		"--sparse",
 		"setup <host>",
-		"@0.12.0 setup",
+		"@0.13.0 setup",
 		"Flat frontmatter",
 		"For Codex:",
 		"callee exec --role",

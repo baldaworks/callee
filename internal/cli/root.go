@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	Version       = "0.12.0"
+	Version       = "0.13.0"
 	exitError     = 1
 	exitInterrupt = 130
 	exitTerminate = 143
