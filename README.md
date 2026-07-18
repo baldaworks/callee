@@ -276,7 +276,7 @@ component shapes. Callee exposes catalog `list`, `search`, and `show` commands
 plus its own `role create`; PromptKitty's standalone `assemble` and `setup`
 commands are not mounted.
 
-Generated Roles use the v1alpha1 envelope and Go templates. Unbound PromptKit parameters become `spec.params`; literal template examples in assembled PromptKit text are escaped safely.
+Generated Roles use the v1alpha1 envelope and Go templates. Unbound PromptKit parameters become `spec.params`; literal template examples in assembled PromptKit text are escaped safely. A template whose `metadata.mode` is `interactive` automatically generates `spec.repl: true`, so its questions and confirmation gates run through the same provider session when the Role is executed. Use `--repl` to force that behavior for an ordinary template.
 
 ## Distribution and limits
 

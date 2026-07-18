@@ -29,13 +29,15 @@ When an embedded PromptKit template clearly fits the requested capability, inspe
 
 ```bash
 callee promptkit search "<intent>" --type template
-callee promptkit show "<template>"
+callee promptkit show "<template>" --json
 callee promptkit role create "<agent-id>" \
   --template "<template>" \
   --description "<capability description>" \
   --provider "<provider>" \
   --prompt-param "<runtime-input-parameter>"
 ```
+
+Inspect `metadata.mode` in the selected template. When it is `interactive`, let the generator set `spec.repl: true`; keep its questions and confirmation gates for `callee agent run` and do not execute those phases while authoring the reusable Role. Use `--repl` only to force REPL behavior for a template that is not marked interactive.
 
 Bind only values that are fixed when the agent is authored. Leave intended runtime values unbound so they become `spec.params`. Use `--output` when the requested ID must not live below the generator's default `.callee/roles/` namespace.
 
@@ -59,7 +61,7 @@ Focus:
 {{ .Params.focus }}
 ```
 
-Keep provider configuration under `spec.provider`. A generated Role body uses exactly one unconditional bare `{{ .Input }}` insertion. Use Go `text/template` syntax on every template surface.
+Keep provider configuration under `spec.provider`. Set `spec.repl: true` on a directly authored Role only when it must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
 
 ## Author a composite
 
@@ -124,8 +126,8 @@ Use `.Input` for the current node input, `.Prompt` only when the immutable root 
 Validate each written file, then resolve the complete tree and required runtime parameters:
 
 ```bash
-callee agent validate ".callee/<agent-path>.md"
+callee agent validate "<written-agent-path>"
 callee agent view "<agent-id>" --json
 ```
 
-Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.
+Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. For a PromptKit template with `metadata.mode: interactive`, confirm that the resolved view reports `repl: true`. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.

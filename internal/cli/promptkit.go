@@ -79,6 +79,11 @@ func promptKitRoleCreateCommand() *cobra.Command {
 				return err
 			}
 
+			interactive, err := promptKitTemplateInteractive(detail)
+			if err != nil {
+				return err
+			}
+
 			values, runtimeParams, err := compilePromptKitParameters(descriptions, promptParam, bindings, bindingFiles, persona)
 			if err != nil {
 				return err
@@ -102,7 +107,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 
 			var replValue *bool
 
-			if repl {
+			if repl || interactive {
 				enabled := true
 				replValue = &enabled
 			}
@@ -147,7 +152,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&mode, "mode", "", "runtime session mode")
 	cmd.Flags().StringVar(&runtimeCommand, "cmd", "", "runtime command override")
 	cmd.Flags().StringArrayVar(&extraArgs, "extra-arg", nil, "argument appended to the runtime; repeatable")
-	cmd.Flags().BoolVar(&repl, "repl", false, "enable top-level REPL behavior in the generated role")
+	cmd.Flags().BoolVar(&repl, "repl", false, "enable REPL behavior; interactive PromptKit templates enable it automatically")
 	cmd.Flags().StringVar(&output, "output", "", "role file path")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the generated role without writing it")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing role file")
@@ -186,6 +191,20 @@ func promptKitParameterDescriptions(detail promptkitty.ComponentDetail) (map[str
 	}
 
 	return descriptions, nil
+}
+
+func promptKitTemplateInteractive(detail promptkitty.ComponentDetail) (bool, error) {
+	raw, ok := detail.Metadata["mode"]
+	if !ok {
+		return false, nil
+	}
+
+	mode, ok := raw.(string)
+	if !ok {
+		return false, fmt.Errorf("PromptKit template %q has invalid mode metadata", detail.Name)
+	}
+
+	return mode == "interactive", nil
 }
 
 func compilePromptKitParameters(descriptions map[string]string, promptParam string, raw, files []string, persona string) (map[string]string, map[string]string, error) {

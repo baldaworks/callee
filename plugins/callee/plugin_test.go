@@ -59,7 +59,12 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"npx --yes @baldaworks/callee@" + releaseVersion,
 		"callee agent list --json",
 		"callee promptkit search",
+		"callee promptkit show \"<template>\" --json",
 		"callee promptkit role create",
+		"metadata.mode",
+		"spec.repl: true",
+		"questions and confirmation gates",
+		"callee agent run",
 		"apiVersion: callee.metalagman.dev/v1alpha1",
 		"kind: Role",
 		"kind: Sequential",
@@ -70,7 +75,8 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"{{ .Input }}",
 		"{{ .Params.focus }}",
 		"exactly one unconditional bare",
-		"callee agent validate",
+		"callee agent validate \"<written-agent-path>\"",
+		"actual generated `.md`, `.yaml`, or `.yml` path",
 		"callee agent view \"<agent-id>\" --json",
 	} {
 		if !strings.Contains(text, want) {

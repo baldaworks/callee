@@ -109,6 +109,10 @@ func TestPromptKitRoleCreateUsesProviderFlag(t *testing.T) {
 		t.Errorf("promptkit role create help is missing --provider:\n%s", help)
 	}
 
+	if !strings.Contains(help, "interactive PromptKit templates enable it automatically") {
+		t.Errorf("promptkit role create help is missing automatic interactive REPL behavior:\n%s", help)
+	}
+
 	if strings.Contains(help, "--type string") {
 		t.Errorf("promptkit role create help retains --type:\n%s", help)
 	}
@@ -296,6 +300,74 @@ func TestPromptKitRoleCreateDryRun(t *testing.T) {
 
 	if strings.Contains(stdout.String(), "repl:") {
 		t.Errorf("dry-run output contains repl without --repl:\n%s", stdout.String())
+	}
+}
+
+func TestPromptKitRoleCreateInfersInteractiveREPL(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"promptkit", "role", "create", "interactive-designer",
+		"--template", "interactive-design",
+		"--description", "Designs a feature interactively.",
+		"--provider", "codex",
+		"--prompt-param", "description",
+		"--persona", "software-architect",
+		"--dry-run",
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute(promptkit role create interactive template) returned unexpected error: %v", err)
+	}
+
+	generated, err := agent.DecodeMarkdown("interactive-designer", "interactive-designer.md", stdout.Bytes())
+	if err != nil {
+		t.Fatalf("agent.DecodeMarkdown(interactive Role) returned unexpected error: %v", err)
+	}
+
+	if !generated.REPL() {
+		t.Fatal("generated interactive Role repl = false, want true")
+	}
+}
+
+func TestPromptKitTemplateInteractive(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		want     bool
+		wantErr  string
+	}{
+		{name: "missing mode", metadata: map[string]any{}},
+		{name: "interactive", metadata: map[string]any{"mode": "interactive"}, want: true},
+		{name: "other string", metadata: map[string]any{"mode": "single-shot"}},
+		{name: "invalid type", metadata: map[string]any{"mode": true}, wantErr: "invalid mode metadata"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			detail := promptkitty.ComponentDetail{Component: promptkitty.Component{
+				Name: "test-template", Type: promptkitty.ComponentTemplate, Metadata: test.metadata,
+			}}
+
+			got, err := promptKitTemplateInteractive(detail)
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("promptKitTemplateInteractive() error = %v, want containing %q", err, test.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("promptKitTemplateInteractive() returned unexpected error: %v", err)
+			}
+
+			if got != test.want {
+				t.Errorf("promptKitTemplateInteractive() = %t, want %t", got, test.want)
+			}
+		})
 	}
 }
 
