@@ -438,7 +438,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	previous := -1
 
 	for _, host := range hosts {
-		row := "| " + host.name + " | `callee setup " + host.target + "` |"
+		row := "| " + host.name + " | `npx --yes @baldaworks/callee@latest setup " + host.target + "` |"
 		index := strings.Index(text, row)
 
 		if index < 0 {
@@ -471,7 +471,9 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	for _, want := range []string{
 		"apiVersion: callee.metalagman.dev/v1alpha1",
 		"kind: Role",
-		"callee agent run workflows/goalkeeper",
+		"npx --yes @baldaworks/callee@latest agent run workflows/goalkeeper",
+		"Current Callee executable with `bridge codex`",
+		"The Codex ACP bridge is built into Callee",
 		"callee doctor --graph mermaid",
 	} {
 		if !strings.Contains(text, want) {
@@ -709,19 +711,25 @@ func TestDistributionMetadataMatchesRelease(t *testing.T) {
 	}
 }
 
-func TestVecgoLicenseIsIncludedInNPMArtifacts(t *testing.T) {
+func TestThirdPartyLicensesAreIncludedInNPMArtifacts(t *testing.T) {
 	root := filepath.Join("..", "..")
 	for path, wants := range map[string][]string{
 		filepath.Join(root, "THIRD_PARTY_NOTICES.md"): {
 			"vecgo", "v0.0.15", "third_party/vecgo/LICENSE",
+			"codex-acp-bridge", "v1.7.7", "third_party/codex-acp-bridge/LICENSE",
 		},
 		filepath.Join(root, "third_party", "vecgo", "LICENSE"): {
 			"Apache License", "Version 2.0", "Copyright 2025 Frank Hübner",
 		},
+		filepath.Join(root, "third_party", "codex-acp-bridge", "LICENSE"): {
+			"MIT License", "Copyright (c) 2026 Alexey Samoylov",
+		},
 		filepath.Join(root, ".github", "workflows", "omnidist-release.yml"): {
-			"Include vecgo license in npm artifacts",
+			"Include third-party licenses in npm artifacts",
 			"Third-party component: vecgo v0.0.15",
 			"cat third_party/vecgo/LICENSE",
+			"Third-party component: codex-acp-bridge v1.7.7",
+			"cat third_party/codex-acp-bridge/LICENSE",
 		},
 	} {
 		data, err := os.ReadFile(path)
