@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -25,10 +26,27 @@ import (
 const agentListTabPadding = 2
 
 var newWorkflowFactory = func(stderr io.Writer, interactor *terminalInteractor, pauses *workflow.PauseController) runtime.ProcessFactory {
-	return runtime.NormaFactory{
-		Stderr:            stderr,
-		PermissionHandler: workflowPermissionHandler(interactor, pauses),
+	return workflowProcessFactory{
+		stderr:     stderr,
+		interactor: interactor,
+		pauses:     pauses,
 	}
+}
+
+type workflowProcessFactory struct {
+	stderr     io.Writer
+	interactor *terminalInteractor
+	pauses     *workflow.PauseController
+}
+
+func (f workflowProcessFactory) Start(ctx context.Context, provider runtime.Provider) (runtime.ProviderProcess, error) {
+	permissions := newWorkflowPermissionController(f.interactor, f.pauses)
+
+	return (runtime.NormaFactory{
+		Stderr:            f.stderr,
+		PermissionHandler: permissions.Handle,
+		PermissionBinder:  permissions.Bind,
+	}).Start(ctx, provider)
 }
 
 type agentRunOptions struct {
@@ -344,7 +362,17 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 
 	switch node.Kind {
 	case resource.RoleKind:
-		policy += fmt.Sprintf(" repl=%t", node.REPL != nil && *node.REPL)
+		permissionMode := resource.PermissionModeAsk
+		if node.Permissions != nil {
+			permissionMode = node.Permissions.Mode
+		}
+
+		authoredPermissionMode := "default"
+		if node.AuthoredPermissions != nil {
+			authoredPermissionMode = string(node.AuthoredPermissions.Mode)
+		}
+
+		policy += fmt.Sprintf(" repl=%t permissions=%s authoredPermissions=%s", node.REPL != nil && *node.REPL, permissionMode, authoredPermissionMode)
 	case resource.LoopKind:
 		maxIterations := 0
 		if node.MaxIterations != nil {
@@ -409,44 +437,137 @@ func (i *terminalInteractor) Display(text string) error {
 	return err
 }
 
-func workflowPermissionHandler(interactor *terminalInteractor, pauses *workflow.PauseController) func(context.Context, acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
-	return func(ctx context.Context, request acp.RequestPermissionRequest) (response acp.RequestPermissionResponse, resultErr error) {
-		if len(request.Options) == 0 {
-			return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
-		}
+type workflowPermissionPolicy struct {
+	effectiveID string
+	mode        resource.PermissionMode
+}
 
-		if err := pauses.Pause(ctx); err != nil {
-			return acp.RequestPermissionResponse{}, err
-		}
-		defer func() {
-			resultErr = errors.Join(resultErr, pauses.Resume(ctx))
-		}()
+type workflowPermissionController struct {
+	interactor *terminalInteractor
+	pauses     permissionPauser
 
-		var choices strings.Builder
-		choices.WriteString("Permission required:\n")
+	mu       sync.RWMutex
+	policies map[acp.SessionId]workflowPermissionPolicy
+}
 
-		for index, option := range request.Options {
-			_, _ = fmt.Fprintf(&choices, "%d) %s [%s]\n", index+1, option.Name, option.Kind)
-		}
+type permissionPauser interface {
+	Pause(ctx context.Context) error
+	Resume(ctx context.Context) error
+}
 
-		if err := interactor.Display(strings.TrimSuffix(choices.String(), "\n")); err != nil {
-			return acp.RequestPermissionResponse{}, err
-		}
-
-		answer, err := interactor.Prompt(ctx, "Select")
-		if err != nil {
-			return acp.RequestPermissionResponse{}, err
-		}
-
-		selection, err := strconv.Atoi(strings.TrimSpace(answer))
-		if err != nil || selection < 1 || selection > len(request.Options) {
-			return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
-		}
-
-		return acp.RequestPermissionResponse{
-			Outcome: acp.NewRequestPermissionOutcomeSelected(request.Options[selection-1].OptionId),
-		}, nil
+func newWorkflowPermissionController(interactor *terminalInteractor, pauses *workflow.PauseController) *workflowPermissionController {
+	return &workflowPermissionController{
+		interactor: interactor,
+		pauses:     pauses,
+		policies:   make(map[acp.SessionId]workflowPermissionPolicy),
 	}
+}
+
+func (c *workflowPermissionController) Bind(sessionID acp.SessionId, role resource.Resource) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.policies[sessionID] = workflowPermissionPolicy{
+		effectiveID: role.ID,
+		mode:        role.EffectivePermissionMode(),
+	}
+}
+
+func (c *workflowPermissionController) Handle(ctx context.Context, request acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	c.mu.RLock()
+	policy, ok := c.policies[request.SessionId]
+	c.mu.RUnlock()
+
+	if !ok {
+		return acp.RequestPermissionResponse{}, fmt.Errorf("permission request for unbound ACP session %q", request.SessionId)
+	}
+
+	switch policy.mode {
+	case resource.PermissionModeAsk:
+		return c.ask(ctx, request)
+	case resource.PermissionModeAllow:
+		return automaticPermissionResponse(policy, request.Options,
+			acp.PermissionOptionKindAllowOnce,
+			acp.PermissionOptionKindAllowAlways,
+		)
+	case resource.PermissionModeDeny:
+		return automaticPermissionResponse(policy, request.Options,
+			acp.PermissionOptionKindRejectOnce,
+			acp.PermissionOptionKindRejectAlways,
+		)
+	default:
+		return acp.RequestPermissionResponse{}, fmt.Errorf("agent %q has unsupported permission policy %q", policy.effectiveID, policy.mode)
+	}
+}
+
+func (c *workflowPermissionController) ask(ctx context.Context, request acp.RequestPermissionRequest) (response acp.RequestPermissionResponse, resultErr error) {
+	if len(request.Options) == 0 {
+		return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
+	}
+
+	if err := c.pauses.Pause(ctx); err != nil {
+		return acp.RequestPermissionResponse{}, err
+	}
+	defer func() {
+		resultErr = errors.Join(resultErr, c.pauses.Resume(ctx))
+	}()
+
+	var choices strings.Builder
+	choices.WriteString("Permission required:\n")
+
+	for index, option := range request.Options {
+		_, _ = fmt.Fprintf(&choices, "%d) %s [%s]\n", index+1, option.Name, option.Kind)
+	}
+
+	if err := c.interactor.Display(strings.TrimSuffix(choices.String(), "\n")); err != nil {
+		return acp.RequestPermissionResponse{}, err
+	}
+
+	answer, err := c.interactor.Prompt(ctx, "Select")
+	if err != nil {
+		return acp.RequestPermissionResponse{}, err
+	}
+
+	selection, err := strconv.Atoi(strings.TrimSpace(answer))
+	if err != nil || selection < 1 || selection > len(request.Options) {
+		return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
+	}
+
+	return acp.RequestPermissionResponse{
+		Outcome: acp.NewRequestPermissionOutcomeSelected(request.Options[selection-1].OptionId),
+	}, nil
+}
+
+func automaticPermissionResponse(
+	policy workflowPermissionPolicy,
+	options []acp.PermissionOption,
+	preferredKinds ...acp.PermissionOptionKind,
+) (acp.RequestPermissionResponse, error) {
+	for _, preferredKind := range preferredKinds {
+		for _, option := range options {
+			if option.Kind == preferredKind {
+				return acp.RequestPermissionResponse{
+					Outcome: acp.NewRequestPermissionOutcomeSelected(option.OptionId),
+				}, nil
+			}
+		}
+	}
+
+	offeredKinds := make([]string, 0, len(options))
+	for _, option := range options {
+		offeredKinds = append(offeredKinds, string(option.Kind))
+	}
+
+	if len(offeredKinds) == 0 {
+		offeredKinds = append(offeredKinds, "<none>")
+	}
+
+	return acp.RequestPermissionResponse{}, fmt.Errorf(
+		"agent %q permission policy %q has no compatible ACP option (offered kinds: %s)",
+		policy.effectiveID,
+		policy.mode,
+		strings.Join(offeredKinds, ", "),
+	)
 }
 
 func agentTerminal() (io.ReadWriteCloser, *bufio.Reader, error) {

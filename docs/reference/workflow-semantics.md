@@ -148,14 +148,14 @@ Use `callee agent view <agent-id>` to inspect the required qualified keys before
 
 `agent run` always opens `/dev/tty`, even when `--message` and all parameters are supplied. This keeps operator prompts and ACP permission choices separate from stdout and stderr and means noninteractive environments without a controlling TTY cannot run a tree.
 
-When an ACP provider requests permission, Callee displays the numbered options on the TTY. A valid selection returns the corresponding ACP option ID; an invalid selection cancels the request. If the provider supplies no options, Callee cancels immediately.
+When an ACP provider requests permission, Callee applies the current Role visit's `spec.permissions.mode`. The default `ask` policy uses the controlling TTY for an interactive numbered selection; `allow` and `deny` select compatible provider options automatically. The complete selection and failure contract is defined in [ACP permission requests](../guides/acp-permissions.md).
 
 Two timeout controls have different purposes:
 
 - `spec.provider.timeout`, default `15m`, independently bounds process startup, session creation/preparation, and each provider turn;
 - `--repl-timeout`, default `30m`, bounds each operator prompt, including the initial prompt, missing parameters, REPL responses, and permission selection.
 
-The active provider-turn timeout pauses during operator permission interaction.
+The active provider-turn timeout pauses only while `ask` waits for the operator. Automatic `allow` and `deny` decisions do not pause it. This pause applies only to the current turn's active-time budget; the linked permission guide describes how it interacts with `--repl-timeout` and the other provider operations.
 
 ## Failure and cleanup
 

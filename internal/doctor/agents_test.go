@@ -21,6 +21,8 @@ func TestRunAgentsGroupsProvidersAndSessionConfigurations(t *testing.T) {
 		doctorRole("roles/b", "model-a"),
 		doctorRole("roles/c", "model-c"),
 	}
+	roles[0].Spec.Permissions = &agent.Permissions{Mode: agent.PermissionModeAllow}
+	roles[1].Spec.Permissions = &agent.Permissions{Mode: agent.PermissionModeDeny}
 	process := &doctorProcess{}
 	factory := &doctorFactory{process: process}
 
@@ -186,7 +188,7 @@ type doctorProcess struct {
 	closed         bool
 }
 
-func (p *doctorProcess) NewSession(_ context.Context, role agent.Resource) (runtime.AgentSession, error) {
+func (p *doctorProcess) NewSession(_ context.Context, role agent.Resource, _ string) (runtime.AgentSession, error) {
 	p.sessions++
 	if p.sessionErr != nil {
 		return nil, p.sessionErr

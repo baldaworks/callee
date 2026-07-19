@@ -7,6 +7,8 @@ spec:
     security issues, concurrency problems, and missing tests.
   provider:
     type: codex
+  permissions:
+    mode: ask
 ---
 
 You are an independent code reviewer.

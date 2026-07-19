@@ -234,6 +234,8 @@ spec:
   description: Reviews changes.
   provider:
     type: codex
+  permissions:
+    mode: ask
   params:
     focus: Review focus
 ---
@@ -307,6 +309,15 @@ Empty `model`, `reasoning`, and `mode` fields defer to the backend. Support for
 nonempty values is backend-specific. Gemini is not a supported Callee provider
 type.
 
+Each Role may set `spec.permissions.mode` to `ask`, `allow`, or `deny`; omission
+defaults to `ask`. `ask` presents the provider-supplied choices on the
+controlling TTY and pauses the active provider-turn budget while
+`--repl-timeout` bounds the operator wait. `allow` automatically prefers
+`allow_once` and then `allow_always`; `deny` similarly prefers `reject_once`
+and then `reject_always`. A missing compatible option fails the run. See
+[ACP permission requests](docs/guides/acp-permissions.md) for the exact policy,
+session, timeout, and failure contract.
+
 To temporarily use the external Codex bridge instead, override the executable
 and put every argument in `extraArgs`:
 
@@ -316,7 +327,7 @@ and put every argument in `extraArgs`:
     cmd: npx
     extraArgs:
       - -y
-      - '@normahq/codex-acp-bridge@1.7.4'
+      - '@normahq/codex-acp-bridge@1.7.7'
 ```
 
 See the runnable [`reviewer`](examples/roles/reviewer.md) example.
@@ -408,6 +419,8 @@ spec:
   description: Reviews changes.
   provider:
     type: codex
+  permissions:
+    mode: ask
   params:
     focus: Review focus
   body: |

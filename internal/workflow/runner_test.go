@@ -43,6 +43,10 @@ func TestRunnerSequentialPromotesOutputs(t *testing.T) {
 		t.Errorf("provider starts = %d, want 1", factory.starts)
 	}
 
+	if got, want := strings.Join(process.effectiveIDs, ","), "worker,validator"; got != want {
+		t.Errorf("effective session IDs = %q, want %q", got, want)
+	}
+
 	if gotPrompt := process.prompts["roles/validator"][0]; !strings.Contains(gotPrompt, "Validate: draft") {
 		t.Errorf("validator prompt = %q, want predecessor output", gotPrompt)
 	}
@@ -558,11 +562,12 @@ type scriptedProcess struct {
 	processContextErrAtClose  error
 	requireLiveProcessContext bool
 	sessions                  int
+	effectiveIDs              []string
 	prepareErr                error
 	closeErr                  error
 }
 
-func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource) (runtime.AgentSession, error) {
+func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource, effectiveID string) (runtime.AgentSession, error) {
 	if p.requireLiveProcessContext && p.processContext.Err() != nil {
 		return nil, fmt.Errorf("provider process context canceled before session creation: %w", p.processContext.Err())
 	}
@@ -574,6 +579,7 @@ func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource) (ru
 
 	p.visits[role.ID] = visits[1:]
 	p.sessions++
+	p.effectiveIDs = append(p.effectiveIDs, effectiveID)
 
 	return &scriptedSession{roleID: role.ID, responses: append([]string(nil), visits[0]...), process: p}, nil
 }

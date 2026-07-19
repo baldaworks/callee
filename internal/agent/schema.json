@@ -29,6 +29,14 @@
       },
       "additionalProperties": false
     },
+    "permissions": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["ask", "allow", "deny"] }
+      },
+      "additionalProperties": false
+    },
     "stateValue": {
       "oneOf": [
         { "type": "string" },
@@ -80,6 +88,7 @@
           "properties": {
             "description": { "type": "string" },
             "provider": { "$ref": "#/$defs/provider" },
+            "permissions": { "$ref": "#/$defs/permissions" },
             "repl": { "type": "boolean" },
             "params": { "$ref": "#/$defs/params" },
             "state": { "$ref": "#/$defs/state" },

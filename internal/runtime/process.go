@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	resource "github.com/baldaworks/callee/internal/agent"
+	acp "github.com/coder/acp-go-sdk"
 	acpagent "github.com/normahq/go-adk-acpagent/v2"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/runner"
@@ -21,7 +22,7 @@ type ProcessFactory interface {
 
 // ProviderProcess creates fresh Role visit sessions on one provider process.
 type ProviderProcess interface {
-	NewSession(ctx context.Context, role resource.Resource) (AgentSession, error)
+	NewSession(ctx context.Context, role resource.Resource, effectiveID string) (AgentSession, error)
 	Close() error
 }
 
@@ -44,7 +45,7 @@ func (f NormaFactory) Start(ctx context.Context, provider Provider) (ProviderPro
 		return nil, err
 	}
 
-	process, err := newNormaProcess(agentInstance, closer, flush)
+	process, err := newNormaProcess(agentInstance, closer, flush, f.PermissionBinder)
 	if err != nil {
 		var cleanupErr error
 		if closer != nil {
@@ -60,13 +61,19 @@ func (f NormaFactory) Start(ctx context.Context, provider Provider) (ProviderPro
 }
 
 type normaProcess struct {
-	runner   *runner.Runner
-	sessions session.Service
-	closer   interface{ Close() error }
-	flush    func() error
+	runner           *runner.Runner
+	sessions         session.Service
+	closer           interface{ Close() error }
+	flush            func() error
+	permissionBinder func(acp.SessionId, resource.Resource)
 }
 
-func newNormaProcess(agentInstance agent.Agent, closer interface{ Close() error }, flush func() error) (*normaProcess, error) {
+func newNormaProcess(
+	agentInstance agent.Agent,
+	closer interface{ Close() error },
+	flush func() error,
+	permissionBinder func(acp.SessionId, resource.Resource),
+) (*normaProcess, error) {
 	sessions := session.InMemoryService()
 
 	runtimeRunner, err := runner.New(runner.Config{AppName: "callee", Agent: agentInstance, SessionService: sessions})
@@ -74,10 +81,16 @@ func newNormaProcess(agentInstance agent.Agent, closer interface{ Close() error 
 		return nil, fmt.Errorf("create provider runner: %w", err)
 	}
 
-	return &normaProcess{runner: runtimeRunner, sessions: sessions, closer: closer, flush: flush}, nil
+	return &normaProcess{
+		runner:           runtimeRunner,
+		sessions:         sessions,
+		closer:           closer,
+		flush:            flush,
+		permissionBinder: permissionBinder,
+	}, nil
 }
 
-func (p *normaProcess) NewSession(ctx context.Context, role resource.Resource) (AgentSession, error) {
+func (p *normaProcess) NewSession(ctx context.Context, role resource.Resource, effectiveID string) (AgentSession, error) {
 	created, err := p.sessions.Create(ctx, &session.CreateRequest{
 		AppName: "callee",
 		UserID:  "callee",
@@ -87,7 +100,13 @@ func (p *normaProcess) NewSession(ctx context.Context, role resource.Resource) (
 		return nil, fmt.Errorf("create agent %q session: %w", role.ID, err)
 	}
 
-	return &normaAgentSession{runner: p.runner, sessionID: created.Session.ID()}, nil
+	return &normaAgentSession{
+		runner:           p.runner,
+		sessionID:        created.Session.ID(),
+		role:             role,
+		effectiveID:      effectiveID,
+		permissionBinder: p.permissionBinder,
+	}, nil
 }
 
 func (p *normaProcess) Close() error {
@@ -104,8 +123,11 @@ func (p *normaProcess) Close() error {
 }
 
 type normaAgentSession struct {
-	runner    *runner.Runner
-	sessionID string
+	runner           *runner.Runner
+	sessionID        string
+	role             resource.Resource
+	effectiveID      string
+	permissionBinder func(acp.SessionId, resource.Resource)
 }
 
 func (s *normaAgentSession) Turn(ctx context.Context, prompt string) (string, error) {
@@ -141,7 +163,19 @@ func (s *normaAgentSession) Prepare(ctx context.Context) error {
 			return err
 		}
 
-		if _, ok := event.Actions.StateDelta[acpagent.SessionStateKey]; ok {
+		acpState, ok := event.Actions.StateDelta[acpagent.SessionStateKey]
+		if ok {
+			if s.permissionBinder != nil {
+				remoteSessionID, err := permissionSessionID(acpState)
+				if err != nil {
+					return fmt.Errorf("agent %q permission binding: %w", s.role.ID, err)
+				}
+
+				roleOccurrence := s.role
+				roleOccurrence.ID = s.effectiveID
+				s.permissionBinder(remoteSessionID, roleOccurrence)
+			}
+
 			return nil
 		}
 
@@ -151,6 +185,25 @@ func (s *normaAgentSession) Prepare(ctx context.Context) error {
 	}
 
 	return fmt.Errorf("provider produced no ACP session binding")
+}
+
+func permissionSessionID(value any) (acp.SessionId, error) {
+	state, ok := value.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("ACP session state must be an object; got %T", value)
+	}
+
+	rawSessionID, ok := state["session_id"].(string)
+	if !ok {
+		return "", fmt.Errorf("ACP session state requires nonblank session_id")
+	}
+
+	sessionID := strings.TrimSpace(rawSessionID)
+	if sessionID == "" {
+		return "", fmt.Errorf("ACP session state requires nonblank session_id")
+	}
+
+	return acp.SessionId(sessionID), nil
 }
 
 func agentSessionState(role resource.Resource) map[string]any {

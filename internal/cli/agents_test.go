@@ -28,6 +28,8 @@ spec:
   description: Implements a task.
   provider:
     type: codex
+  permissions:
+    mode: allow
   params:
     language: Implementation language
   body: |
@@ -80,6 +82,11 @@ spec:
 
 	if len(view.RequiredParams) != 1 || view.RequiredParams[0].Key != "worker.language" {
 		t.Errorf("required params = %+v, want worker.language", view.RequiredParams)
+	}
+
+	resolvedRole := view.ResolvedTree.Children[0]
+	if resolvedRole.AuthoredPermissions == nil || resolvedRole.AuthoredPermissions.Mode != agent.PermissionModeAllow || resolvedRole.Permissions == nil || resolvedRole.Permissions.Mode != agent.PermissionModeAllow {
+		t.Errorf("resolved permissions = authored %+v effective %+v, want allow/allow", resolvedRole.AuthoredPermissions, resolvedRole.Permissions)
 	}
 }
 
@@ -336,7 +343,7 @@ func TestWriteResolvedNodeIncludesEffectivePolicies(t *testing.T) {
 		t.Fatalf("writeResolvedNode() error: %v", err)
 	}
 
-	for _, want := range []string{"maxIterations=3 onExhausted=fail", "repl=false", "canEscalate=false"} {
+	for _, want := range []string{"maxIterations=3 onExhausted=fail", "repl=false", "canEscalate=false", "permissions=ask authoredPermissions=default"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("writeResolvedNode() = %q, want containing %q", output.String(), want)
 		}
@@ -363,7 +370,7 @@ type cliTestProcess struct {
 	closed   bool
 }
 
-func (p *cliTestProcess) NewSession(context.Context, agent.Resource) (runtime.AgentSession, error) {
+func (p *cliTestProcess) NewSession(context.Context, agent.Resource, string) (runtime.AgentSession, error) {
 	return cliTestSession{response: p.response}, nil
 }
 

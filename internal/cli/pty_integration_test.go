@@ -208,7 +208,7 @@ type ptyTestProcess struct {
 	wantEscalate bool
 }
 
-func (p *ptyTestProcess) NewSession(context.Context, agent.Resource) (runtime.AgentSession, error) {
+func (p *ptyTestProcess) NewSession(context.Context, agent.Resource, string) (runtime.AgentSession, error) {
 	return &ptyTestSession{process: p}, nil
 }
 

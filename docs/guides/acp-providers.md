@@ -89,7 +89,14 @@ It does not bound an entire root run. Repeated Loop visits and REPL turns each r
 
 ## Permissions
 
-ACP providers may request operator permission. During `agent run`, Callee renders the provider's options on the controlling TTY and returns the selected option ID. Invalid selections and requests with no choices are cancelled. This is an interactive runtime path; there is no resource field for pre-authorizing permissions.
+ACP providers may request permission during `agent run`. Configure the Callee policy separately from provider session settings:
+
+```yaml
+permissions:
+  mode: ask
+```
+
+`mode` is `ask`, `allow`, or `deny`, and omission defaults to `ask`. This object belongs directly under a Role's `spec`; `spec.provider.mode` remains backend-specific session configuration. See [ACP permission requests](acp-permissions.md) for automatic option precedence, the numbered operator flow, failures, and timeout behavior.
 
 ## Validate provider readiness
 
@@ -116,7 +123,8 @@ callee doctor --graph text
 | Startup timeout | The ACP process did not initialize within `provider.timeout` or doctor's `--timeout`. |
 | Session binding failure | The backend did not complete ACP session creation/preparation as expected. |
 | Session configuration rejected | The selected model, mode, or reasoning value is unsupported by that backend. |
-| Permission request cancelled | No option was supplied or the operator did not select a valid numbered choice. |
+| Permission request cancelled | Under `ask`, no option was supplied or the operator did not select a valid numbered choice. |
+| Permission policy has no compatible ACP option | An automatic `allow` or `deny` policy could not find a same-polarity option; inspect the offered kinds or use `ask`. |
 | Cleanup error | The provider did not close cleanly; a run suppresses any successful artifact in this case. |
 
 Use `--debug` or `--trace` for Callee diagnostics. Provider stderr is forwarded separately from the successful stdout artifact.

@@ -124,6 +124,107 @@ spec:
 	}
 }
 
+func TestDecodeRolePermissions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		file string
+		data string
+		want PermissionMode
+	}{
+		{
+			name: "Markdown allow",
+			file: "worker.md",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  permissions: {mode: allow}\n---\n{{ .Input }}\n",
+			want: PermissionModeAllow,
+		},
+		{
+			name: "YAML deny",
+			file: "worker.yaml",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  permissions: {mode: deny}\n  body: '{{ .Input }}'\n",
+			want: PermissionModeDeny,
+		},
+		{
+			name: "omitted defaults to ask",
+			file: "worker.yml",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  body: '{{ .Input }}'\n",
+			want: PermissionModeAsk,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := Decode("roles/worker", test.file, []byte(test.data))
+			if err != nil {
+				t.Fatalf("Decode() error: %v", err)
+			}
+
+			if mode := got.EffectivePermissionMode(); mode != test.want {
+				t.Errorf("EffectivePermissionMode() = %q, want %q", mode, test.want)
+			}
+		})
+	}
+}
+
+func TestDecodeRejectsInvalidPermissionPlacementAndMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		data string
+		want string
+	}{
+		{
+			name: "invalid mode",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  permissions: {mode: always}\n---\n{{ .Input }}\n",
+			want: "validate schema",
+		},
+		{
+			name: "blank mode",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  permissions: {mode: ''}\n---\n{{ .Input }}\n",
+			want: "validate schema",
+		},
+		{
+			name: "differently cased mode",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  permissions: {mode: Allow}\n---\n{{ .Input }}\n",
+			want: "validate schema",
+		},
+		{
+			name: "missing mode",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  permissions: {}\n---\n{{ .Input }}\n",
+			want: "validate schema",
+		},
+		{
+			name: "additional property",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  permissions: {mode: ask, tools: allow}\n---\n{{ .Input }}\n",
+			want: "unknown frontmatter field tools",
+		},
+		{
+			name: "provider placement",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex, permissions: {mode: allow}}\n---\n{{ .Input }}\n",
+			want: "unknown frontmatter field permissions",
+		},
+		{
+			name: "composite placement",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Sequential\nspec:\n  description: pipeline\n  children: [roles/worker]\n  permissions: {mode: deny}\n---\n{{ .Input }}\n",
+			want: "validate schema",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := DecodeMarkdown("test", "test.md", []byte(test.data)); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("DecodeMarkdown() error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestDecodeDispatchesSupportedExtensions(t *testing.T) {
 	t.Parallel()
 

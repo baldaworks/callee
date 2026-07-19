@@ -163,7 +163,7 @@ func checkAgentGroup(ctx context.Context, factory runtime.ProcessFactory, roles 
 
 		representative := group.roles[0]
 
-		session, err := process.NewSession(ctx, representative)
+		session, err := process.NewSession(ctx, representative, representative.ID)
 		if err != nil {
 			addGroupFailure(failures, group.roles, fmt.Errorf("create disposable session for %q: %w", representative.ID, err))
 

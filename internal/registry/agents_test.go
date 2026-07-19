@@ -31,6 +31,7 @@ func TestNewAgentRegistryResolveAndRequiredParams(t *testing.T) {
 	t.Parallel()
 
 	worker := decodeAgent(t, "roles/worker", roleAgent("worker", map[string]string{"language": "Implementation language"}))
+	worker.Spec.Permissions = &agent.Permissions{Mode: agent.PermissionModeAllow}
 	validator := decodeAgent(t, "roles/validator", roleAgent("validator", nil))
 	pipeline := decodeAgent(t, "workflows/pipeline", `---
 apiVersion: callee.metalagman.dev/v1alpha1
@@ -68,6 +69,18 @@ spec:
 
 	if got := RequiredParams(root); len(got) != 0 {
 		t.Errorf("RequiredParams() = %v, want none", got)
+	}
+
+	if root.Children[0].AuthoredPermissions == nil || root.Children[0].AuthoredPermissions.Mode != agent.PermissionModeAllow {
+		t.Errorf("authored permissions = %+v, want allow", root.Children[0].AuthoredPermissions)
+	}
+
+	if root.Children[0].Permissions == nil || root.Children[0].Permissions.Mode != agent.PermissionModeAllow {
+		t.Errorf("effective permissions = %+v, want allow", root.Children[0].Permissions)
+	}
+
+	if root.Children[1].AuthoredPermissions != nil || root.Children[1].Permissions == nil || root.Children[1].Permissions.Mode != agent.PermissionModeAsk {
+		t.Errorf("validator permissions = authored %+v effective %+v, want omitted/ask", root.Children[1].AuthoredPermissions, root.Children[1].Permissions)
 	}
 }
 

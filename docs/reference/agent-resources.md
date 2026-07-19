@@ -75,6 +75,7 @@ The supported fields differ by kind:
 | `body` | Required | Required | Required |
 | `state` | Optional | Optional | Optional |
 | `provider` | Required | Not allowed | Not allowed |
+| `permissions` | Optional | Not allowed | Not allowed |
 | `repl` | Optional | Not allowed | Not allowed |
 | `params` | Optional | Not allowed | Not allowed |
 | `children` | Not allowed | Required, nonempty | Required, nonempty |
@@ -95,6 +96,8 @@ spec:
   provider:
     type: codex
     timeout: 20m
+  permissions:
+    mode: ask
   params:
     focus: Area that needs the closest review
 ---
@@ -112,6 +115,8 @@ The body must contain exactly one unconditional, bare `{{ .Prompt }}` or `{{ .In
 `spec.repl: true` allows multiple operator turns in one Role visit. Its execution contract is defined in [Control records and REPL](workflow-semantics.md#control-records-and-repl).
 
 See [ACP provider configuration](../guides/acp-providers.md) for the `provider` object.
+
+`spec.permissions.mode` accepts exactly `ask`, `allow`, or `deny` and defaults to `ask` when `permissions` is omitted. It is a Role-only runtime policy and is independent of backend-specific `spec.provider.mode`. See [ACP permission requests](../guides/acp-permissions.md) for option selection and failure semantics.
 
 ## Composite children
 

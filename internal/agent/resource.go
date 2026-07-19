@@ -23,6 +23,15 @@ const (
 )
 
 const (
+	// PermissionModeAsk prompts the operator for every ACP permission request.
+	PermissionModeAsk PermissionMode = "ask"
+	// PermissionModeAllow automatically selects a compatible allow option.
+	PermissionModeAllow PermissionMode = "allow"
+	// PermissionModeDeny automatically selects a compatible reject option.
+	PermissionModeDeny PermissionMode = "deny"
+)
+
+const (
 	defaultProviderTimeout = 15 * time.Minute
 	defaultREPLTimeout     = 30 * time.Minute
 )
@@ -31,6 +40,14 @@ var aliasPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // Kind is a supported agent resource kind.
 type Kind string
+
+// PermissionMode controls how a Role handles ACP permission requests.
+type PermissionMode string
+
+// Permissions configures Role-level ACP permission handling.
+type Permissions struct {
+	Mode PermissionMode `json:"mode" yaml:"mode"`
+}
 
 // Provider configures the ACP provider used by a Role.
 type Provider struct {
@@ -57,6 +74,7 @@ type Child struct {
 type Spec struct {
 	Description   string            `json:"description"             yaml:"description"`
 	Provider      *Provider         `json:"provider,omitempty"      yaml:"provider,omitempty"`
+	Permissions   *Permissions      `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
 	REPL          *bool             `json:"repl,omitempty"          yaml:"repl,omitempty"`
 	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
 	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
@@ -134,6 +152,15 @@ func (r Resource) ProviderTimeout() time.Duration {
 // REPL reports the effective Role REPL policy.
 func (r Resource) REPL() bool {
 	return r.Spec.REPL != nil && *r.Spec.REPL
+}
+
+// EffectivePermissionMode reports the Role permission mode, defaulting to ask.
+func (r Resource) EffectivePermissionMode() PermissionMode {
+	if r.Spec.Permissions == nil || r.Spec.Permissions.Mode == "" {
+		return PermissionModeAsk
+	}
+
+	return r.Spec.Permissions.Mode
 }
 
 // ExhaustionPolicy reports the effective Loop exhaustion policy.
@@ -232,6 +259,12 @@ func (r Resource) validateRole() error {
 
 	if provider.Type == "generic_acp" && strings.TrimSpace(provider.Cmd) == "" {
 		return fmt.Errorf("agent %q: spec.provider.type generic_acp requires nonblank spec.provider.cmd", r.ID)
+	}
+
+	switch r.EffectivePermissionMode() {
+	case PermissionModeAsk, PermissionModeAllow, PermissionModeDeny:
+	default:
+		return fmt.Errorf("agent %q: spec.permissions.mode %q must be ask, allow, or deny", r.ID, r.Spec.Permissions.Mode)
 	}
 
 	for index, arg := range provider.ExtraArgs {

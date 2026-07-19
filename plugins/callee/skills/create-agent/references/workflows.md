@@ -48,6 +48,9 @@ Each child accepts `ref` and optional `alias`, `input`, `state`, and
   only for parameters declared by that Role. Bindings are Go templates over
   `.Prompt`, `.Input`, and `.State`; they must render nonblank. Leave an
   unbound Role parameter for the operator to supply at runtime.
+- Permission policy belongs to each referenced Role's `spec.permissions`, not
+  to the child edge or composite. Inspect the resolved authored and effective
+  policy before running; omission defaults to `ask`.
 
 Every successful nonblank node artifact is stored at
 `.State.outputs[effectiveID]`. Repeated visits overwrite that key with the

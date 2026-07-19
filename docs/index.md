@@ -12,6 +12,7 @@ Callee is a CLI runtime for provider-backed agents and deterministic workflows d
 
 - [CLI installation and usage](guides/cli.md) covers installation choices, catalog inspection, validation, execution, graph inspection, diagnostics, and PromptKit role generation.
 - [ACP provider configuration](guides/acp-providers.md) covers supported providers, command resolution, session settings, timeouts, permissions, and troubleshooting.
+- [ACP permission requests](guides/acp-permissions.md) defines Role permission modes, automatic ACP option selection, controlling-TTY interaction, failures, and timeout behavior.
 - [Coding-host integrations](guides/coding-host-integrations.md) explains the installed skills, setup targets, generated project files, and the boundary between a coding host and a runtime provider.
 
 ## Maintain the project

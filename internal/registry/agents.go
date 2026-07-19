@@ -35,14 +35,16 @@ type RequiredParam struct {
 
 // ResolvedNode is one occurrence in a selected root execution tree.
 type ResolvedNode struct {
-	EffectiveID   string          `json:"effectiveId"`
-	ResourceID    string          `json:"resourceId"`
-	Kind          agent.Kind      `json:"kind"`
-	CanEscalate   bool            `json:"canEscalate"`
-	REPL          *bool           `json:"repl,omitempty"`
-	MaxIterations *int            `json:"maxIterations,omitempty"`
-	OnExhausted   string          `json:"onExhausted,omitempty"`
-	Children      []*ResolvedNode `json:"children"`
+	EffectiveID         string             `json:"effectiveId"`
+	ResourceID          string             `json:"resourceId"`
+	Kind                agent.Kind         `json:"kind"`
+	CanEscalate         bool               `json:"canEscalate"`
+	Permissions         *agent.Permissions `json:"permissions,omitempty"`
+	AuthoredPermissions *agent.Permissions `json:"authoredPermissions,omitempty"`
+	REPL                *bool              `json:"repl,omitempty"`
+	MaxIterations       *int               `json:"maxIterations,omitempty"`
+	OnExhausted         string             `json:"onExhausted,omitempty"`
+	Children            []*ResolvedNode    `json:"children"`
 
 	Resource agent.Resource `json:"-"`
 	Edge     agent.Child    `json:"-"`
@@ -268,6 +270,8 @@ func (r *AgentRegistry) resolve(
 	case agent.RoleKind:
 		repl := resource.REPL()
 		node.REPL = &repl
+		node.Permissions = &agent.Permissions{Mode: resource.EffectivePermissionMode()}
+		node.AuthoredPermissions = resource.Spec.Permissions
 	case agent.LoopKind:
 		node.MaxIterations = resource.Spec.MaxIterations
 		node.OnExhausted = resource.ExhaustionPolicy()

@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 
+	resource "github.com/baldaworks/callee/internal/agent"
+	acp "github.com/coder/acp-go-sdk"
 	acpagent "github.com/normahq/go-adk-acpagent/v2"
 	"github.com/normahq/runtime/v2/agentconfig"
 	"github.com/normahq/runtime/v2/agentfactory"
@@ -19,6 +21,7 @@ import (
 type NormaFactory struct {
 	Stderr            io.Writer
 	PermissionHandler acpagent.PermissionHandler
+	PermissionBinder  func(acp.SessionId, resource.Resource)
 }
 
 var buildNormaAgent = buildNormaAgentDefault

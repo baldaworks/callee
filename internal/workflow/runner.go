@@ -213,7 +213,7 @@ func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input 
 
 	sessionCtx, cancelSession := context.WithTimeout(ctx, node.Resource.ProviderTimeout())
 
-	session, err := process.NewSession(sessionCtx, node.Resource)
+	session, err := process.NewSession(sessionCtx, node.Resource, node.EffectiveID)
 	if err == nil {
 		err = session.Prepare(sessionCtx)
 	}
