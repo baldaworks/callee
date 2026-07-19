@@ -71,6 +71,134 @@ spec:
 	}
 }
 
+func TestResolveComputesEdgeLevelEscalationCapability(t *testing.T) {
+	t.Parallel()
+
+	worker := decodeAgent(t, "roles/worker", roleAgent("worker", nil))
+	phase := decodeAgent(t, "workflows/phase", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Sequential
+spec:
+  description: phase
+  children:
+    - ref: roles/worker
+      alias: allowed_worker
+      canEscalate: true
+    - ref: roles/worker
+      alias: denied_worker
+---
+{{ .Input }}
+`)
+	loop := decodeAgent(t, "workflows/loop", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Loop
+spec:
+  description: loop
+  children:
+    - ref: workflows/phase
+      alias: phase
+      canEscalate: true
+  maxIterations: 2
+---
+{{ .Input }}
+`)
+
+	configured, err := NewAgentRegistry([]agent.Resource{worker, phase, loop})
+	if err != nil {
+		t.Fatalf("NewAgentRegistry() error: %v", err)
+	}
+
+	root, err := configured.Resolve("workflows/loop")
+	if err != nil {
+		t.Fatalf("Resolve() error: %v", err)
+	}
+
+	if !root.Children[0].CanEscalate {
+		t.Error("phase CanEscalate = false, want true")
+	}
+
+	if !root.Children[0].Children[0].CanEscalate {
+		t.Error("allowed_worker CanEscalate = false, want true")
+	}
+
+	if root.Children[0].Children[1].CanEscalate {
+		t.Error("denied_worker CanEscalate = true, want false")
+	}
+}
+
+func TestResolveRequiresEveryEdgeToOptIntoEscalation(t *testing.T) {
+	t.Parallel()
+
+	worker := decodeAgent(t, "roles/worker", roleAgent("worker", nil))
+	phase := decodeAgent(t, "workflows/phase", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Sequential
+spec:
+  description: phase
+  children:
+    - ref: roles/worker
+      alias: worker
+      canEscalate: true
+---
+{{ .Input }}
+`)
+	loop := decodeAgent(t, "workflows/loop", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Loop
+spec:
+  description: loop
+  children:
+    - ref: workflows/phase
+      alias: phase
+  maxIterations: 2
+---
+{{ .Input }}
+`)
+
+	configured, err := NewAgentRegistry([]agent.Resource{worker, phase, loop})
+	if err != nil {
+		t.Fatalf("NewAgentRegistry() error: %v", err)
+	}
+
+	root, err := configured.Resolve("workflows/loop")
+	if err != nil {
+		t.Fatalf("Resolve() error: %v", err)
+	}
+
+	if root.Children[0].Children[0].CanEscalate {
+		t.Error("worker CanEscalate = true across a denied parent edge, want false")
+	}
+}
+
+func TestResolveRejectsEscalationCapabilityWithoutLoop(t *testing.T) {
+	t.Parallel()
+
+	worker := decodeAgent(t, "roles/worker", roleAgent("worker", nil))
+	pipeline := decodeAgent(t, "workflows/pipeline", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Sequential
+spec:
+  description: pipeline
+  children:
+    - ref: roles/worker
+      alias: worker
+      canEscalate: true
+---
+{{ .Input }}
+`)
+
+	_, err := NewAgentRegistry([]agent.Resource{worker, pipeline})
+	if err == nil {
+		t.Fatal("Resolve() error = nil, want canEscalate validation error")
+	}
+
+	for _, want := range []string{"canEscalate", "workflows/pipeline -> roles/worker"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Resolve() error = %v, want containing %q", err, want)
+		}
+	}
+}
+
 func TestNewAgentRegistryRejectsCycleAndEffectiveIDCollision(t *testing.T) {
 	t.Parallel()
 

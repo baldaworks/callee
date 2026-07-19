@@ -97,6 +97,7 @@ spec:
   children:
     - ref: roles/worker
       alias: worker
+      canEscalate: true
   maxIterations: 2
   onExhausted: fail
   output: '{{ .State.outputs.worker }}'

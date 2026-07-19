@@ -93,6 +93,37 @@ func TestDecodeYAMLKinds(t *testing.T) {
 	}
 }
 
+func TestDecodeChildCanEscalate(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Loop
+spec:
+  description: loop
+  children:
+    - ref: roles/worker
+      canEscalate: true
+    - roles/reviewer
+  maxIterations: 2
+---
+{{ .Input }}
+`)
+
+	resource, err := DecodeMarkdown("workflows/loop", "loop.md", data)
+	if err != nil {
+		t.Fatalf("DecodeMarkdown() error: %v", err)
+	}
+
+	if !resource.Spec.Children[0].CanEscalate {
+		t.Error("mapped child CanEscalate = false, want true")
+	}
+
+	if resource.Spec.Children[1].CanEscalate {
+		t.Error("scalar child CanEscalate = true, want default false")
+	}
+}
+
 func TestDecodeDispatchesSupportedExtensions(t *testing.T) {
 	t.Parallel()
 

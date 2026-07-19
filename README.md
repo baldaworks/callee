@@ -333,6 +333,7 @@ spec:
         {{ .State.outputs.planner }}
     - ref: roles/reviewer
       alias: validator
+      canEscalate: true
   output: |
     {{ .State.outputs.validator }}
 ---
@@ -381,11 +382,11 @@ spec:
 {{ .Input }}
 ```
 
-A `Loop` repeats its ordered children up to `maxIterations`. It consumes escalation from a direct child and completes. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
+A `Loop` repeats its ordered children up to `maxIterations`. It consumes escalation from an authorized child and completes. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
 
 ### Children and composition
 
-Children may reference any supported kind, including another `Loop`. A child mapping supports `ref`, optional globally unique `alias`, `input`, shallow `state`, and Role-only `params`. Aliases match `^[a-z][a-z0-9_]*$` and replace the occurrence's effective ID.
+Children may reference any supported kind, including another `Loop`. A child mapping supports `ref`, optional globally unique `alias`, `canEscalate`, `input`, shallow `state`, and Role-only `params`. Aliases match `^[a-z][a-z0-9_]*$` and replace the occurrence's effective ID. `canEscalate` is occurrence-specific, so two aliases of the same Role may have different authority.
 
 ## YAML representation and JSON Schema
 

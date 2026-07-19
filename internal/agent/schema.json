@@ -59,6 +59,7 @@
           "properties": {
             "ref": { "type": "string", "minLength": 1 },
             "alias": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+            "canEscalate": { "type": "boolean" },
             "input": { "type": "string" },
             "state": { "$ref": "#/$defs/state" },
             "params": { "$ref": "#/$defs/params" }

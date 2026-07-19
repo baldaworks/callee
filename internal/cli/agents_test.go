@@ -336,7 +336,7 @@ func TestWriteResolvedNodeIncludesEffectivePolicies(t *testing.T) {
 		t.Fatalf("writeResolvedNode() error: %v", err)
 	}
 
-	for _, want := range []string{"maxIterations=3 onExhausted=fail", "repl=false"} {
+	for _, want := range []string{"maxIterations=3 onExhausted=fail", "repl=false", "canEscalate=false"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("writeResolvedNode() = %q, want containing %q", output.String(), want)
 		}

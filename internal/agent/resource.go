@@ -45,11 +45,12 @@ type Provider struct {
 
 // Child identifies one ordered child occurrence in a composite.
 type Child struct {
-	Ref    string            `json:"ref"              yaml:"ref"`
-	Alias  string            `json:"alias,omitempty"  yaml:"alias,omitempty"`
-	Input  string            `json:"input,omitempty"  yaml:"input,omitempty"`
-	State  map[string]any    `json:"state,omitempty"  yaml:"state,omitempty"`
-	Params map[string]string `json:"params,omitempty" yaml:"params,omitempty"`
+	Ref         string            `json:"ref"                   yaml:"ref"`
+	Alias       string            `json:"alias,omitempty"       yaml:"alias,omitempty"`
+	CanEscalate bool              `json:"canEscalate,omitempty" yaml:"canEscalate,omitempty"`
+	Input       string            `json:"input,omitempty"       yaml:"input,omitempty"`
+	State       map[string]any    `json:"state,omitempty"       yaml:"state,omitempty"`
+	Params      map[string]string `json:"params,omitempty"      yaml:"params,omitempty"`
 }
 
 // Spec contains kind-specific authored configuration.
@@ -289,7 +290,14 @@ func (c *Child) UnmarshalYAML(node *yaml.Node) error {
 		return fmt.Errorf("child must be a resource ID or mapping")
 	}
 
-	allowed := map[string]bool{"ref": true, "alias": true, "input": true, "state": true, "params": true}
+	allowed := map[string]bool{
+		"ref":         true,
+		"alias":       true,
+		"canEscalate": true,
+		"input":       true,
+		"state":       true,
+		"params":      true,
+	}
 	seen := make(map[string]bool)
 
 	for index := 0; index+1 < len(node.Content); index += 2 {

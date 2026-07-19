@@ -14,7 +14,7 @@ func TestRunnerLogsAgentLifecycleAcrossLoopVisits(t *testing.T) {
 	t.Parallel()
 
 	loop := compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
-		{Ref: "roles/worker", Alias: "worker"},
+		{Ref: "roles/worker", Alias: "worker", CanEscalate: true},
 	}, 5, "{{ .Input }}", "")
 	loop.Spec.OnExhausted = "complete"
 

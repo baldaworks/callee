@@ -42,8 +42,7 @@ spec:
         and treat docs/ as the canonical home for detailed project guides and
         reference material.
 
-        Return your writing report normally. Do not escalate from this phase;
-        only the reviewer controls completion of the documentation loop.
+        Return your writing report normally.
 
         {{ with index .State.outputs "reviewer" }}
         Previous review feedback:
@@ -54,6 +53,7 @@ spec:
         {{ end }}
     - ref: roles/technical-writer
       alias: reviewer
+      canEscalate: true
       input: |
         Documentation goal:
         {{ .Input }}

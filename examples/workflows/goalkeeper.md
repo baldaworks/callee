@@ -16,6 +16,7 @@ spec:
         {{ end }}
     - ref: roles/reviewer
       alias: validator
+      canEscalate: true
       input: |
         Goal:
         {{ .Input }}

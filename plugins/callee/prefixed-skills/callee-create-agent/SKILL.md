@@ -19,7 +19,7 @@ Choose exactly one supported kind:
 
 - `Role`: one provider-backed leaf agent.
 - `Sequential`: ordered child agents that each run once.
-- `Loop`: ordered child agents repeated until a Role escalates or the iteration limit is exhausted.
+- `Loop`: ordered child agents repeated until an authorized Role escalates or the iteration limit is exhausted.
 
 Do not create `Parallel`. Write below `.callee/`. Markdown is the default; use a complete `.yaml` or `.yml` object only when the user explicitly requests YAML. Directories such as `roles/` and `workflows/` are optional ID namespaces, not kind selectors. The agent ID is the relative path without its final supported extension.
 

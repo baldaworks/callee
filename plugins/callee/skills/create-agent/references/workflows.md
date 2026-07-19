@@ -143,6 +143,7 @@ spec:
         {{ end }}
     - ref: roles/reviewer
       alias: validator
+      canEscalate: true
       input: |
         Goal:
         {{ .Input }}
@@ -162,10 +163,12 @@ spec:
 {{ .Input }}
 ```
 
-Callee injects the concrete control protocol into Roles run beneath a Loop.
-Describe the semantic choice in the authored prompt; do not invent a custom stop
-token. Escalation from a nested workflow propagates to the nearest Loop, while
-remaining children of a nested `Sequential` still run under the sticky
+Callee injects the concrete control protocol only into Roles whose resolved
+occurrence is authorized to escalate. Set `canEscalate: true` on every edge
+from the nearest `Loop` to that Role; the default is `false`. Describe the
+semantic choice in the authored prompt; do not invent a custom stop token.
+Escalation from an authorized nested workflow propagates to the nearest Loop,
+while remaining children of a nested `Sequential` still run under the sticky
 escalation state.
 
 A nested `Loop` is an ordinary child: its Markdown body renders that node's

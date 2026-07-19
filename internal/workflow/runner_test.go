@@ -56,7 +56,7 @@ func TestRunnerLoopConsumesEscalation(t *testing.T) {
 		roleResource(t, "roles/validator", false, nil, "Validate worker: {{ .Input }}"),
 		compositeResource(t, "workflows/goalkeeper", agent.LoopKind, []agent.Child{
 			{Ref: "roles/worker", Alias: "worker"},
-			{Ref: "roles/validator", Alias: "validator", Input: "{{ .State.outputs.worker }}"},
+			{Ref: "roles/validator", Alias: "validator", CanEscalate: true, Input: "{{ .State.outputs.worker }}"},
 		}, 5, "{{ .Input }}", "GoalKeeper finished with result: {{ .State.outputs.validator }}"),
 	)
 
@@ -100,10 +100,10 @@ func TestRunnerLoopMakesEscalationAvailableThroughSequential(t *testing.T) {
 	root := resolvedRoot(t,
 		roleResource(t, "roles/reviewer", false, nil, "{{ .Input }}"),
 		compositeResource(t, "workflows/review", agent.SequentialKind, []agent.Child{
-			{Ref: "roles/reviewer", Alias: "reviewer"},
+			{Ref: "roles/reviewer", Alias: "reviewer", CanEscalate: true},
 		}, 0, "{{ .Input }}", ""),
 		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
-			{Ref: "workflows/review", Alias: "review"},
+			{Ref: "workflows/review", Alias: "review", CanEscalate: true},
 		}, 1, "{{ .Input }}", "{{ .State.outputs.reviewer }}"),
 	)
 	process := &scriptedProcess{visits: map[string][][]string{
@@ -131,7 +131,7 @@ func TestRunnerSequentialContinuesAfterNestedLoopEscalation(t *testing.T) {
 		roleResource(t, "roles/refiner", false, nil, "Refine: {{ .Input }}"),
 		roleResource(t, "roles/publisher", false, nil, "Publish: {{ .Input }}"),
 		compositeResource(t, "workflows/refinement", agent.LoopKind, []agent.Child{
-			{Ref: "roles/refiner", Alias: "refiner"},
+			{Ref: "roles/refiner", Alias: "refiner", CanEscalate: true},
 		}, 3, "{{ .Input }}", "refined={{ .State.outputs.refiner }}"),
 		compositeResource(t, "workflows/pipeline", agent.SequentialKind, []agent.Child{
 			{Ref: "workflows/refinement", Alias: "refinement"},
@@ -173,11 +173,11 @@ func TestRunnerOuterLoopConsumesStickySequentialEscalation(t *testing.T) {
 		roleResource(t, "roles/evaluator", false, nil, "Evaluate: {{ .Input }}"),
 		roleResource(t, "roles/recorder", false, nil, "Record: {{ .Input }}"),
 		compositeResource(t, "workflows/phase", agent.SequentialKind, []agent.Child{
-			{Ref: "roles/evaluator", Alias: "evaluator"},
-			{Ref: "roles/recorder", Alias: "recorder"},
+			{Ref: "roles/evaluator", Alias: "evaluator", CanEscalate: true},
+			{Ref: "roles/recorder", Alias: "recorder", CanEscalate: true},
 		}, 0, "{{ .Input }}", ""),
 		compositeResource(t, "workflows/outer", agent.LoopKind, []agent.Child{
-			{Ref: "workflows/phase", Alias: "phase"},
+			{Ref: "workflows/phase", Alias: "phase", CanEscalate: true},
 		}, 3, "{{ .Input }}", "result={{ .State.outputs.recorder }}"),
 	)
 	process := &scriptedProcess{visits: map[string][][]string{
@@ -212,11 +212,11 @@ func TestRunnerNestedLoopEscalationStopsNearestLoopOnly(t *testing.T) {
 		roleResource(t, "roles/inner-worker", false, nil, "Inner: {{ .Input }}"),
 		roleResource(t, "roles/gate", false, nil, "Gate: {{ .Input }}"),
 		compositeResource(t, "workflows/inner", agent.LoopKind, []agent.Child{
-			{Ref: "roles/inner-worker", Alias: "inner_worker"},
+			{Ref: "roles/inner-worker", Alias: "inner_worker", CanEscalate: true},
 		}, 2, "{{ .Input }}", "inner={{ .State.outputs.inner_worker }}"),
 		compositeResource(t, "workflows/outer", agent.LoopKind, []agent.Child{
 			{Ref: "workflows/inner", Alias: "inner_loop"},
-			{Ref: "roles/gate", Alias: "gate"},
+			{Ref: "roles/gate", Alias: "gate", CanEscalate: true},
 		}, 3, "{{ .Input }}", "outer={{ .State.outputs.gate }}"),
 	)
 	process := &scriptedProcess{visits: map[string][][]string{
@@ -262,11 +262,11 @@ func TestRunnerFailureOverridesStickyEscalationInsideLoop(t *testing.T) {
 		roleResource(t, "roles/evaluator", false, nil, "{{ .Input }}"),
 		roleResource(t, "roles/validator", false, nil, "{{ .Input }}"),
 		compositeResource(t, "workflows/phase", agent.SequentialKind, []agent.Child{
-			{Ref: "roles/evaluator", Alias: "evaluator"},
-			{Ref: "roles/validator", Alias: "validator"},
+			{Ref: "roles/evaluator", Alias: "evaluator", CanEscalate: true},
+			{Ref: "roles/validator", Alias: "validator", CanEscalate: true},
 		}, 0, "{{ .Input }}", ""),
 		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
-			{Ref: "workflows/phase", Alias: "phase"},
+			{Ref: "workflows/phase", Alias: "phase", CanEscalate: true},
 		}, 3, "{{ .Input }}", ""),
 	)
 	process := &scriptedProcess{visits: map[string][][]string{
@@ -296,7 +296,7 @@ func TestRunnerREPLRoleCanEscalateOnlyInsideLoop(t *testing.T) {
 	root := resolvedRoot(t,
 		roleResource(t, "roles/reviewer", true, nil, "Review: {{ .Input }}"),
 		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
-			{Ref: "roles/reviewer", Alias: "reviewer"},
+			{Ref: "roles/reviewer", Alias: "reviewer", CanEscalate: true},
 		}, 2, "{{ .Input }}", "{{ .State.outputs.reviewer }}"),
 	)
 	process := &scriptedProcess{visits: map[string][][]string{
@@ -320,7 +320,37 @@ func TestRunnerREPLRoleCanEscalateOnlyInsideLoop(t *testing.T) {
 	}
 }
 
-func TestRunnerSequentialStickyEscalationRunsRemainingChildren(t *testing.T) {
+func TestRunnerRejectsUnauthorizedLoopEscalationForOneShotAndREPLRoles(t *testing.T) {
+	t.Parallel()
+
+	for _, repl := range []bool{false, true} {
+		t.Run(fmt.Sprintf("repl=%t", repl), func(t *testing.T) {
+			t.Parallel()
+
+			root := resolvedRoot(t,
+				roleResource(t, "roles/worker", repl, nil, "{{ .Input }}"),
+				compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+					{Ref: "roles/worker", Alias: "worker"},
+				}, 2, "{{ .Input }}", ""),
+			)
+			process := &scriptedProcess{visits: map[string][][]string{
+				"roles/worker": {{"done\n\n" + controlEscalate}},
+			}}
+
+			_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "work")
+			if err == nil || !strings.Contains(err.Error(), "attempted unauthorized escalation") {
+				t.Fatalf("Runner.Run() error = %v, want unauthorized escalation", err)
+			}
+
+			prompt := process.prompts["roles/worker"][0]
+			if strings.Contains(prompt, controlEscalate) {
+				t.Errorf("worker prompt unexpectedly includes escalation control:\n%s", prompt)
+			}
+		})
+	}
+}
+
+func TestRunnerRejectsUnauthorizedEscalationOutsideLoop(t *testing.T) {
 	t.Parallel()
 
 	root := resolvedRoot(t,
@@ -338,18 +368,18 @@ func TestRunnerSequentialStickyEscalationRunsRemainingChildren(t *testing.T) {
 	}}
 
 	_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "task")
-	if err == nil || !strings.Contains(err.Error(), "unconsumed escalation") {
-		t.Fatalf("Runner.Run() error = %v, want unconsumed escalation", err)
+	if err == nil || !strings.Contains(err.Error(), "attempted unauthorized escalation") {
+		t.Fatalf("Runner.Run() error = %v, want unauthorized escalation", err)
 	}
 
-	for _, want := range []string{`resource "roles/planner"`, `path "workflows/pipeline -> planner"`, `root "workflows/pipeline"`} {
+	for _, want := range []string{`resource "roles/planner"`, `path "workflows/pipeline -> planner"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Runner.Run() error = %v, want containing %q", err, want)
 		}
 	}
 
-	if len(process.prompts["roles/implementer"]) != 1 {
-		t.Errorf("implementer turns = %d, want 1", len(process.prompts["roles/implementer"]))
+	if len(process.prompts["roles/implementer"]) != 0 {
+		t.Errorf("implementer turns = %d, want 0", len(process.prompts["roles/implementer"]))
 	}
 
 	if prompt := process.prompts["roles/planner"][0]; strings.Contains(prompt, controlEscalate) {

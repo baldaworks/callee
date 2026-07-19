@@ -38,6 +38,7 @@ type ResolvedNode struct {
 	EffectiveID   string          `json:"effectiveId"`
 	ResourceID    string          `json:"resourceId"`
 	Kind          agent.Kind      `json:"kind"`
+	CanEscalate   bool            `json:"canEscalate"`
 	REPL          *bool           `json:"repl,omitempty"`
 	MaxIterations *int            `json:"maxIterations,omitempty"`
 	OnExhausted   string          `json:"onExhausted,omitempty"`
@@ -117,7 +118,7 @@ func NewAgentRegistry(resources []agent.Resource) (*AgentRegistry, error) {
 		registry.resources[id] = resource
 	}
 
-	for _, id := range registry.IDs() {
+	for _, id := range registry.staticRoots() {
 		if _, err := registry.Resolve(id); err != nil {
 			diagnostics = append(diagnostics, err)
 		}
@@ -172,10 +173,68 @@ func (r *AgentRegistry) Resolve(id string) (*ResolvedNode, error) {
 	effectiveIDs := make(map[string]string)
 	stack := make(map[string]string)
 
-	return r.resolve(resource, agent.Child{}, effectiveIDs, stack, nil)
+	return r.resolve(resource, agent.Child{}, effectiveIDs, stack, nil, false, false)
 }
 
-func (r *AgentRegistry) resolve(resource agent.Resource, edge agent.Child, effectiveIDs, stack map[string]string, parentPath []string) (*ResolvedNode, error) {
+func (r *AgentRegistry) staticRoots() []string {
+	referenced := make(map[string]bool)
+
+	for _, resource := range r.resources {
+		for _, child := range resource.Spec.Children {
+			referenced[child.Ref] = true
+		}
+	}
+
+	var roots []string
+
+	for _, id := range r.IDs() {
+		if !referenced[id] {
+			roots = append(roots, id)
+		}
+	}
+
+	visited := make(map[string]bool)
+
+	var visit func(string)
+
+	visit = func(id string) {
+		if visited[id] {
+			return
+		}
+
+		visited[id] = true
+
+		resource, ok := r.resources[id]
+		if !ok {
+			return
+		}
+
+		for _, child := range resource.Spec.Children {
+			visit(child.Ref)
+		}
+	}
+
+	for _, id := range roots {
+		visit(id)
+	}
+
+	for _, id := range r.IDs() {
+		if !visited[id] {
+			roots = append(roots, id)
+			visit(id)
+		}
+	}
+
+	return roots
+}
+
+func (r *AgentRegistry) resolve(
+	resource agent.Resource,
+	edge agent.Child,
+	effectiveIDs, stack map[string]string,
+	parentPath []string,
+	withinLoop, canEscalate bool,
+) (*ResolvedNode, error) {
 	if stack[resource.ID] != "" {
 		return nil, fmt.Errorf("agent graph cycle: %s -> %s", stack[resource.ID], resource.ID)
 	}
@@ -198,6 +257,7 @@ func (r *AgentRegistry) resolve(resource agent.Resource, edge agent.Child, effec
 		EffectiveID: effectiveID,
 		ResourceID:  resource.ID,
 		Kind:        resource.Kind,
+		CanEscalate: canEscalate,
 		Children:    make([]*ResolvedNode, 0, len(resource.Spec.Children)),
 		Resource:    resource,
 		Edge:        edge,
@@ -214,6 +274,18 @@ func (r *AgentRegistry) resolve(resource agent.Resource, edge agent.Child, effec
 	}
 
 	for index, child := range resource.Spec.Children {
+		childWithinLoop := withinLoop
+		childCanEscalate := canEscalate && child.CanEscalate
+
+		if resource.Kind == agent.LoopKind {
+			childWithinLoop = true
+			childCanEscalate = child.CanEscalate
+		}
+
+		if child.CanEscalate && !childWithinLoop {
+			return nil, fmt.Errorf("agent %q child %d (%q): canEscalate is only valid beneath a Loop", resource.ID, index, strings.Join(append(path, child.Ref), " -> "))
+		}
+
 		childResource, err := r.GetAgent(child.Ref)
 		if err != nil {
 			return nil, fmt.Errorf("agent %q child %d: %w", resource.ID, index, err)
@@ -223,7 +295,7 @@ func (r *AgentRegistry) resolve(resource agent.Resource, edge agent.Child, effec
 			return nil, err
 		}
 
-		resolved, err := r.resolve(childResource, child, effectiveIDs, stack, path)
+		resolved, err := r.resolve(childResource, child, effectiveIDs, stack, path, childWithinLoop, childCanEscalate)
 		if err != nil {
 			return nil, fmt.Errorf("agent %q child %d: %w", resource.ID, index, err)
 		}

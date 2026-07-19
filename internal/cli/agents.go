@@ -340,18 +340,18 @@ func writeAgentView(output io.Writer, selected resource.Resource, resolved *regi
 }
 
 func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent string) error {
-	policy := ""
+	policy := fmt.Sprintf(" canEscalate=%t", node.CanEscalate)
 
 	switch node.Kind {
 	case resource.RoleKind:
-		policy = fmt.Sprintf(" repl=%t", node.REPL != nil && *node.REPL)
+		policy += fmt.Sprintf(" repl=%t", node.REPL != nil && *node.REPL)
 	case resource.LoopKind:
 		maxIterations := 0
 		if node.MaxIterations != nil {
 			maxIterations = *node.MaxIterations
 		}
 
-		policy = fmt.Sprintf(" maxIterations=%d onExhausted=%s", maxIterations, node.OnExhausted)
+		policy += fmt.Sprintf(" maxIterations=%d onExhausted=%s", maxIterations, node.OnExhausted)
 	}
 
 	if _, err := fmt.Fprintf(output, "%s%s [%s] -> %s%s\n", indent, node.EffectiveID, node.Kind, node.ResourceID, policy); err != nil {

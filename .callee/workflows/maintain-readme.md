@@ -86,6 +86,7 @@ spec:
         {{ end }}
     - ref: roles/technical-writer
       alias: readme_reviewer
+      canEscalate: true
       input: |
         README maintenance goal:
         {{ .Input }}
