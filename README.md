@@ -13,6 +13,12 @@ Callee lets a repository define provider-backed `Role`, `Sequential`, and `Loop`
 
 Callee remains CLI-only. It uses [Norma Runtime](https://github.com/normahq/runtime) for ACP provider processes and Go ADK-aligned escalation semantics. It has no server, durable thread store, or handle binding.
 
+## Documentation
+
+See the [Callee engineering documentation](docs/index.md) for detailed guides,
+architecture, reference, and contributor material. This README stays focused
+on installation and first use.
+
 ## Agent skills
 
 Callee installs two complementary skills in your coding host:
@@ -333,7 +339,6 @@ spec:
         {{ .State.outputs.planner }}
     - ref: roles/reviewer
       alias: validator
-      canEscalate: true
   output: |
     {{ .State.outputs.validator }}
 ---
@@ -363,6 +368,7 @@ spec:
         {{ end }}
     - ref: roles/reviewer
       alias: validator
+      canEscalate: true
       input: |
         Goal:
         {{ .Input }}
