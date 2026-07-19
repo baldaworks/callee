@@ -1,13 +1,14 @@
 ---
 apiVersion: callee.metalagman.dev/v1alpha1
-kind: Sequential
+kind: Loop
 spec:
   description: >
-    Maintains README.md through iterative writing and independent review, with
-    explicit coverage of Callee host plugins and onboarding behavior.
+    Maintains the root README.md through iterative writing and independent
+    review, with explicit coverage of Callee host plugins and onboarding
+    behavior.
   children:
-    - ref: workflows/maintain-documentation
-      alias: readme_docs
+    - ref: roles/technical-writer
+      alias: readme_writer
       input: |
         Maintain README.md as release-quality onboarding and reference
         documentation for Callee.
@@ -72,8 +73,44 @@ spec:
 
         Prefer precise corrections over speculative expansion. Preserve useful
         existing structure unless changing it materially improves onboarding.
+
+        Modify only README.md. Return your writing report normally; only the
+        reviewer controls completion of this loop.
+
+        {{ with index .State.outputs "readme_reviewer" }}
+        Previous review feedback:
+        {{ . }}
+
+        Address every material finding before returning the updated README
+        outcome.
+        {{ end }}
+    - ref: roles/technical-writer
+      alias: readme_reviewer
+      input: |
+        README maintenance goal:
+        {{ .Input }}
+
+        Writer report:
+        {{ index .State.outputs "readme_writer" }}
+
+        This is an independent read-only review. Do not modify files. Inspect
+        README.md and the authoritative CLI help, implementation, tests,
+        manifests, and installed assets. Verify that the requested focus and
+        permanent README contract are satisfied: npm/npx is the primary path;
+        runtime ACP providers remain distinct from host plugins; Codex, Claude
+        Code, Grok Build, Copilot CLI, OpenCode, and Cursor setup and invocation
+        are accurate; examples are executable; unsupported Gemini, server,
+        thread-store, and handle-binding behavior is absent; and OpenAI Build
+        Week remains the final section.
+
+        If README.md is accurate, complete, well structured, and within scope,
+        return concise approval with evidence and escalate to finish the loop.
+        Otherwise return actionable findings normally. Do not escalate on an
+        incomplete or uncertain result.
+  maxIterations: 5
+  onExhausted: fail
   output: |
     README workflow finished:
-    {{ index .State.outputs "readme_docs" }}
+    {{ index .State.outputs "readme_reviewer" }}
 ---
 {{ .Input }}
