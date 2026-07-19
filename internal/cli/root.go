@@ -111,6 +111,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
 	root.PersistentFlags().BoolVar(&trace, "trace", false, "enable trace logging (overrides --debug)")
 	root.AddCommand(agentCommand())
+	root.AddCommand(bridgeCommand())
 	root.AddCommand(doctorCommand())
 	root.AddCommand(promptKitCommand())
 	root.AddCommand(setupCommand())

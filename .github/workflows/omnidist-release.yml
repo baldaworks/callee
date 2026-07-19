@@ -37,11 +37,13 @@ jobs:
         run: omnidist --profile 'default' build
       - name: Stage artifacts
         run: omnidist --profile 'default' stage --only npm
-      - name: Include vecgo license in npm artifacts
+      - name: Include third-party licenses in npm artifacts
         run: |
           for license in .omnidist/default/npm/@baldaworks/*/LICENSE; do
             printf '\n\nThird-party component: vecgo v0.0.15\n\n' >> "$license"
             cat third_party/vecgo/LICENSE >> "$license"
+            printf '\n\nThird-party component: codex-acp-bridge v1.7.7\n\n' >> "$license"
+            cat third_party/codex-acp-bridge/LICENSE >> "$license"
           done
       - name: Verify artifacts
         run: omnidist --profile 'default' verify --only npm

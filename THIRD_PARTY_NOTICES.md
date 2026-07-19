@@ -11,3 +11,10 @@ Callee uses the BM25 implementation from
 PromptKitty. vecgo is distributed under the Apache License 2.0. Its license text
 is stored in `third_party/vecgo/LICENSE` and appended to every statically linked
 npm package license during release staging.
+
+Callee embeds the public Cobra command from
+[codex-acp-bridge](https://github.com/normahq/codex-acp-bridge), version
+`v1.7.7`, to expose Codex as an ACP agent. codex-acp-bridge is distributed
+under the MIT License. Its license text is stored in
+`third_party/codex-acp-bridge/LICENSE` and appended to every statically linked
+npm package license during release staging.

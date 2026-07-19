@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/baldaworks/callee/internal/logging"
+	"github.com/normahq/codex-acp-bridge/pkg/cobracmd"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func TestLoggingLevel(t *testing.T) {
@@ -43,6 +46,7 @@ func TestRootCommandExposesOnlyWorkflowSurface(t *testing.T) {
 	root := NewRootCommand()
 	wantRoot := map[string]bool{
 		"agent":     true,
+		"bridge":    true,
 		"doctor":    true,
 		"promptkit": true,
 		"setup":     true,
@@ -82,6 +86,123 @@ func TestRootCommandExposesOnlyWorkflowSurface(t *testing.T) {
 		if root.PersistentFlags().Lookup(flag) != nil || agentCommand.Flags().Lookup(flag) != nil {
 			t.Errorf("legacy flag %q is still exposed", flag)
 		}
+	}
+}
+
+func TestRootCommandEmbedsCodexBridge(t *testing.T) {
+	t.Parallel()
+
+	root := NewRootCommand()
+
+	codex, args, err := root.Find([]string{"bridge", "codex"})
+	if err != nil {
+		t.Fatalf("find bridge codex command: %v", err)
+	}
+
+	if len(args) != 0 {
+		t.Fatalf("remaining args = %q, want none", args)
+	}
+
+	if codex.Name() != "codex" {
+		t.Errorf("command name = %q, want codex", codex.Name())
+	}
+
+	upstream := cobracmd.New()
+	if codex.Long != upstream.Long {
+		t.Errorf("command long description differs from upstream: got %q, want %q", codex.Long, upstream.Long)
+	}
+
+	wantExample := strings.ReplaceAll(upstream.Example, "codex-acp-bridge", "callee bridge codex")
+	if codex.Example != wantExample {
+		t.Errorf("command examples = %q, want %q", codex.Example, wantExample)
+	}
+
+	assertCommandFlagParity(t, codex, upstream)
+
+	for _, flag := range []string{"name", "message-streaming", "reasoning-streaming", "reasoning-thoughts", "reasoning-summary", "codex-args", "debug"} {
+		if codex.Flags().Lookup(flag) == nil {
+			t.Errorf("bridge codex flag %q is missing", flag)
+		}
+	}
+
+	version, _, err := root.Find([]string{"bridge", "codex", "version"})
+	if err != nil {
+		t.Fatalf("find bridge codex version command: %v", err)
+	}
+
+	if version.Name() != "version" {
+		t.Errorf("version command name = %q, want version", version.Name())
+	}
+}
+
+func assertCommandFlagParity(t *testing.T, got, want *cobra.Command) {
+	t.Helper()
+
+	want.Flags().VisitAll(func(wantFlag *pflag.Flag) {
+		gotFlag := got.Flags().Lookup(wantFlag.Name)
+		if gotFlag == nil {
+			t.Errorf("mounted bridge is missing upstream flag %q", wantFlag.Name)
+
+			return
+		}
+
+		if gotFlag.DefValue != wantFlag.DefValue || gotFlag.Value.Type() != wantFlag.Value.Type() || gotFlag.Usage != wantFlag.Usage {
+			t.Errorf("mounted bridge flag %q differs from upstream", wantFlag.Name)
+		}
+	})
+
+	got.Flags().VisitAll(func(gotFlag *pflag.Flag) {
+		if want.Flags().Lookup(gotFlag.Name) == nil {
+			t.Errorf("mounted bridge has non-upstream flag %q", gotFlag.Name)
+		}
+	})
+}
+
+func TestRunCodexBridgeVersionKeepsDiagnosticsOffStdout(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := Run(context.Background(), []string{"bridge", "codex", "version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(bridge codex version) exit = %d, stderr = %q", code, stderr.String())
+	}
+
+	if got := strings.TrimSpace(stdout.String()); got == "" {
+		t.Error("Run(bridge codex version) stdout is empty")
+	}
+
+	if stderr.Len() != 0 {
+		t.Errorf("Run(bridge codex version) stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunCodexBridgeErrorsKeepStdoutEmpty(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "missing bridge name", args: []string{"bridge"}},
+		{name: "unknown bridge", args: []string{"bridge", "unknown"}},
+		{name: "invalid bridge flag", args: []string{"bridge", "codex", "--not-a-bridge-flag"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			code := Run(context.Background(), test.args, &stdout, &stderr)
+
+			if code != exitError {
+				t.Errorf("Run(%q) exit = %d, want %d", test.args, code, exitError)
+			}
+
+			if stdout.Len() != 0 {
+				t.Errorf("Run(%q) stdout = %q, want empty", test.args, stdout.String())
+			}
+
+			if !strings.Contains(stderr.String(), "Error:") {
+				t.Errorf("Run(%q) stderr = %q, want command error", test.args, stderr.String())
+			}
+		})
 	}
 }
 

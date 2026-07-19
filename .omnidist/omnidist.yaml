@@ -17,7 +17,7 @@ profiles:
             - os: windows
               arch: amd64
         build:
-            ldflags: -s -w
+            ldflags: -s -w -X github.com/normahq/codex-acp-bridge/internal/version.buildVersion=v1.7.7
             tags: []
             cgo: false
         distributions:

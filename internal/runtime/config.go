@@ -3,14 +3,12 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	resource "github.com/baldaworks/callee/internal/agent"
 	"github.com/normahq/runtime/v2/agentconfig"
 )
-
-// codexACPBridgeVersion is the bridge release validated with Callee.
-const codexACPBridgeVersion = "1.7.4"
 
 // Provider identifies one reusable ACP process.
 type Provider struct {
@@ -38,6 +36,15 @@ func ProviderForAgent(r resource.Resource) (Provider, error) {
 	cfg, err := NormalizeAgent(r)
 	if err != nil {
 		return Provider{}, err
+	}
+
+	if r.Spec.Provider.Type == "codex" && strings.TrimSpace(r.Spec.Provider.Cmd) == "" {
+		executable, err := os.Executable()
+		if err != nil {
+			return Provider{}, fmt.Errorf("resolve current executable for agent %q: %w", r.ID, err)
+		}
+
+		cfg.CodexACP.Cmd = []string{executable, "bridge", "codex"}
 	}
 
 	resolved, err := agentconfig.NormalizeConfig(cfg, "")
@@ -91,7 +98,6 @@ func NormalizeAgent(r resource.Resource) (agentconfig.Config, error) {
 	cfg := agentconfig.Config{Type: runtimeType}
 	switch runtimeType {
 	case agentconfig.AgentTypeCodexACP:
-		block.BridgeVersion = codexACPBridgeVersion
 		cfg.CodexACP = block
 	case agentconfig.AgentTypeClaudeCodeACP:
 		cfg.ClaudeCodeACP = block

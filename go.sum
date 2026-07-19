@@ -512,10 +512,12 @@ github.com/nishanths/exhaustive v0.12.0 h1:vIY9sALmw6T/yxiASewa4TQcFsVYZQQRUQJhK
 github.com/nishanths/exhaustive v0.12.0/go.mod h1:mEZ95wPIZW+x8kC4TgC+9YCUgiST7ecevsVDTgc2obs=
 github.com/nishanths/predeclared v0.2.2 h1:V2EPdZPliZymNAn79T8RkNApBjMmVKh5XRpLm/w98Vk=
 github.com/nishanths/predeclared v0.2.2/go.mod h1:RROzoN6TnGQupbC+lqggsOlcgysk3LMK/HI84Mp280c=
+github.com/normahq/codex-acp-bridge v1.7.7 h1:B1loe5VHVxJnXZT2uC++cVMI8lreOnKD8CG5GQpsU6w=
+github.com/normahq/codex-acp-bridge v1.7.7/go.mod h1:bf3PTcQHBAvYP2SOtnPPpf8ULKg1mdEJzLz+x/zX/PQ=
 github.com/normahq/go-adk-acpagent/v2 v2.2.1 h1:bX5kty4ECqN8bh4YfzsfD/j4R+AiekM3fpsmqehNNPA=
 github.com/normahq/go-adk-acpagent/v2 v2.2.1/go.mod h1:UeUbMJYzo5mHMdc3s7y3N3uI7xJMazVJpd15+4DqlN0=
-github.com/normahq/runtime/v2 v2.0.7 h1:4X0ftphLU5ZhV2hKAg80GBettVPvetD3a74LByX/UbY=
-github.com/normahq/runtime/v2 v2.0.7/go.mod h1:SrdQcCtxb0Mqt/eDp5w20GsACh0OZEu5LsVXl8iX1l4=
+github.com/normahq/runtime/v2 v2.0.8 h1:IqlYlG4hI66fZO+O9sChW+yseyT/SwgynsKZVvSELuA=
+github.com/normahq/runtime/v2 v2.0.8/go.mod h1:SrdQcCtxb0Mqt/eDp5w20GsACh0OZEu5LsVXl8iX1l4=
 github.com/nunnatsa/ginkgolinter v0.23.0 h1:x3o4DGYOWbBMP/VdNQKgSj+25aJKx2Pe6lHr8gBcgf8=
 github.com/nunnatsa/ginkgolinter v0.23.0/go.mod h1:9qN1+0akwXEccwV1CAcCDfcoBlWXHB+ML9884pL4SZ4=
 github.com/onsi/ginkgo/v2 v2.28.2 h1:DTrMfpqxiNUyQ3Y0zhn1n3cOO2euFgQPYIpkWwxVFps=

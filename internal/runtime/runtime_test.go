@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -68,11 +69,16 @@ func TestAgentSessionState(t *testing.T) {
 func TestProviderForAgentUsesRuntimeCommands(t *testing.T) {
 	t.Parallel()
 
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error: %v", err)
+	}
+
 	tests := []struct {
 		name string
 		want []string
 	}{
-		{name: "codex", want: []string{"npx", "-y", "@normahq/codex-acp-bridge@1.7.4"}},
+		{name: "codex", want: []string{executable, "bridge", "codex"}},
 		{name: "grok", want: []string{"grok", "agent", "stdio"}},
 		{name: "cursor", want: []string{"agent", "acp"}},
 	}
@@ -88,6 +94,59 @@ func TestProviderForAgentUsesRuntimeCommands(t *testing.T) {
 
 			if !reflect.DeepEqual(provider.command, test.want) {
 				t.Errorf("provider command = %#v, want %#v", provider.command, test.want)
+			}
+		})
+	}
+}
+
+func TestProviderForAgentPreservesCodexOverrides(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		configure func(*resource.Provider)
+		want      []string
+	}{
+		{
+			name: "built-in extra arguments",
+			configure: func(provider *resource.Provider) {
+				provider.ExtraArgs = []string{"--codex-args=--sandbox=workspace-write"}
+			},
+		},
+		{
+			name: "custom command",
+			configure: func(provider *resource.Provider) {
+				provider.Cmd = "custom-bridge"
+				provider.ExtraArgs = []string{"--stdio"}
+			},
+			want: []string{"custom-bridge", "--stdio"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			role := testAgentRole("codex")
+			test.configure(role.Spec.Provider)
+
+			provider, err := ProviderForAgent(role)
+			if err != nil {
+				t.Fatalf("ProviderForAgent() error: %v", err)
+			}
+
+			want := test.want
+			if want == nil {
+				executable, err := os.Executable()
+				if err != nil {
+					t.Fatalf("os.Executable() error: %v", err)
+				}
+
+				want = []string{executable, "bridge", "codex", "--codex-args=--sandbox=workspace-write"}
+			}
+
+			if !reflect.DeepEqual(provider.command, want) {
+				t.Errorf("provider command = %#v, want %#v", provider.command, want)
 			}
 		})
 	}
