@@ -3,10 +3,10 @@ apiVersion: callee.metalagman.dev/v1alpha1
 kind: Sequential
 spec:
   description: >
-    Maintains README.md through the documentation GoalKeeper, with explicit
-    coverage of Callee host plugins and onboarding behavior.
+    Maintains README.md through iterative writing and independent review, with
+    explicit coverage of Callee host plugins and onboarding behavior.
   children:
-    - ref: workflows/documentation-goalkeeper
+    - ref: workflows/maintain-documentation
       alias: readme_docs
       input: |
         Maintain README.md as release-quality onboarding and reference

@@ -3,8 +3,8 @@ apiVersion: callee.metalagman.dev/v1alpha1
 kind: Loop
 spec:
   description: >
-    Iterates technical documentation writing and independent review until the
-    documentation satisfies the project goal.
+    Maintains technical documentation through iterative writing and independent
+    review until the documentation satisfies the project goal.
   children:
     - ref: roles/technical-writer
       alias: writer
