@@ -31,8 +31,8 @@ Use only `Role`, `Sequential`, and `Loop`. A workflow child may reference
 any supported kind, so workflows may nest other workflows. Do not author
 `Parallel`.
 
-Each child accepts `ref` and optional `alias`, `input`, `state`, and
-`params` fields.
+Each child accepts `ref` and optional `alias`, `canEscalate`, `session`,
+`input`, `state`, and `params` fields.
 
 - Resolve every `ref` before writing the parent.
 - Add an `alias` when a resource is reused or when templates need a stable,
@@ -51,6 +51,11 @@ Each child accepts `ref` and optional `alias`, `input`, `state`, and
 - Permission policy belongs to each referenced Role's `spec.permissions`, not
   to the child edge or composite. Inspect the resolved authored and effective
   policy before running; omission defaults to `ask`.
+- Use `session: stateful` beneath a Loop only when Role descendants need their
+  provider conversation across iterations. Omission inherits the nearest
+  explicit policy and otherwise defaults to `fresh`; an explicit `fresh` opts
+  a subtree out. The stateful cache ends with one invocation of the Loop that
+  owns the policy and is never durable across CLI runs.
 
 Every successful nonblank node artifact is stored at
 `.State.outputs[effectiveID]`. Repeated visits overwrite that key with the
@@ -136,6 +141,7 @@ spec:
   children:
     - ref: roles/implementer
       alias: worker
+      session: stateful
       input: |
         Goal:
         {{ .Input }}
@@ -147,6 +153,7 @@ spec:
     - ref: roles/reviewer
       alias: validator
       canEscalate: true
+      session: stateful
       input: |
         Goal:
         {{ .Input }}
@@ -177,6 +184,13 @@ escalation state.
 A nested `Loop` is an ordinary child: its Markdown body renders that node's
 input, its children run with the same shared state object, and its final artifact
 becomes the parent node's input or named output.
+
+Session policy propagates through composite children, and the nearest explicit
+value wins. An inherited outer `stateful` policy retains its outer Loop scope
+even when execution enters a nested Loop. Set `session: stateful` on an edge
+inside the nested Loop to establish an inner per-invocation scope. Role body,
+input, parameters, and state still render for every visit; only the prepared
+provider conversation is reused.
 
 ## Finish the workflow
 

@@ -39,6 +39,9 @@ type ResolvedNode struct {
 	ResourceID          string             `json:"resourceId"`
 	Kind                agent.Kind         `json:"kind"`
 	CanEscalate         bool               `json:"canEscalate"`
+	Session             agent.SessionMode  `json:"session"`
+	SessionScopeID      string             `json:"sessionScopeId,omitempty"`
+	AuthoredSession     agent.SessionMode  `json:"authoredSession,omitempty"`
 	Permissions         *agent.Permissions `json:"permissions,omitempty"`
 	AuthoredPermissions *agent.Permissions `json:"authoredPermissions,omitempty"`
 	REPL                *bool              `json:"repl,omitempty"`
@@ -175,7 +178,12 @@ func (r *AgentRegistry) Resolve(id string) (*ResolvedNode, error) {
 	effectiveIDs := make(map[string]string)
 	stack := make(map[string]string)
 
-	return r.resolve(resource, agent.Child{}, effectiveIDs, stack, nil, false, false)
+	return r.resolve(resource, agent.Child{}, effectiveIDs, stack, nil, false, false, "", sessionPolicy{mode: agent.SessionModeFresh})
+}
+
+type sessionPolicy struct {
+	mode    agent.SessionMode
+	scopeID string
 }
 
 func (r *AgentRegistry) staticRoots() []string {
@@ -236,6 +244,8 @@ func (r *AgentRegistry) resolve(
 	effectiveIDs, stack map[string]string,
 	parentPath []string,
 	withinLoop, canEscalate bool,
+	nearestLoopID string,
+	session sessionPolicy,
 ) (*ResolvedNode, error) {
 	if stack[resource.ID] != "" {
 		return nil, fmt.Errorf("agent graph cycle: %s -> %s", stack[resource.ID], resource.ID)
@@ -256,14 +266,17 @@ func (r *AgentRegistry) resolve(
 	stack[resource.ID] = effectiveID
 
 	node := &ResolvedNode{
-		EffectiveID: effectiveID,
-		ResourceID:  resource.ID,
-		Kind:        resource.Kind,
-		CanEscalate: canEscalate,
-		Children:    make([]*ResolvedNode, 0, len(resource.Spec.Children)),
-		Resource:    resource,
-		Edge:        edge,
-		Path:        path,
+		EffectiveID:     effectiveID,
+		ResourceID:      resource.ID,
+		Kind:            resource.Kind,
+		CanEscalate:     canEscalate,
+		Session:         session.mode,
+		SessionScopeID:  session.scopeID,
+		AuthoredSession: edge.Session,
+		Children:        make([]*ResolvedNode, 0, len(resource.Spec.Children)),
+		Resource:        resource,
+		Edge:            edge,
+		Path:            path,
 	}
 
 	switch resource.Kind {
@@ -280,14 +293,28 @@ func (r *AgentRegistry) resolve(
 	for index, child := range resource.Spec.Children {
 		childWithinLoop := withinLoop
 		childCanEscalate := canEscalate && child.CanEscalate
+		childNearestLoopID := nearestLoopID
+		childSession := session
 
 		if resource.Kind == agent.LoopKind {
 			childWithinLoop = true
 			childCanEscalate = child.CanEscalate
+			childNearestLoopID = effectiveID
 		}
 
 		if child.CanEscalate && !childWithinLoop {
 			return nil, fmt.Errorf("agent %q child %d (%q): canEscalate is only valid beneath a Loop", resource.ID, index, strings.Join(append(path, child.Ref), " -> "))
+		}
+
+		if child.Session != "" && !childWithinLoop {
+			return nil, fmt.Errorf("agent %q child %d (%q): session is only valid beneath a Loop", resource.ID, index, strings.Join(append(path, child.Ref), " -> "))
+		}
+
+		switch child.Session {
+		case agent.SessionModeFresh:
+			childSession = sessionPolicy{mode: agent.SessionModeFresh}
+		case agent.SessionModeStateful:
+			childSession = sessionPolicy{mode: agent.SessionModeStateful, scopeID: childNearestLoopID}
 		}
 
 		childResource, err := r.GetAgent(child.Ref)
@@ -299,7 +326,17 @@ func (r *AgentRegistry) resolve(
 			return nil, err
 		}
 
-		resolved, err := r.resolve(childResource, child, effectiveIDs, stack, path, childWithinLoop, childCanEscalate)
+		resolved, err := r.resolve(
+			childResource,
+			child,
+			effectiveIDs,
+			stack,
+			path,
+			childWithinLoop,
+			childCanEscalate,
+			childNearestLoopID,
+			childSession,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("agent %q child %d: %w", resource.ID, index, err)
 		}

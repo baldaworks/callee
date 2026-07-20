@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,7 +43,7 @@ func TestWorkflowPermissionRequestCrossesACPWire(t *testing.T) {
 				t.Fatalf("ProviderForAgent() error: %v", err)
 			}
 
-			var stderr bytes.Buffer
+			var stderr synchronizedBuffer
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
@@ -76,6 +77,25 @@ func TestWorkflowPermissionRequestCrossesACPWire(t *testing.T) {
 			}
 		})
 	}
+}
+
+type synchronizedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *synchronizedBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buffer.Write(data)
+}
+
+func (b *synchronizedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buffer.String()
 }
 
 func permissionWireRole(mode resource.PermissionMode) resource.Resource {

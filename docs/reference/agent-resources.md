@@ -133,6 +133,7 @@ Use a mapping to configure an occurrence:
 children:
   - ref: roles/reviewer
     alias: validator
+    session: stateful
     input: |
       Original goal:
       {{ .Prompt }}
@@ -150,9 +151,12 @@ children:
 | `ref` | Required nonblank resource ID. Any supported kind may be referenced. |
 | `alias` | Optional effective ID matching `^[a-z][a-z0-9_]*$`. |
 | `canEscalate` | Optional edge authorization for escalation toward the nearest enclosing Loop; defaults to `false`. |
+| `session` | Optional `fresh` or `stateful` provider-session policy beneath a Loop; omission inherits and otherwise defaults to `fresh`. |
 | `input` | Optional template that replaces natural input for this occurrence. |
 | `state` | Optional shallow state modifier applied when this child node is visited. |
 | `params` | Optional Role parameter bindings; valid only when `ref` resolves directly to a Role. |
+
+`session` is occurrence-specific and applies to the complete child subtree. The nearest explicit value wins, so `fresh` can opt a descendant subtree out of inherited reuse. A stateful policy retains each effective Role's provider conversation only for one invocation of its owning Loop; it does not persist state between CLI runs. See [Loop child session policy](workflow-semantics.md#loop-child-session-policy).
 
 Every effective ID must be unique across the complete resolved root tree. An alias changes runtime parameter qualification, state output lookup, and lifecycle identity for that occurrence; it does not change the source resource ID.
 

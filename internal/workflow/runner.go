@@ -75,7 +75,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		}
 	}()
 
-	result, err := run.node(ctx, r.Root, prompt)
+	result, err := run.node(ctx, r.Root, prompt, executionContext{})
 	if err != nil {
 		return "", err
 	}
@@ -126,7 +126,31 @@ type runState struct {
 	pauses     *PauseController
 }
 
-func (r *runState) node(ctx context.Context, node *registry.ResolvedNode, input string) (result nodeResult, resultErr error) {
+type executionContext struct {
+	sessionScopes map[string]*loopSessionScope
+}
+
+type loopSessionScope struct {
+	sessions map[string]runtime.AgentSession
+}
+
+func (e executionContext) withLoop(id string) executionContext {
+	scopes := make(map[string]*loopSessionScope, len(e.sessionScopes)+1)
+	for scopeID, scope := range e.sessionScopes {
+		scopes[scopeID] = scope
+	}
+
+	scopes[id] = &loopSessionScope{sessions: make(map[string]runtime.AgentSession)}
+
+	return executionContext{sessionScopes: scopes}
+}
+
+func (r *runState) node(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	input string,
+	execution executionContext,
+) (result nodeResult, resultErr error) {
 	r.visits[node.EffectiveID]++
 
 	logger := r.lifecycleLogger(ctx, node)
@@ -144,11 +168,11 @@ func (r *runState) node(ctx context.Context, node *registry.ResolvedNode, input 
 
 	switch node.Kind {
 	case agent.RoleKind:
-		return r.role(ctx, node, input)
+		return r.role(ctx, node, input, execution)
 	case agent.SequentialKind:
-		return r.sequential(ctx, node, input)
+		return r.sequential(ctx, node, input, execution)
 	case agent.LoopKind:
-		return r.loop(ctx, node, input)
+		return r.loop(ctx, node, input, execution)
 	default:
 		return nodeResult{}, fmt.Errorf("agent %q has unsupported kind %q", node.ResourceID, node.Kind)
 	}
@@ -185,7 +209,12 @@ func writeLifecycleFinish(logger zerolog.Logger, message string, result nodeResu
 	event.Dur("duration", time.Since(started)).Msg(message)
 }
 
-func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input string) (result nodeResult, resultErr error) {
+func (r *runState) role(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	input string,
+	execution executionContext,
+) (result nodeResult, resultErr error) {
 	params, err := r.roleParams(ctx, node, input)
 	if err != nil {
 		return nodeResult{}, err
@@ -211,15 +240,7 @@ func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input 
 		return nodeResult{}, err
 	}
 
-	sessionCtx, cancelSession := context.WithTimeout(ctx, node.Resource.ProviderTimeout())
-
-	session, err := process.NewSession(sessionCtx, node.Resource, node.EffectiveID)
-	if err == nil {
-		err = session.Prepare(sessionCtx)
-	}
-
-	cancelSession()
-
+	session, err := r.session(ctx, node, execution, process)
 	if err != nil {
 		return nodeResult{}, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
 	}
@@ -300,7 +321,80 @@ func (r *runState) role(ctx context.Context, node *registry.ResolvedNode, input 
 	}
 }
 
-func (r *runState) sequential(ctx context.Context, node *registry.ResolvedNode, input string) (nodeResult, error) {
+func (r *runState) session(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	execution executionContext,
+	process runtime.ProviderProcess,
+) (runtime.AgentSession, error) {
+	if node.Session == agent.SessionModeStateful {
+		scope, ok := execution.sessionScopes[node.SessionScopeID]
+		if !ok {
+			return nil, fmt.Errorf("stateful session scope %q is not active", node.SessionScopeID)
+		}
+
+		if session, ok := scope.sessions[node.EffectiveID]; ok {
+			r.logSession(ctx, node, "reused")
+
+			return session, nil
+		}
+
+		session, err := r.newSession(ctx, node, process)
+		if err != nil {
+			return nil, err
+		}
+
+		scope.sessions[node.EffectiveID] = session
+		r.logSession(ctx, node, "created")
+
+		return session, nil
+	}
+
+	session, err := r.newSession(ctx, node, process)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
+func (r *runState) newSession(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	process runtime.ProviderProcess,
+) (runtime.AgentSession, error) {
+	sessionCtx, cancelSession := context.WithTimeout(ctx, node.Resource.ProviderTimeout())
+	defer cancelSession()
+
+	session, err := process.NewSession(sessionCtx, node.Resource, node.EffectiveID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := session.Prepare(sessionCtx); err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
+func (r *runState) logSession(ctx context.Context, node *registry.ResolvedNode, action string) {
+	logger := r.lifecycleLogger(ctx, node)
+
+	event := logger.Debug().Str("session", string(node.Session))
+	if node.SessionScopeID != "" {
+		event = event.Str("loop", node.SessionScopeID)
+	}
+
+	event.Msg("agent session " + action)
+}
+
+func (r *runState) sequential(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	input string,
+	execution executionContext,
+) (nodeResult, error) {
 	localInput, err := r.compositeInput(node, input)
 	if err != nil {
 		return nodeResult{}, err
@@ -321,7 +415,7 @@ func (r *runState) sequential(ctx context.Context, node *registry.ResolvedNode, 
 			return nodeResult{}, err
 		}
 
-		childResult, err := r.node(ctx, child, childInput)
+		childResult, err := r.node(ctx, child, childInput, execution)
 		if err != nil {
 			return nodeResult{}, err
 		}
@@ -353,7 +447,12 @@ func (r *runState) sequential(ctx context.Context, node *registry.ResolvedNode, 
 	return r.finishComposite(node, localInput, result.artifact)
 }
 
-func (r *runState) loop(ctx context.Context, node *registry.ResolvedNode, input string) (nodeResult, error) {
+func (r *runState) loop(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	input string,
+	execution executionContext,
+) (nodeResult, error) {
 	localInput, err := r.compositeInput(node, input)
 	if err != nil {
 		return nodeResult{}, err
@@ -362,6 +461,7 @@ func (r *runState) loop(ctx context.Context, node *registry.ResolvedNode, input 
 	var (
 		previousIteration = localInput
 		naturalOutput     string
+		loopExecution     = execution.withLoop(node.EffectiveID)
 	)
 
 	for iteration := 0; iteration < *node.Resource.Spec.MaxIterations; iteration++ {
@@ -373,7 +473,7 @@ func (r *runState) loop(ctx context.Context, node *registry.ResolvedNode, input 
 				return nodeResult{}, err
 			}
 
-			childResult, err := r.node(ctx, child, childInput)
+			childResult, err := r.node(ctx, child, childInput, loopExecution)
 			if err != nil {
 				return nodeResult{}, err
 			}

@@ -359,7 +359,25 @@ func writeAgentView(output io.Writer, selected resource.Resource, resolved *regi
 }
 
 func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent string) error {
-	policy := fmt.Sprintf(" canEscalate=%t", node.CanEscalate)
+	session := node.Session
+	if session == "" {
+		session = resource.SessionModeFresh
+	}
+
+	authoredSession := "default"
+	if node.AuthoredSession != "" {
+		authoredSession = string(node.AuthoredSession)
+	}
+
+	policy := fmt.Sprintf(
+		" canEscalate=%t session=%s authoredSession=%s",
+		node.CanEscalate,
+		session,
+		authoredSession,
+	)
+	if node.SessionScopeID != "" {
+		policy += " sessionScope=" + node.SessionScopeID
+	}
 
 	switch node.Kind {
 	case resource.RoleKind:

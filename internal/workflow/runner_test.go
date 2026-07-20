@@ -98,6 +98,211 @@ func TestRunnerLoopConsumesEscalation(t *testing.T) {
 	}
 }
 
+func TestRunnerStatefulLoopChildReusesSessionAndRendersEachVisit(t *testing.T) {
+	t.Parallel()
+
+	loop := compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+		{Ref: "roles/worker", Alias: "worker", Session: agent.SessionModeStateful},
+	}, 2, "{{ .Input }}", "")
+	loop.Spec.OnExhausted = "complete"
+	root := resolvedRoot(t,
+		roleResource(t, "roles/worker", false, nil, `Worker: {{ .Input }} previous={{ default "none" .State.outputs.worker }}`),
+		loop,
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/worker": {{"draft one", "draft two"}},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "build")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "draft two" {
+		t.Errorf("Runner.Run() = %q, want draft two", got)
+	}
+
+	if process.sessions != 1 {
+		t.Errorf("sessions = %d, want 1 stateful session", process.sessions)
+	}
+
+	prompts := process.prompts["roles/worker"]
+	if len(prompts) != 2 {
+		t.Fatalf("worker prompts = %d, want 2", len(prompts))
+	}
+
+	for index, want := range []string{"Worker: build previous=none", "Worker: draft one previous=draft one"} {
+		if !strings.Contains(prompts[index], want) {
+			t.Errorf("worker prompt %d = %q, want containing %q", index, prompts[index], want)
+		}
+	}
+}
+
+func TestRunnerStatefulCompositeSupportsFreshOverride(t *testing.T) {
+	t.Parallel()
+
+	loop := compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+		{Ref: "workflows/phase", Alias: "phase", Session: agent.SessionModeStateful},
+	}, 2, "{{ .Input }}", "")
+	loop.Spec.OnExhausted = "complete"
+	root := resolvedRoot(t,
+		roleResource(t, "roles/worker", false, nil, "{{ .Input }}"),
+		compositeResource(t, "workflows/phase", agent.SequentialKind, []agent.Child{
+			{Ref: "roles/worker", Alias: "stateful_worker"},
+			{Ref: "roles/worker", Alias: "fresh_worker", Session: agent.SessionModeFresh},
+		}, 0, "{{ .Input }}", ""),
+		loop,
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/worker": {
+			{"stateful one", "stateful two"},
+			{"fresh one"},
+			{"fresh two"},
+		},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "build")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "fresh two" {
+		t.Errorf("Runner.Run() = %q, want fresh two", got)
+	}
+
+	if process.sessions != 3 {
+		t.Errorf("sessions = %d, want 1 inherited stateful and 2 fresh sessions", process.sessions)
+	}
+}
+
+func TestRunnerNestedStatefulSessionResetsPerLoopInvocation(t *testing.T) {
+	t.Parallel()
+
+	inner := compositeResource(t, "workflows/inner", agent.LoopKind, []agent.Child{
+		{Ref: "roles/worker", Alias: "worker", Session: agent.SessionModeStateful},
+	}, 2, "{{ .Input }}", "")
+	inner.Spec.OnExhausted = "complete"
+	root := resolvedRoot(t,
+		roleResource(t, "roles/worker", false, nil, "Worker: {{ .Input }}"),
+		roleResource(t, "roles/gate", false, nil, "Gate: {{ .Input }}"),
+		inner,
+		compositeResource(t, "workflows/outer", agent.LoopKind, []agent.Child{
+			{Ref: "workflows/inner", Alias: "inner"},
+			{Ref: "roles/gate", Alias: "gate", CanEscalate: true},
+		}, 3, "{{ .Input }}", "{{ .State.outputs.gate }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/worker": {
+			{"inner one-a", "inner one-b"},
+			{"inner two-a", "inner two-b"},
+		},
+		"roles/gate": {
+			{"continue"},
+			{"done\n\n" + controlEscalate},
+		},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "iterate")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "done" {
+		t.Errorf("Runner.Run() = %q, want done", got)
+	}
+
+	if process.sessions != 4 {
+		t.Errorf("sessions = %d, want 2 inner Loop sessions and 2 fresh gate sessions", process.sessions)
+	}
+
+	if turns := len(process.prompts["roles/worker"]); turns != 4 {
+		t.Errorf("worker turns = %d, want 4", turns)
+	}
+}
+
+func TestRunnerInheritedStatefulSessionKeepsOuterLoopScope(t *testing.T) {
+	t.Parallel()
+
+	inner := compositeResource(t, "workflows/inner", agent.LoopKind, []agent.Child{
+		{Ref: "roles/worker", Alias: "worker"},
+	}, 2, "{{ .Input }}", "")
+	inner.Spec.OnExhausted = "complete"
+	root := resolvedRoot(t,
+		roleResource(t, "roles/worker", false, nil, "Worker: {{ .Input }}"),
+		roleResource(t, "roles/gate", false, nil, "Gate: {{ .Input }}"),
+		inner,
+		compositeResource(t, "workflows/outer", agent.LoopKind, []agent.Child{
+			{Ref: "workflows/inner", Alias: "inner", Session: agent.SessionModeStateful},
+			{Ref: "roles/gate", Alias: "gate", CanEscalate: true},
+		}, 3, "{{ .Input }}", "{{ .State.outputs.gate }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/worker": {{"inner one-a", "inner one-b", "inner two-a", "inner two-b"}},
+		"roles/gate": {
+			{"continue"},
+			{"done\n\n" + controlEscalate},
+		},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "iterate")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "done" {
+		t.Errorf("Runner.Run() = %q, want done", got)
+	}
+
+	if process.sessions != 3 {
+		t.Errorf("sessions = %d, want 1 outer-scoped worker and 2 fresh gate sessions", process.sessions)
+	}
+}
+
+func TestRunnerStatefulREPLSessionContinuesAcrossLoopVisits(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/reviewer", true, nil, "Review: {{ .Input }}"),
+		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+			{
+				Ref:         "roles/reviewer",
+				Alias:       "reviewer",
+				CanEscalate: true,
+				Session:     agent.SessionModeStateful,
+			},
+		}, 3, "{{ .Input }}", "{{ .State.outputs.reviewer }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/reviewer": {{
+			"Which target?\n\n" + controlAwait,
+			"needs work\n\n" + controlReturn,
+			"approved\n\n" + controlEscalate,
+		}},
+	}}
+	interactor := &scriptedInteractor{answers: []string{"linux"}}
+
+	got, err := (Runner{
+		Root:       root,
+		Factory:    &scriptedFactory{process: process},
+		Interactor: interactor,
+	}).Run(context.Background(), "review")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "approved" {
+		t.Errorf("Runner.Run() = %q, want approved", got)
+	}
+
+	if process.sessions != 1 {
+		t.Errorf("sessions = %d, want 1 stateful REPL session", process.sessions)
+	}
+
+	if turns := len(process.prompts["roles/reviewer"]); turns != 3 {
+		t.Errorf("reviewer turns = %d, want 3", turns)
+	}
+}
+
 func TestRunnerLoopMakesEscalationAvailableThroughSequential(t *testing.T) {
 	t.Parallel()
 

@@ -26,7 +26,7 @@ Omitting `permissions` defaults to `ask`. Unknown modes, empty permission object
 
 Automatic modes never choose an option of the opposite decision or an unknown kind. If the provider offers no compatible option, the root run fails. The diagnostic identifies the effective Role ID, configured policy, and offered option kinds, but does not include tool arguments. Duplicate compatible options retain provider order, so the first one wins.
 
-The policy is bound to each fresh Role visit session. Two aliases of the same Role can therefore run in separate ACP sessions, and repeated Loop visits receive a fresh binding each time. Provider process reuse does not share a decision between sessions.
+The policy is bound when a Role session is prepared. Two aliases of the same Role always use separate ACP sessions. Repeated Loop visits receive a fresh binding by default; `session: stateful` retains the binding with that Role occurrence's session for the owning Loop invocation. Provider process reuse does not share a decision between sessions.
 
 ## Interactive `ask` flow
 

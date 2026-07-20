@@ -133,8 +133,13 @@ func TestWriteGraphFormats(t *testing.T) {
 		Kind:       agent.LoopKind,
 		ID:         "workflows/pipeline",
 		Spec: agent.Spec{
-			Description:   "pipeline",
-			Children:      []agent.Child{{Ref: "roles/worker", Alias: "worker", CanEscalate: true}},
+			Description: "pipeline",
+			Children: []agent.Child{{
+				Ref:         "roles/worker",
+				Alias:       "worker",
+				CanEscalate: true,
+				Session:     agent.SessionModeStateful,
+			}},
 			Body:          "{{ .Input }}",
 			MaxIterations: &maxIterations,
 		},
@@ -149,9 +154,9 @@ func TestWriteGraphFormats(t *testing.T) {
 		format string
 		want   string
 	}{
-		{format: "text", want: "-> roles/worker alias=worker canEscalate=true"},
-		{format: "mermaid", want: "worker, canEscalate=true"},
-		{format: "dot", want: "worker, canEscalate=true"},
+		{format: "text", want: "-> roles/worker alias=worker canEscalate=true session=stateful"},
+		{format: "mermaid", want: "worker, canEscalate=true, session=stateful"},
+		{format: "dot", want: "worker, canEscalate=true, session=stateful"},
 	} {
 		t.Run(test.format, func(t *testing.T) {
 			t.Parallel()

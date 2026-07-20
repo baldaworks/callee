@@ -93,7 +93,7 @@ func TestDecodeYAMLKinds(t *testing.T) {
 	}
 }
 
-func TestDecodeChildCanEscalate(t *testing.T) {
+func TestDecodeChildPolicies(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`---
@@ -104,6 +104,7 @@ spec:
   children:
     - ref: roles/worker
       canEscalate: true
+      session: stateful
     - roles/reviewer
   maxIterations: 2
 ---
@@ -119,8 +120,16 @@ spec:
 		t.Error("mapped child CanEscalate = false, want true")
 	}
 
+	if got := resource.Spec.Children[0].Session; got != SessionModeStateful {
+		t.Errorf("mapped child Session = %q, want %q", got, SessionModeStateful)
+	}
+
 	if resource.Spec.Children[1].CanEscalate {
 		t.Error("scalar child CanEscalate = true, want default false")
+	}
+
+	if got := resource.Spec.Children[1].Session; got != "" {
+		t.Errorf("scalar child Session = %q, want omitted", got)
 	}
 }
 
@@ -391,6 +400,11 @@ func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 			name: "unknown child field",
 			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Sequential\nspec:\n  description: pipeline\n  children:\n    - ref: worker\n      previous: legacy\n---\n{{ .Input }}",
 			want: "unknown child field",
+		},
+		{
+			name: "invalid child session",
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Loop\nspec:\n  description: loop\n  children:\n    - ref: worker\n      session: durable\n  maxIterations: 2\n---\n{{ .Input }}",
+			want: "validate schema",
 		},
 		{
 			name: "explicit empty enum",

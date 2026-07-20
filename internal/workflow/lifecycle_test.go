@@ -94,6 +94,62 @@ func TestRunnerLogsAgentLifecycleAcrossLoopVisits(t *testing.T) {
 	}
 }
 
+func TestRunnerLogsStatefulSessionCreationAndReuseAtDebug(t *testing.T) {
+	t.Parallel()
+
+	loop := compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+		{
+			Ref:         "roles/worker",
+			Alias:       "worker",
+			CanEscalate: true,
+			Session:     agent.SessionModeStateful,
+		},
+	}, 2, "{{ .Input }}", "")
+	root := resolvedRoot(t,
+		roleResource(t, "roles/worker", false, nil, "{{ .Input }}"),
+		loop,
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/worker": {{"first", "second\n\n" + controlEscalate}},
+	}}
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task"); err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	var sessionEvents []map[string]any
+
+	for _, event := range decodeLifecycleEvents(t, &output) {
+		if event["message"] == "agent session created" || event["message"] == "agent session reused" {
+			sessionEvents = append(sessionEvents, event)
+		}
+	}
+
+	if len(sessionEvents) != 2 {
+		t.Fatalf("session events = %#v, want created and reused", sessionEvents)
+	}
+
+	for index, message := range []string{"agent session created", "agent session reused"} {
+		event := sessionEvents[index]
+		for field, want := range map[string]any{
+			"level":   "debug",
+			"message": message,
+			"id":      "worker",
+			"session": "stateful",
+			"loop":    "workflows/loop",
+		} {
+			if event[field] != want {
+				t.Errorf("session event %d field %s = %#v, want %#v; event=%#v", index, field, event[field], want, event)
+			}
+		}
+	}
+}
+
 type replLifecycleTest struct {
 	name        string
 	repl        bool

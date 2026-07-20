@@ -6,6 +6,7 @@ spec:
   children:
     - ref: roles/implementer
       alias: worker
+      session: stateful
       input: |
         Goal:
         {{ .Input }}
@@ -17,6 +18,7 @@ spec:
     - ref: roles/reviewer
       alias: validator
       canEscalate: true
+      session: stateful
       input: |
         Goal:
         {{ .Input }}
