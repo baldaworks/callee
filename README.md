@@ -140,7 +140,7 @@ callee --version
 Ensure the Go installation directory (normally `$GOBIN` or `$GOPATH/bin`) is
 on `PATH`.
 
-`agent run` always requires a real controlling TTY. Initial input, missing parameters, permissions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`. The successful root artifact is written once to stdout only after all provider cleanup succeeds.
+`agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`. The successful root artifact is written once to stdout only after all provider cleanup succeeds.
 
 ## Manual host setup
 

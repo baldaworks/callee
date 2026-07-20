@@ -20,6 +20,7 @@ import (
 	"github.com/baldaworks/callee/internal/runtime"
 	"github.com/baldaworks/callee/internal/workflow"
 	acp "github.com/coder/acp-go-sdk"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -474,14 +475,64 @@ func (c *workflowPermissionController) Bind(sessionID acp.SessionId, role resour
 }
 
 func (c *workflowPermissionController) Handle(ctx context.Context, request acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	started := time.Now()
+
 	c.mu.RLock()
 	policy, ok := c.policies[request.SessionId]
 	c.mu.RUnlock()
 
-	if !ok {
-		return acp.RequestPermissionResponse{}, fmt.Errorf("permission request for unbound ACP session %q", request.SessionId)
+	loggerContext := log.Ctx(ctx).With().
+		Str("acp_session_id", string(request.SessionId)).
+		Str("tool_call_id", string(request.ToolCall.ToolCallId))
+	if title := permissionRequestTitle(request); title != "" {
+		loggerContext = loggerContext.Str("title", title)
 	}
 
+	if request.ToolCall.Kind != nil {
+		loggerContext = loggerContext.Str("tool_kind", string(*request.ToolCall.Kind))
+	}
+
+	if ok {
+		loggerContext = loggerContext.
+			Str("id", policy.effectiveID).
+			Str("kind", string(resource.RoleKind)).
+			Str("policy", string(policy.mode))
+	}
+
+	logger := loggerContext.Logger()
+	logger.Info().Int("option_count", len(request.Options)).Msg("permission request received")
+
+	if !ok {
+		err := fmt.Errorf("permission request for unbound ACP session %q", request.SessionId)
+		logger.Error().Err(err).Dur("duration", time.Since(started)).Msg("permission request failed")
+
+		return acp.RequestPermissionResponse{}, err
+	}
+
+	response, err := c.respond(ctx, policy, request)
+	if err != nil {
+		logger.Error().Err(err).Dur("duration", time.Since(started)).Msg("permission request failed")
+
+		return acp.RequestPermissionResponse{}, err
+	}
+
+	answer := logger.Info().
+		Str("outcome", permissionOutcomeLabel(response.Outcome)).
+		Dur("duration", time.Since(started))
+	if kind, found := selectedPermissionOptionKind(response.Outcome, request.Options); found {
+		answer = answer.Str("option_kind", string(kind))
+	}
+
+	answer.Msg("permission request answered")
+
+	return response, nil
+}
+
+func (c *workflowPermissionController) respond(
+	ctx context.Context,
+	policy workflowPermissionPolicy,
+	request acp.RequestPermissionRequest,
+) (acp.RequestPermissionResponse, error) {
 	switch policy.mode {
 	case resource.PermissionModeAsk:
 		return c.ask(ctx, request)
@@ -514,6 +565,7 @@ func (c *workflowPermissionController) ask(ctx context.Context, request acp.Requ
 
 	var choices strings.Builder
 	choices.WriteString("Permission required:\n")
+	choices.WriteString(permissionRequestTTYDetails(request))
 
 	for index, option := range request.Options {
 		_, _ = fmt.Fprintf(&choices, "%d) %s [%s]\n", index+1, option.Name, option.Kind)
@@ -536,6 +588,109 @@ func (c *workflowPermissionController) ask(ctx context.Context, request acp.Requ
 	return acp.RequestPermissionResponse{
 		Outcome: acp.NewRequestPermissionOutcomeSelected(request.Options[selection-1].OptionId),
 	}, nil
+}
+
+func permissionRequestTTYDetails(request acp.RequestPermissionRequest) string {
+	var details strings.Builder
+
+	title := permissionRequestTitle(request)
+	if title != "" {
+		details.WriteString(title)
+	} else {
+		details.WriteString("Tool call")
+	}
+
+	if request.ToolCall.Kind != nil {
+		_, _ = fmt.Fprintf(&details, " [%s]", *request.ToolCall.Kind)
+	}
+
+	details.WriteString("\n")
+
+	content := permissionRequestContent(request.ToolCall.Content)
+	if content != "" {
+		details.WriteString("\n")
+		details.WriteString(content)
+		details.WriteString("\n")
+	}
+
+	details.WriteString("\n")
+
+	return details.String()
+}
+
+func permissionRequestTitle(request acp.RequestPermissionRequest) string {
+	if request.ToolCall.Title == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(*request.ToolCall.Title)
+}
+
+func permissionRequestContent(contents []acp.ToolCallContent) string {
+	parts := make([]string, 0, len(contents))
+	for _, content := range contents {
+		part := permissionContentPart(content)
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+
+	return strings.Join(parts, "\n\n")
+}
+
+func permissionContentPart(content acp.ToolCallContent) string {
+	switch {
+	case content.Content != nil:
+		block := content.Content.Content
+		switch {
+		case block.Text != nil:
+			return strings.TrimSpace(block.Text.Text)
+		case block.Image != nil:
+			return fmt.Sprintf("[image: %s]", block.Image.MimeType)
+		case block.Audio != nil:
+			return fmt.Sprintf("[audio: %s]", block.Audio.MimeType)
+		case block.ResourceLink != nil:
+			return fmt.Sprintf("[resource: %s <%s>]", block.ResourceLink.Name, block.ResourceLink.Uri)
+		case block.Resource != nil:
+			return "[embedded resource]"
+		default:
+			return "[unsupported content]"
+		}
+	case content.Diff != nil:
+		return fmt.Sprintf("[file diff: %s]", content.Diff.Path)
+	case content.Terminal != nil:
+		return fmt.Sprintf("[terminal: %s]", content.Terminal.TerminalId)
+	default:
+		return "[unsupported content]"
+	}
+}
+
+func permissionOutcomeLabel(outcome acp.RequestPermissionOutcome) string {
+	switch {
+	case outcome.Selected != nil:
+		return "selected"
+	case outcome.Cancelled != nil:
+		return "cancelled"
+	default:
+		return "unknown"
+	}
+}
+
+func selectedPermissionOptionKind(
+	outcome acp.RequestPermissionOutcome,
+	options []acp.PermissionOption,
+) (acp.PermissionOptionKind, bool) {
+	if outcome.Selected == nil {
+		return "", false
+	}
+
+	for _, option := range options {
+		if option.OptionId == outcome.Selected.OptionId {
+			return option.Kind, true
+		}
+	}
+
+	return "", false
 }
 
 func automaticPermissionResponse(
