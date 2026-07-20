@@ -1,6 +1,6 @@
 {
   "name": "callee",
-  "version": "0.13.0",
+  "version": "0.15.0",
   "description": "Run Markdown-defined agents and deterministic workflows.",
   "author": {
     "name": "Baldaworks",
