@@ -172,3 +172,103 @@ func TestZerologHandlerUsesConfiguredLogger(t *testing.T) {
 		t.Fatalf("handler output = %q", got)
 	}
 }
+
+func TestZerologHandlerRedactsACPPayloads(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+
+	const secret = "do-not-log-this-acp-payload"
+
+	var output bytes.Buffer
+
+	logger := slog.New(newZerologHandler(zerolog.New(&output))).With(
+		slog.String("component", acpSlogComponent),
+		slog.String("subcomponent", "wire"),
+	)
+
+	logger.LogAttrs(context.Background(), slogTraceLevel, "acp wire",
+		slog.String("direction", "outgoing"),
+		slog.String("rpc_kind", "request"),
+		slog.String("method", "session/prompt"),
+		slog.String("id", "request-42"),
+		slog.String("params", secret),
+		slog.Any("result", json.RawMessage(`{"text":"do-not-log-this-acp-payload"}`)),
+		slog.String("prompt", secret),
+		slog.String("meta", secret),
+		slog.String("raw_update", secret),
+		slog.String("acp_update_payload", secret),
+		slog.String("acp_content_block_text", secret),
+		slog.Any("acp_content_block", map[string]string{"text": secret}),
+		slog.String("error_message", secret),
+	)
+
+	if strings.Contains(output.String(), secret) {
+		t.Fatalf("ACP trace output leaks payload: %s", output.String())
+	}
+
+	var event map[string]any
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatalf("unmarshal JSON log: %v\n%s", err, output.String())
+	}
+
+	if event["message"] != "acp wire" || event["direction"] != "outgoing" || event["rpc_kind"] != "request" || event["method"] != "session/prompt" || event["id"] != "request-42" {
+		t.Fatalf("safe ACP diagnostics = %#v", event)
+	}
+
+	for _, field := range []string{
+		"params", "result", "prompt", "meta", "raw_update", "acp_update_payload",
+		"acp_content_block_text", "acp_content_block", "error_message",
+	} {
+		if _, ok := event[field]; ok {
+			t.Errorf("event contains raw %s: %#v", field, event)
+		}
+
+		if _, ok := event[field+"_kind"]; !ok {
+			t.Errorf("event is missing %s_kind: %#v", field, event)
+		}
+
+		if _, ok := event[field+"_bytes"]; !ok {
+			t.Errorf("event is missing %s_bytes: %#v", field, event)
+		}
+	}
+
+	if event["params_kind"] != "string" || event["params_bytes"] != float64(len(secret)) {
+		t.Errorf("params metadata = %#v", event)
+	}
+
+	if event["result_kind"] != "json" {
+		t.Errorf("result metadata = %#v", event)
+	}
+}
+
+func TestZerologHandlerLeavesNonACPPayloadsUnchanged(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+
+	const payload = "ordinary-log-payload"
+
+	var output bytes.Buffer
+
+	logger := slog.New(newZerologHandler(zerolog.New(&output))).With(
+		slog.String("component", "callee.workflow"),
+	)
+
+	logger.LogAttrs(context.Background(), slogTraceLevel, "workflow trace", slog.String("payload", payload))
+
+	var event map[string]any
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatalf("unmarshal JSON log: %v\n%s", err, output.String())
+	}
+
+	if event["payload"] != payload {
+		t.Fatalf("non-ACP payload = %#v", event)
+	}
+
+	if _, ok := event["payload_kind"]; ok {
+		t.Fatalf("non-ACP payload was redacted: %#v", event)
+	}
+}

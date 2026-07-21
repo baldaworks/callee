@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,12 +19,14 @@ import (
 )
 
 const (
-	slogTraceLevel = slog.LevelDebug - 4
-	LevelTrace     = "trace"
-	LevelDebug     = "debug"
-	LevelInfo      = "info"
-	LevelWarn      = "warn"
-	LevelError     = "error"
+	slogTraceLevel                = slog.LevelDebug - 4
+	acpSlogComponent              = "runtime.agentfactory.acp"
+	acpRedactedFieldMetadataCount = 2
+	LevelTrace                    = "trace"
+	LevelDebug                    = "debug"
+	LevelInfo                     = "info"
+	LevelWarn                     = "warn"
+	LevelError                    = "error"
 )
 
 // Option configures application logging.
@@ -209,15 +212,22 @@ func (h *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 	}
 
 	event := h.logger.WithLevel(slogLevelToZerolog(record.Level))
-	for _, attr := range h.attrs {
-		event = appendSlogAttr(event, h.groups, attr)
-	}
+	attrs := flattenSlogAttrs(h.groups, h.attrs)
 
 	record.Attrs(func(attr slog.Attr) bool {
-		event = appendSlogAttr(event, h.groups, attr)
+		attrs = append(attrs, flattenSlogAttrs(h.groups, []slog.Attr{attr})...)
 
 		return true
 	})
+
+	if isACPLogEvent(attrs) {
+		attrs = redactACPPayloads(attrs)
+	}
+
+	for _, attr := range attrs {
+		event = appendSlogField(event, attr)
+	}
+
 	event.Msg(record.Message)
 
 	return nil
@@ -256,47 +266,191 @@ func slogLevelToZerolog(level slog.Level) zerolog.Level {
 	}
 }
 
-func appendSlogAttr(event *zerolog.Event, groups []string, attr slog.Attr) *zerolog.Event {
-	attr.Value = attr.Value.Resolve()
-	if attr.Value.Kind() == slog.KindGroup {
+type slogField struct {
+	key   string
+	value slog.Value
+}
+
+func flattenSlogAttrs(groups []string, attrs []slog.Attr) []slogField {
+	fields := make([]slogField, 0, len(attrs))
+	for _, attr := range attrs {
+		fields = appendSlogAttrFields(fields, groups, attr)
+	}
+
+	return fields
+}
+
+func appendSlogAttrFields(fields []slogField, groups []string, attr slog.Attr) []slogField {
+	value := attr.Value.Resolve()
+	if value.Kind() == slog.KindGroup {
 		if attr.Key != "" {
-			groups = append(groups, attr.Key)
+			groups = append(append([]string(nil), groups...), attr.Key)
 		}
 
-		for _, groupAttr := range attr.Value.Group() {
-			event = appendSlogAttr(event, groups, groupAttr)
+		for _, groupAttr := range value.Group() {
+			fields = appendSlogAttrFields(fields, groups, groupAttr)
 		}
 
-		return event
+		return fields
 	}
 
 	if attr.Key == "" {
-		return event
+		return fields
 	}
 
-	key := strings.Join(append(append([]string(nil), groups...), attr.Key), ".")
-	switch attr.Value.Kind() {
+	return append(fields, slogField{
+		key:   strings.Join(append(append([]string(nil), groups...), attr.Key), "."),
+		value: value,
+	})
+}
+
+func appendSlogField(event *zerolog.Event, field slogField) *zerolog.Event {
+	switch field.value.Kind() {
 	case slog.KindString:
-		return event.Str(key, attr.Value.String())
+		return event.Str(field.key, field.value.String())
 	case slog.KindBool:
-		return event.Bool(key, attr.Value.Bool())
+		return event.Bool(field.key, field.value.Bool())
 	case slog.KindInt64:
-		return event.Int64(key, attr.Value.Int64())
+		return event.Int64(field.key, field.value.Int64())
 	case slog.KindUint64:
-		return event.Uint64(key, attr.Value.Uint64())
+		return event.Uint64(field.key, field.value.Uint64())
 	case slog.KindFloat64:
-		return event.Float64(key, attr.Value.Float64())
+		return event.Float64(field.key, field.value.Float64())
 	case slog.KindDuration:
-		return event.Dur(key, attr.Value.Duration())
+		return event.Dur(field.key, field.value.Duration())
 	case slog.KindTime:
-		return event.Time(key, attr.Value.Time())
+		return event.Time(field.key, field.value.Time())
 	case slog.KindAny:
-		if err, ok := attr.Value.Any().(error); ok {
-			return event.AnErr(key, err)
+		if err, ok := field.value.Any().(error); ok {
+			return event.AnErr(field.key, err)
 		}
 
-		return event.Interface(key, attr.Value.Any())
+		return event.Interface(field.key, field.value.Any())
 	default:
-		return event.Interface(key, attr.Value.Any())
+		return event.Interface(field.key, field.value.Any())
+	}
+}
+
+func isACPLogEvent(fields []slogField) bool {
+	for _, field := range fields {
+		if field.key == "component" && field.value.Kind() == slog.KindString && field.value.String() == acpSlogComponent {
+			return true
+		}
+	}
+
+	return false
+}
+
+func redactACPPayloads(fields []slogField) []slogField {
+	redacted := make([]slogField, 0, len(fields)*acpRedactedFieldMetadataCount)
+	for _, field := range fields {
+		if isSafeACPField(field.key) {
+			redacted = append(redacted, field)
+
+			continue
+		}
+
+		redacted = append(redacted,
+			slogField{key: field.key + "_kind", value: slog.StringValue(slogFieldKind(field.value))},
+			slogField{key: field.key + "_bytes", value: slog.Int64Value(slogFieldByteCount(field.value))},
+		)
+	}
+
+	return redacted
+}
+
+func isSafeACPField(key string) bool {
+	switch key {
+	case "component", "subcomponent",
+		"direction", "rpc_kind", "method", "id",
+		"acp_session_id", "adk_session_id", "invocation_id",
+		"update_kind", "acp_update_type", "acp_content_block_type", "acp_payload_type",
+		"prompt_blocks", "prompt_len", "session_config_values", "option_count",
+		"partial", "thought", "last_in_series", "has_meta", "has_content", "turn_complete",
+		"finish_reason", "error_code", "protocol_version", "pid", "method_id", "option_id", "option_kind":
+		return true
+	default:
+		return false
+	}
+}
+
+func slogFieldKind(value slog.Value) string {
+	value = value.Resolve()
+	switch value.Kind() {
+	case slog.KindString:
+		return "string"
+	case slog.KindBool:
+		return "bool"
+	case slog.KindInt64:
+		return "int64"
+	case slog.KindUint64:
+		return "uint64"
+	case slog.KindFloat64:
+		return "float64"
+	case slog.KindDuration:
+		return "duration"
+	case slog.KindTime:
+		return "time"
+	case slog.KindAny:
+		switch value.Any().(type) {
+		case nil:
+			return "null"
+		case json.RawMessage:
+			return "json"
+		case []byte:
+			return "bytes"
+		case error:
+			return "error"
+		default:
+			return "any"
+		}
+	default:
+		return "unknown"
+	}
+}
+
+func slogFieldByteCount(value slog.Value) int64 {
+	value = value.Resolve()
+	switch value.Kind() {
+	case slog.KindString:
+		return int64(len(value.String()))
+	case slog.KindBool:
+		return int64(len(strconv.FormatBool(value.Bool())))
+	case slog.KindInt64:
+		return int64(len(strconv.FormatInt(value.Int64(), 10)))
+	case slog.KindUint64:
+		return int64(len(strconv.FormatUint(value.Uint64(), 10)))
+	case slog.KindFloat64:
+		return int64(len(strconv.FormatFloat(value.Float64(), 'g', -1, 64)))
+	case slog.KindDuration:
+		return int64(len(value.Duration().String()))
+	case slog.KindTime:
+		return int64(len(value.Time().Format(time.RFC3339Nano)))
+	case slog.KindAny:
+		return anyByteCount(value.Any())
+	default:
+		return -1
+	}
+}
+
+func anyByteCount(value any) int64 {
+	switch raw := value.(type) {
+	case nil:
+		return 0
+	case string:
+		return int64(len(raw))
+	case json.RawMessage:
+		return int64(len(raw))
+	case []byte:
+		return int64(len(raw))
+	case error:
+		return int64(len(raw.Error()))
+	default:
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return -1
+		}
+
+		return int64(len(encoded))
 	}
 }
