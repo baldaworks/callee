@@ -140,7 +140,9 @@ callee --version
 Ensure the Go installation directory (normally `$GOBIN` or `$GOPATH/bin`) is
 on `PATH`.
 
-`agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`. The successful root artifact is written once to stdout only after all provider cleanup succeeds.
+`agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`.
+
+Each Role visit adds `role_duration`, `role_wait_duration`, and provider-reported `role_*_tokens` fields to its `agent finished` event once its first provider turn has started. These fields have the same meaning for a root Role and a Role nested in a workflow: Role duration begins with its first provider turn, while Role wait counts operator REPL and permission prompts within that visit. A final `agent run finished` event reports `agent_duration`, `agent_wait_duration`, and aggregate `agent_*_tokens` for the complete command. Agent wait also includes the initial prompt and missing parameters. Token status is `complete`, `partial`, or `unavailable`; cached-read fields appear only when nonzero. The successful root artifact is written once to stdout only after provider cleanup and the final metrics event.
 
 ## Manual host setup
 

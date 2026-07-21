@@ -29,7 +29,7 @@ type ProviderProcess interface {
 // AgentSession executes turns for one concrete Role visit.
 type AgentSession interface {
 	Prepare(ctx context.Context) error
-	Turn(ctx context.Context, prompt string) (string, error)
+	Turn(ctx context.Context, prompt string) (TurnResult, error)
 }
 
 // Start initializes one reusable Norma-backed provider process.
@@ -130,26 +130,37 @@ type normaAgentSession struct {
 	permissionBinder func(acp.SessionId, resource.Resource)
 }
 
-func (s *normaAgentSession) Turn(ctx context.Context, prompt string) (string, error) {
-	var final string
+func (s *normaAgentSession) Turn(ctx context.Context, prompt string) (TurnResult, error) {
+	var result TurnResult
 
 	for event, err := range s.runner.Run(ctx, "callee", s.sessionID, genai.NewContentFromText(prompt, genai.RoleUser), agent.RunConfig{}) {
 		if err != nil {
-			return "", err
+			return result, err
 		}
 
-		if event.IsFinalResponse() && event.Content != nil {
-			for _, part := range event.Content.Parts {
-				final += part.Text
+		if event.IsFinalResponse() {
+			if event.UsageMetadata != nil {
+				result.Usage = &TokenUsage{
+					InputTokens:      int64(event.UsageMetadata.PromptTokenCount),
+					OutputTokens:     int64(event.UsageMetadata.CandidatesTokenCount),
+					TotalTokens:      int64(event.UsageMetadata.TotalTokenCount),
+					CachedReadTokens: int64(event.UsageMetadata.CachedContentTokenCount),
+				}
+			}
+
+			if event.Content != nil {
+				for _, part := range event.Content.Parts {
+					result.Content += part.Text
+				}
 			}
 		}
 	}
 
-	if final == "" {
-		return "", fmt.Errorf("runtime returned no final text")
+	if result.Content == "" {
+		return result, fmt.Errorf("runtime returned no final text")
 	}
 
-	return final, nil
+	return result, nil
 }
 
 func (s *normaAgentSession) Prepare(ctx context.Context) error {

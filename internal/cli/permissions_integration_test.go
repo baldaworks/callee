@@ -72,8 +72,8 @@ func TestWorkflowPermissionRequestCrossesACPWire(t *testing.T) {
 				t.Fatalf("Turn() error: %v; stderr=%q", err, stderr.String())
 			}
 
-			if output != test.want {
-				t.Errorf("Turn() output = %q, want %q", output, test.want)
+			if output.Content != test.want {
+				t.Errorf("Turn() output = %q, want %q", output.Content, test.want)
 			}
 		})
 	}

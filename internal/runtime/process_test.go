@@ -11,6 +11,7 @@ import (
 	acpagent "github.com/normahq/go-adk-acpagent/v2"
 	adkagent "google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/session"
+	"google.golang.org/genai"
 )
 
 func TestNormaAgentSessionPrepareStopsBeforePrompt(t *testing.T) {
@@ -82,6 +83,78 @@ func TestNormaAgentSessionPrepareStopsBeforePrompt(t *testing.T) {
 
 	if boundRole.Spec.Provider == nil || boundRole.Spec.Provider.Type != "codex" {
 		t.Errorf("bound role = %+v, want original Role configuration", boundRole)
+	}
+}
+
+func TestNormaAgentSessionTurnUsesFinalResponseUsage(t *testing.T) {
+	t.Parallel()
+
+	agentInstance, err := adkagent.New(adkagent.Config{
+		Name:        "usage_check",
+		Description: "test agent",
+		Run: func(ctx adkagent.InvocationContext) iter.Seq2[*session.Event, error] {
+			return func(yield func(*session.Event, error) bool) {
+				contextUsage := session.NewEvent(ctx, ctx.InvocationID())
+
+				contextUsage.Partial = true
+
+				contextUsage.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
+					PromptTokenCount: 100_000,
+					TotalTokenCount:  50_000,
+				}
+				if !yield(contextUsage, nil) {
+					return
+				}
+
+				final := session.NewEvent(ctx, ctx.InvocationID())
+				final.Content = genai.NewContentFromText("done", genai.RoleModel)
+				final.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
+					PromptTokenCount:        11,
+					CandidatesTokenCount:    3,
+					TotalTokenCount:         17,
+					CachedContentTokenCount: 4,
+				}
+				yield(final, nil)
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("agent.New() error: %v", err)
+	}
+
+	process, err := newNormaProcess(agentInstance, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("newNormaProcess() error: %v", err)
+	}
+
+	role := resource.Resource{
+		APIVersion: resource.APIVersion,
+		Kind:       resource.RoleKind,
+		ID:         "roles/check",
+		Spec: resource.Spec{
+			Description: "check",
+			Provider:    &resource.Provider{Type: "codex"},
+			Body:        "{{ .Input }}",
+		},
+	}
+
+	created, err := process.NewSession(context.Background(), role, role.ID)
+	if err != nil {
+		t.Fatalf("ProviderProcess.NewSession() error: %v", err)
+	}
+
+	result, err := created.Turn(context.Background(), "task")
+	if err != nil {
+		t.Fatalf("AgentSession.Turn() error: %v", err)
+	}
+
+	if result.Content != "done" {
+		t.Errorf("TurnResult.Content = %q, want done", result.Content)
+	}
+
+	want := TokenUsage{InputTokens: 11, OutputTokens: 3, TotalTokens: 17, CachedReadTokens: 4}
+	if result.Usage == nil || *result.Usage != want {
+		t.Errorf("TurnResult.Usage = %+v, want %+v", result.Usage, want)
 	}
 }
 

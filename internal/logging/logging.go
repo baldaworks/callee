@@ -65,6 +65,8 @@ func Init(setters ...Option) error {
 		writer = os.Stderr
 	}
 
+	writer = &synchronizedWriter{writer: writer}
+
 	var logger zerolog.Logger
 	if opts.json {
 		logger = zerolog.New(writer)
@@ -81,6 +83,18 @@ func Init(setters ...Option) error {
 	slog.SetDefault(slog.New(newZerologHandler(logger)))
 
 	return nil
+}
+
+type synchronizedWriter struct {
+	mu     sync.Mutex
+	writer io.Writer
+}
+
+func (w *synchronizedWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.writer.Write(data)
 }
 
 // WriteJSONError writes a command failure as one JSON Lines diagnostic event.

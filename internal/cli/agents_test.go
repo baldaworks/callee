@@ -226,16 +226,24 @@ Task: {{ .Input }}
 		newWorkflowFactory = oldFactory
 	})
 
-	terminal := &splitTerminal{input: strings.NewReader("")}
+	terminal := &splitTerminal{input: strings.NewReader("build\n")}
 	openTerminal = func() (io.ReadWriteCloser, error) { return terminal, nil }
-	process := &cliTestProcess{response: "implemented"}
+	process := &cliTestProcess{
+		response: "implemented",
+		usage: &runtime.TokenUsage{
+			InputTokens:      11,
+			OutputTokens:     3,
+			TotalTokens:      17,
+			CachedReadTokens: 4,
+		},
+	}
 	newWorkflowFactory = func(io.Writer, *terminalInteractor, *workflow.PauseController) runtime.ProcessFactory {
 		return cliTestFactory{process: process}
 	}
 
 	var stdout, stderr bytes.Buffer
 
-	exitCode := Run(context.Background(), []string{"agent", "run", "roles/worker", "--message", "build"}, &stdout, &stderr)
+	exitCode := Run(context.Background(), []string{"agent", "run", "roles/worker"}, &stdout, &stderr)
 	if exitCode != 0 {
 		t.Fatalf("agent run exit = %d, stderr = %q", exitCode, stderr.String())
 	}
@@ -245,9 +253,36 @@ Task: {{ .Input }}
 	}
 
 	diagnostics := stripANSI(stderr.String())
-	for _, want := range []string{"INF running agent", "id=roles/worker", "kind=Role", "visit=1", "INF agent finished", "status=completed", "outcome=return"} {
+	for _, want := range []string{"INF running agent", "id=roles/worker", "kind=Role", "visit=1", "INF agent finished", "status=completed", "outcome=return", "INF agent run finished"} {
 		if !strings.Contains(diagnostics, want) {
 			t.Errorf("stderr = %q, want containing %q", stderr.String(), want)
+		}
+	}
+
+	requireDiagnosticLine(t, diagnostics,
+		"INF agent finished",
+		"role_duration=",
+		"role_wait_duration=0s",
+		"role_token_usage=complete",
+		"role_input_tokens=11",
+		"role_output_tokens=3",
+		"role_total_tokens=17",
+		"role_cached_read_tokens=4",
+	)
+	requireDiagnosticLine(t, diagnostics,
+		"INF agent run finished",
+		"agent_duration=",
+		"agent_wait_duration=",
+		"agent_token_usage=complete",
+		"agent_input_tokens=11",
+		"agent_output_tokens=3",
+		"agent_total_tokens=17",
+		"agent_cached_read_tokens=4",
+	)
+
+	for line := range strings.SplitSeq(diagnostics, "\n") {
+		if strings.Contains(line, "INF agent run finished") && strings.Contains(line, "agent_wait_duration=0s") {
+			t.Errorf("agent run did not include initial prompt wait: %s", line)
 		}
 	}
 
@@ -376,11 +411,12 @@ func (f cliTestFactory) Start(context.Context, runtime.Provider) (runtime.Provid
 
 type cliTestProcess struct {
 	response string
+	usage    *runtime.TokenUsage
 	closed   bool
 }
 
 func (p *cliTestProcess) NewSession(context.Context, agent.Resource, string) (runtime.AgentSession, error) {
-	return cliTestSession{response: p.response}, nil
+	return cliTestSession{response: p.response, usage: p.usage}, nil
 }
 
 func (p *cliTestProcess) Close() error {
@@ -389,14 +425,17 @@ func (p *cliTestProcess) Close() error {
 	return nil
 }
 
-type cliTestSession struct{ response string }
+type cliTestSession struct {
+	response string
+	usage    *runtime.TokenUsage
+}
 
-func (s cliTestSession) Turn(context.Context, string) (string, error) {
+func (s cliTestSession) Turn(context.Context, string) (runtime.TurnResult, error) {
 	if s.response == "" {
-		return "", fmt.Errorf("missing response")
+		return runtime.TurnResult{}, fmt.Errorf("missing response")
 	}
 
-	return s.response, nil
+	return runtime.TurnResult{Content: s.response, Usage: s.usage}, nil
 }
 
 func (cliTestSession) Prepare(context.Context) error {

@@ -151,6 +151,7 @@ spec:
 	}
 
 	requireDiagnosticLine(t, diagnostics, "INF running agent", "id="+roleID, "kind=Role", "visit=1")
+	requirePTYMetrics(t, diagnostics, roleID)
 
 	if mode == "loop" {
 		requireDiagnosticLine(t, diagnostics, "INF agent finished", "id=worker", "kind=Role", "visit=1", "status=completed", "outcome=escalate")
@@ -173,6 +174,26 @@ spec:
 	if strings.Contains(stderr.String(), want) {
 		t.Errorf("stderr = %q, want artifact only on stdout", stderr.String())
 	}
+}
+
+func requirePTYMetrics(t *testing.T, diagnostics, roleID string) {
+	t.Helper()
+
+	requireDiagnosticLine(t, diagnostics,
+		"INF agent finished",
+		"id="+roleID,
+		"kind=Role",
+		"role_duration=",
+		"role_wait_duration=",
+		"role_token_usage=unavailable",
+	)
+	requireDiagnosticLine(t, diagnostics,
+		"INF agent run finished",
+		"agent_duration=",
+		"agent_wait_duration=",
+		"agent_token_usage=unavailable",
+		"status=completed",
+	)
 }
 
 func requireDiagnosticLine(t *testing.T, diagnostics string, fields ...string) {
@@ -218,18 +239,18 @@ type ptyTestSession struct{ process *ptyTestProcess }
 
 func (s *ptyTestSession) Prepare(context.Context) error { return nil }
 
-func (s *ptyTestSession) Turn(_ context.Context, prompt string) (string, error) {
+func (s *ptyTestSession) Turn(_ context.Context, prompt string) (runtime.TurnResult, error) {
 	hasEscalation := strings.Contains(prompt, "callee.control.v1.escalate")
 	if hasEscalation != s.process.wantEscalate {
-		return "", fmt.Errorf("prompt escalation presence = %t, want %t", hasEscalation, s.process.wantEscalate)
+		return runtime.TurnResult{}, fmt.Errorf("prompt escalation presence = %t, want %t", hasEscalation, s.process.wantEscalate)
 	}
 
 	if len(s.process.responses) == 0 {
-		return "", io.EOF
+		return runtime.TurnResult{}, io.EOF
 	}
 
 	response := s.process.responses[0]
 	s.process.responses = s.process.responses[1:]
 
-	return response, nil
+	return runtime.TurnResult{Content: response}, nil
 }

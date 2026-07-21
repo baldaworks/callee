@@ -31,11 +31,19 @@ type Runner struct {
 	Interactor Interactor
 	Params     map[string]string
 	Pauses     *PauseController
+	Metrics    *RunMetrics
 }
 
 // Run executes the root and returns its sole final artifact only after every
 // started provider process closes successfully.
 func (r Runner) Run(ctx context.Context, prompt string) (artifact string, resultErr error) {
+	metrics := r.Metrics
+	if metrics == nil {
+		metrics = &RunMetrics{}
+	}
+
+	metrics.reset()
+
 	if r.Root == nil {
 		return "", fmt.Errorf("workflow root is required")
 	}
@@ -59,6 +67,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		processes:  make(map[string]runtime.ProviderProcess),
 		visits:     make(map[string]int),
 		pauses:     r.Pauses,
+		metrics:    metrics,
 	}
 
 	if err := validateRuntimeParams(r.Root, run.params); err != nil {
@@ -101,6 +110,7 @@ type nodeResult struct {
 	sourceID         string
 	sourceResourceID string
 	sourcePath       string
+	roleMetrics      roleMetrics
 }
 
 type startedProcess struct {
@@ -124,6 +134,7 @@ type runState struct {
 	started    []startedProcess
 	visits     map[string]int
 	pauses     *PauseController
+	metrics    *RunMetrics
 }
 
 type executionContext struct {
@@ -159,7 +170,7 @@ func (r *runState) node(
 	logger.Info().Msg("running agent")
 
 	defer func() {
-		writeLifecycleFinish(logger, "agent finished", result, resultErr, started)
+		writeLifecycleFinish(logger, "agent finished", result, resultErr, started, node.Kind == agent.RoleKind)
 	}()
 
 	if err := r.applyState(node, input); err != nil {
@@ -191,7 +202,14 @@ func (r *runState) lifecycleLogger(ctx context.Context, node *registry.ResolvedN
 	return logger
 }
 
-func writeLifecycleFinish(logger zerolog.Logger, message string, result nodeResult, resultErr error, started time.Time) {
+func writeLifecycleFinish(
+	logger zerolog.Logger,
+	message string,
+	result nodeResult,
+	resultErr error,
+	started time.Time,
+	includeRoleMetrics bool,
+) {
 	event := logger.Info()
 
 	if resultErr != nil {
@@ -206,7 +224,33 @@ func writeLifecycleFinish(logger zerolog.Logger, message string, result nodeResu
 		event.Str("status", status).Str("outcome", result.outcome.String())
 	}
 
+	if includeRoleMetrics {
+		event = appendUsageMetrics(event, "role", result.roleMetrics.usage)
+		if result.roleMetrics.turnStarted {
+			event = event.
+				Dur("role_duration", result.roleMetrics.duration).
+				Dur("role_wait_duration", result.roleMetrics.wait)
+		}
+	}
+
 	event.Dur("duration", time.Since(started)).Msg(message)
+}
+
+func appendUsageMetrics(event *zerolog.Event, prefix string, usage runtime.UsageMetrics) *zerolog.Event {
+	event = event.Str(prefix+"_token_usage", string(usage.Status()))
+	if usage.TurnsReported == 0 {
+		return event
+	}
+
+	event = event.
+		Int64(prefix+"_input_tokens", usage.InputTokens).
+		Int64(prefix+"_output_tokens", usage.OutputTokens).
+		Int64(prefix+"_total_tokens", usage.TotalTokens)
+	if usage.CachedReadTokens != 0 {
+		event = event.Int64(prefix+"_cached_read_tokens", usage.CachedReadTokens)
+	}
+
+	return event
 }
 
 func (r *runState) role(
@@ -252,28 +296,51 @@ func (r *runState) role(
 		logger.Info().Msg("entering repl")
 
 		defer func() {
-			writeLifecycleFinish(logger, "exiting repl", result, resultErr, started)
+			writeLifecycleFinish(logger, "exiting repl", result, resultErr, started, false)
 		}()
 	}
 
 	turnInput := body + controlInstructions(node.Resource.REPL(), node.CanEscalate)
+	turnCtx, cancelTurn := withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
+	roleStarted := time.Now()
+	waitStarted := r.operatorWaitDuration()
+	result.roleMetrics.turnStarted = true
+
+	defer func() {
+		result.roleMetrics.duration = time.Since(roleStarted)
+		result.roleMetrics.wait = r.operatorWaitDuration() - waitStarted
+		r.metrics.add(result.roleMetrics.usage)
+	}()
+
+	return r.runRoleTurns(ctx, node, session, turnInput, turnCtx, cancelTurn, result)
+}
+
+func (r *runState) runRoleTurns(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	session runtime.AgentSession,
+	turnInput string,
+	turnCtx context.Context,
+	cancelTurn context.CancelFunc,
+	result nodeResult,
+) (nodeResult, error) {
 	for {
-		turnCtx, cancelTurn := withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
-		content, err := session.Turn(turnCtx, turnInput)
+		turnResult, err := session.Turn(turnCtx, turnInput)
 
 		cancelTurn()
+		result.roleMetrics.usage.AddTurn(turnResult.Usage)
 
 		if err != nil {
-			return nodeResult{}, fmt.Errorf("agent %q turn: %w", node.EffectiveID, err)
+			return result, fmt.Errorf("agent %q turn: %w", node.EffectiveID, err)
 		}
 
-		parsed, err := parseResponse(content, node.Resource.REPL())
+		parsed, err := parseResponse(turnResult.Content, node.Resource.REPL())
 		if err != nil {
-			return nodeResult{}, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
+			return result, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
 		}
 
 		if parsed.outcome == outcomeEscalate && !node.CanEscalate {
-			return nodeResult{}, fmt.Errorf(
+			return result, fmt.Errorf(
 				"agent %q (resource %q, path %q) attempted unauthorized escalation",
 				node.EffectiveID,
 				node.ResourceID,
@@ -284,41 +351,51 @@ func (r *runState) role(
 		switch parsed.outcome {
 		case outcomeAwait:
 			if r.interactor == nil {
-				return nodeResult{}, fmt.Errorf("agent %q requested operator input without an interactor", node.EffectiveID)
+				return result, fmt.Errorf("agent %q requested operator input without an interactor", node.EffectiveID)
 			}
 
 			if err := r.interactor.Display(parsed.artifact); err != nil {
-				return nodeResult{}, fmt.Errorf("display agent %q response: %w", node.EffectiveID, err)
+				return result, fmt.Errorf("display agent %q response: %w", node.EffectiveID, err)
 			}
 
 			answer, err := r.interactor.Prompt(ctx, node.EffectiveID+" response")
 			if err != nil {
-				return nodeResult{}, fmt.Errorf("read agent %q response: %w", node.EffectiveID, err)
+				return result, fmt.Errorf("read agent %q response: %w", node.EffectiveID, err)
 			}
 
 			turnInput = answer + replReminder()
+			turnCtx, cancelTurn = withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
 		case outcomeReturn, outcomeEscalate:
 			if strings.TrimSpace(parsed.artifact) != "" {
 				r.promote(node.EffectiveID, parsed.artifact)
 			}
 
-			return nodeResult{
-				outcome:          parsed.outcome,
-				artifact:         parsed.artifact,
-				sourceID:         node.EffectiveID,
-				sourceResourceID: node.ResourceID,
-				sourcePath:       strings.Join(node.Path, " -> "),
-			}, nil
+			result.outcome = parsed.outcome
+			result.artifact = parsed.artifact
+			result.sourceID = node.EffectiveID
+			result.sourceResourceID = node.ResourceID
+			result.sourcePath = strings.Join(node.Path, " -> ")
+
+			return result, nil
 		case outcomeFail:
-			return nodeResult{
-				outcome:          outcomeFail,
-				artifact:         parsed.artifact,
-				sourceID:         node.EffectiveID,
-				sourceResourceID: node.ResourceID,
-				sourcePath:       strings.Join(node.Path, " -> "),
-			}, nil
+			result.outcome = outcomeFail
+			result.artifact = parsed.artifact
+			result.sourceID = node.EffectiveID
+			result.sourceResourceID = node.ResourceID
+			result.sourcePath = strings.Join(node.Path, " -> ")
+
+			return result, nil
 		}
 	}
+}
+
+func (r *runState) operatorWaitDuration() time.Duration {
+	waits, ok := r.interactor.(interface{ WaitDuration() time.Duration })
+	if !ok {
+		return 0
+	}
+
+	return waits.WaitDuration()
 }
 
 func (r *runState) session(

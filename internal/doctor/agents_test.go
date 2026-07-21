@@ -213,8 +213,8 @@ type doctorSession struct {
 	prepareErr error
 }
 
-func (doctorSession) Turn(context.Context, string) (string, error) {
-	return "", errors.New("doctor must not send a model prompt")
+func (doctorSession) Turn(context.Context, string) (runtime.TurnResult, error) {
+	return runtime.TurnResult{}, errors.New("doctor must not send a model prompt")
 }
 
 func (s doctorSession) Prepare(ctx context.Context) error {

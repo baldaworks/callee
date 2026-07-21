@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
+	"github.com/baldaworks/callee/internal/runtime"
 	"github.com/rs/zerolog"
 )
 
@@ -91,6 +94,142 @@ func TestRunnerLogsAgentLifecycleAcrossLoopVisits(t *testing.T) {
 				t.Errorf("event %d contains forbidden field %q: %#v", index, forbidden, event)
 			}
 		}
+	}
+}
+
+func TestRunnerUsesIdenticalRoleMetricsForDirectAndNestedRoles(t *testing.T) {
+	t.Parallel()
+
+	usage := &runtime.TokenUsage{InputTokens: 11, OutputTokens: 3, TotalTokens: 17, CachedReadTokens: 4}
+	tests := []struct {
+		name      string
+		resources func(*testing.T) []agent.Resource
+	}{
+		{
+			name: "direct",
+			resources: func(t *testing.T) []agent.Resource {
+				return []agent.Resource{roleResource(t, "roles/worker", false, nil, "{{ .Input }}")}
+			},
+		},
+		{
+			name: "nested",
+			resources: func(t *testing.T) []agent.Resource {
+				return []agent.Resource{
+					roleResource(t, "roles/worker", false, nil, "{{ .Input }}"),
+					compositeResource(t, "workflows/pipeline", agent.SequentialKind, []agent.Child{{Ref: "roles/worker", Alias: "worker"}}, 0, "{{ .Input }}", ""),
+				}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			assertRoleMetrics(t, test.resources(t), usage)
+		})
+	}
+}
+
+func assertRoleMetrics(t *testing.T, resources []agent.Resource, usage *runtime.TokenUsage) {
+	t.Helper()
+
+	root := resolvedRoot(t, resources...)
+	process := &scriptedProcess{
+		visits: map[string][][]string{"roles/worker": {{"done"}}},
+		usages: map[string][][]*runtime.TokenUsage{"roles/worker": {{usage}}},
+	}
+	metrics := &RunMetrics{}
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}, Metrics: metrics}).Run(ctx, "task"); err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	var finished map[string]any
+
+	for _, event := range decodeLifecycleEvents(t, &output) {
+		if event["message"] == "agent finished" && event["kind"] == "Role" {
+			finished = event
+		}
+
+		if event["kind"] != "Role" {
+			assertNoRoleMetrics(t, event)
+		}
+	}
+
+	if finished == nil {
+		t.Fatal("missing Role finish event")
+	}
+
+	for field, want := range map[string]any{
+		"role_token_usage":        "complete",
+		"role_input_tokens":       float64(11),
+		"role_output_tokens":      float64(3),
+		"role_total_tokens":       float64(17),
+		"role_cached_read_tokens": float64(4),
+	} {
+		if finished[field] != want {
+			t.Errorf("%s = %#v, want %#v; event=%#v", field, finished[field], want, finished)
+		}
+	}
+
+	for _, field := range []string{"role_duration", "role_wait_duration"} {
+		if _, ok := finished[field]; !ok {
+			t.Errorf("Role finish event has no %s: %#v", field, finished)
+		}
+	}
+
+	runUsage := metrics.Usage()
+	if runUsage.Status() != runtime.TokenUsageComplete || runUsage.TokenUsage != *usage {
+		t.Errorf("run usage = %+v, want complete %+v", runUsage, *usage)
+	}
+}
+
+func assertNoRoleMetrics(t *testing.T, event map[string]any) {
+	t.Helper()
+
+	for field := range event {
+		if strings.HasPrefix(field, "role_") {
+			t.Errorf("composite event contains %q: %#v", field, event)
+		}
+	}
+}
+
+func TestRunnerAggregatesPartialUsageAcrossRoles(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/worker", false, nil, "{{ .Input }}"),
+		roleResource(t, "roles/reviewer", false, nil, "{{ .Input }}"),
+		compositeResource(t, "workflows/pipeline", agent.SequentialKind, []agent.Child{
+			{Ref: "roles/worker", Alias: "worker"},
+			{Ref: "roles/reviewer", Alias: "reviewer"},
+		}, 0, "{{ .Input }}", ""),
+	)
+	usage := &runtime.TokenUsage{InputTokens: 5, OutputTokens: 2, TotalTokens: 7}
+	process := &scriptedProcess{
+		visits: map[string][][]string{
+			"roles/worker":   {{"draft"}},
+			"roles/reviewer": {{"approved"}},
+		},
+		usages: map[string][][]*runtime.TokenUsage{
+			"roles/worker": {{usage}},
+		},
+	}
+	metrics := &RunMetrics{}
+
+	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}, Metrics: metrics}).Run(context.Background(), "task"); err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	got := metrics.Usage()
+	if got.Status() != runtime.TokenUsagePartial || got.TokenUsage != *usage || got.TurnsAttempted != 2 || got.TurnsReported != 1 {
+		t.Errorf("run usage = %+v, want one of two turns reported", got)
 	}
 }
 
@@ -238,7 +377,10 @@ func runREPLLifecycleTest(t *testing.T, test replLifecycleTest) {
 		},
 		prepareErr: test.prepareErr,
 	}
-	interactor := &scriptedInteractor{answers: append([]string(nil), test.answers...)}
+	interactor := &scriptedInteractor{
+		answers:       append([]string(nil), test.answers...),
+		waitPerPrompt: time.Second,
+	}
 
 	var output bytes.Buffer
 
@@ -269,6 +411,9 @@ func runREPLLifecycleTest(t *testing.T, test replLifecycleTest) {
 		}
 	}
 
+	finished := events[len(events)-1]
+	assertUnavailableRoleMetrics(t, finished, test)
+
 	if !test.wantREPL {
 		return
 	}
@@ -291,6 +436,46 @@ func runREPLLifecycleTest(t *testing.T, test replLifecycleTest) {
 
 	if _, ok := exiting["duration"]; !ok {
 		t.Errorf("exiting repl event has no duration: %#v", exiting)
+	}
+
+	for field := range exiting {
+		if strings.HasPrefix(field, "role_") {
+			t.Errorf("exiting repl event contains %q: %#v", field, exiting)
+		}
+	}
+}
+
+func assertUnavailableRoleMetrics(t *testing.T, finished map[string]any, test replLifecycleTest) {
+	t.Helper()
+
+	if finished["role_token_usage"] != "unavailable" {
+		t.Errorf("Role token usage = %#v, want unavailable; event=%#v", finished["role_token_usage"], finished)
+	}
+
+	_, hasRoleDuration := finished["role_duration"]
+	_, hasRoleWait := finished["role_wait_duration"]
+	wantRoleTiming := test.prepareErr == nil
+
+	if hasRoleDuration != wantRoleTiming || hasRoleWait != wantRoleTiming {
+		t.Errorf("Role timing presence = duration:%t wait:%t, want %t; event=%#v", hasRoleDuration, hasRoleWait, wantRoleTiming, finished)
+	}
+
+	if wantRoleTiming {
+		wantWait := len(test.answers) > 0
+		if gotWait := !durationValueIsZero(finished["role_wait_duration"]); gotWait != wantWait {
+			t.Errorf("Role wait nonzero = %t, want %t; event=%#v", gotWait, wantWait, finished)
+		}
+	}
+}
+
+func durationValueIsZero(value any) bool {
+	switch typed := value.(type) {
+	case float64:
+		return typed == 0
+	case string:
+		return typed == "0s"
+	default:
+		return false
 	}
 }
 

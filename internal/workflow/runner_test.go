@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
 	"github.com/baldaworks/callee/internal/registry"
@@ -762,6 +763,7 @@ func (f *scriptedFactory) Start(ctx context.Context, _ runtime.Provider) (runtim
 
 type scriptedProcess struct {
 	visits                    map[string][][]string
+	usages                    map[string][][]*runtime.TokenUsage
 	prompts                   map[string][]string
 	processContext            context.Context
 	processContextErrAtClose  error
@@ -786,7 +788,20 @@ func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource, eff
 	p.sessions++
 	p.effectiveIDs = append(p.effectiveIDs, effectiveID)
 
-	return &scriptedSession{roleID: role.ID, responses: append([]string(nil), visits[0]...), process: p}, nil
+	var usages []*runtime.TokenUsage
+
+	usageVisits := p.usages[role.ID]
+	if len(usageVisits) > 0 {
+		p.usages[role.ID] = usageVisits[1:]
+		usages = append([]*runtime.TokenUsage(nil), usageVisits[0]...)
+	}
+
+	return &scriptedSession{
+		roleID:    role.ID,
+		responses: append([]string(nil), visits[0]...),
+		usages:    usages,
+		process:   p,
+	}, nil
 }
 
 func (p *scriptedProcess) Close() error {
@@ -800,6 +815,7 @@ func (p *scriptedProcess) Close() error {
 type scriptedSession struct {
 	roleID     string
 	responses  []string
+	usages     []*runtime.TokenUsage
 	process    *scriptedProcess
 	prepared   bool
 	prepareCtx context.Context
@@ -820,17 +836,17 @@ func (s *scriptedSession) Prepare(ctx context.Context) error {
 	return nil
 }
 
-func (s *scriptedSession) Turn(_ context.Context, prompt string) (string, error) {
+func (s *scriptedSession) Turn(_ context.Context, prompt string) (runtime.TurnResult, error) {
 	if !s.prepared {
-		return "", fmt.Errorf("session for %s was not prepared", s.roleID)
+		return runtime.TurnResult{}, fmt.Errorf("session for %s was not prepared", s.roleID)
 	}
 
 	if !errors.Is(s.prepareCtx.Err(), context.Canceled) {
-		return "", fmt.Errorf("prepare budget for %s remained active during turn", s.roleID)
+		return runtime.TurnResult{}, fmt.Errorf("prepare budget for %s remained active during turn", s.roleID)
 	}
 
 	if len(s.responses) == 0 {
-		return "", fmt.Errorf("no scripted response for %s", s.roleID)
+		return runtime.TurnResult{}, fmt.Errorf("no scripted response for %s", s.roleID)
 	}
 
 	if s.process.prompts == nil {
@@ -842,17 +858,27 @@ func (s *scriptedSession) Turn(_ context.Context, prompt string) (string, error)
 	response := s.responses[0]
 	s.responses = s.responses[1:]
 
-	return response, nil
+	var usage *runtime.TokenUsage
+	if len(s.usages) > 0 {
+		usage = s.usages[0]
+		s.usages = s.usages[1:]
+	}
+
+	return runtime.TurnResult{Content: response, Usage: usage}, nil
 }
 
 type scriptedInteractor struct {
-	answers   []string
-	labels    []string
-	displayed []string
+	answers       []string
+	labels        []string
+	displayed     []string
+	waitPerPrompt time.Duration
+	waited        time.Duration
 }
 
 func (i *scriptedInteractor) Prompt(_ context.Context, label string) (string, error) {
 	i.labels = append(i.labels, label)
+	i.waited += i.waitPerPrompt
+
 	if len(i.answers) == 0 {
 		return "", fmt.Errorf("no scripted answer for %s", label)
 	}
@@ -861,6 +887,10 @@ func (i *scriptedInteractor) Prompt(_ context.Context, label string) (string, er
 	i.answers = i.answers[1:]
 
 	return answer, nil
+}
+
+func (i *scriptedInteractor) WaitDuration() time.Duration {
+	return i.waited
 }
 
 func (i *scriptedInteractor) Display(text string) error {

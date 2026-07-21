@@ -149,7 +149,40 @@ func agentRunCommand() *cobra.Command {
 	return cmd
 }
 
-func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) error {
+func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (resultErr error) {
+	started := time.Now()
+	runMetrics := &workflow.RunMetrics{}
+
+	var interactor *terminalInteractor
+
+	var terminalCloser io.Closer
+	defer func() {
+		if terminalCloser != nil {
+			_ = terminalCloser.Close()
+		}
+	}()
+
+	// finish is idempotent because successful runs emit before writing stdout.
+	finished := false
+	finish := func(err error) {
+		if finished {
+			return
+		}
+
+		finished = true
+
+		var waited time.Duration
+		if interactor != nil {
+			waited = interactor.WaitDuration()
+		}
+
+		writeAgentRunFinish(cmd.Context(), id, time.Since(started), waited, runMetrics.Usage(), err)
+	}
+
+	defer func() {
+		finish(resultErr)
+	}()
+
 	if opts.replTimeout <= 0 {
 		return fmt.Errorf("repl-timeout must be greater than zero")
 	}
@@ -173,9 +206,10 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) erro
 	if err != nil {
 		return err
 	}
-	defer terminal.Close()
 
-	interactor := &terminalInteractor{
+	terminalCloser = terminal
+
+	interactor = &terminalInteractor{
 		reader:   reader,
 		terminal: terminal,
 		timeout:  opts.replTimeout,
@@ -200,14 +234,49 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) erro
 		Interactor: interactor,
 		Params:     values,
 		Pauses:     pauses,
+		Metrics:    runMetrics,
 	}).Run(cmd.Context(), prompt)
 	if err != nil {
 		return err
 	}
 
-	_, err = io.WriteString(cmd.OutOrStdout(), artifact)
+	finish(nil)
 
-	return err
+	_, resultErr = io.WriteString(cmd.OutOrStdout(), artifact)
+
+	return resultErr
+}
+
+func writeAgentRunFinish(
+	ctx context.Context,
+	id string,
+	duration time.Duration,
+	wait time.Duration,
+	usage runtime.UsageMetrics,
+	resultErr error,
+) {
+	event := log.Ctx(ctx).Info().
+		Str("id", id).
+		Dur("agent_duration", duration).
+		Dur("agent_wait_duration", wait).
+		Str("agent_token_usage", string(usage.Status()))
+	if resultErr != nil {
+		event = event.Str("status", "error")
+	} else {
+		event = event.Str("status", "completed")
+	}
+
+	if usage.TurnsReported > 0 {
+		event = event.
+			Int64("agent_input_tokens", usage.InputTokens).
+			Int64("agent_output_tokens", usage.OutputTokens).
+			Int64("agent_total_tokens", usage.TotalTokens)
+		if usage.CachedReadTokens != 0 {
+			event = event.Int64("agent_cached_read_tokens", usage.CachedReadTokens)
+		}
+	}
+
+	event.Msg("agent run finished")
 }
 
 func agentListCommand() *cobra.Command {
@@ -418,9 +487,20 @@ type terminalInteractor struct {
 	reader   *bufio.Reader
 	terminal io.Writer
 	timeout  time.Duration
+
+	waitMu       sync.Mutex
+	waitDuration time.Duration
 }
 
 func (i *terminalInteractor) Prompt(ctx context.Context, label string) (string, error) {
+	started := time.Now()
+
+	defer func() {
+		i.waitMu.Lock()
+		i.waitDuration += time.Since(started)
+		i.waitMu.Unlock()
+	}()
+
 	for {
 		if _, err := fmt.Fprintf(i.terminal, "%s: ", label); err != nil {
 			return "", err
@@ -448,6 +528,13 @@ func (i *terminalInteractor) Prompt(ctx context.Context, label string) (string, 
 			return value, nil
 		}
 	}
+}
+
+func (i *terminalInteractor) WaitDuration() time.Duration {
+	i.waitMu.Lock()
+	defer i.waitMu.Unlock()
+
+	return i.waitDuration
 }
 
 func (i *terminalInteractor) Display(text string) error {
