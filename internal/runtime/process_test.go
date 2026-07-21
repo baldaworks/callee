@@ -30,7 +30,13 @@ func TestNormaAgentSessionPrepareStopsBeforePrompt(t *testing.T) {
 			return func(yield func(*session.Event, error) bool) {
 				binding := session.NewEvent(ctx, ctx.InvocationID())
 
-				binding.Actions.StateDelta[acpagent.SessionStateKey] = map[string]any{"session_id": "test"}
+				binding.Actions.StateDelta[acpagent.SessionStateKey] = map[string]any{
+					"session_id": "test",
+					"config_values": []map[string]any{
+						{"id": "model", "value": "gpt-5.6-sol"},
+						{"id": "reasoning_effort", "value": "high"},
+					},
+				}
 				if !yield(binding, nil) {
 					return
 				}
@@ -84,6 +90,16 @@ func TestNormaAgentSessionPrepareStopsBeforePrompt(t *testing.T) {
 	if boundRole.Spec.Provider == nil || boundRole.Spec.Provider.Type != "codex" {
 		t.Errorf("bound role = %+v, want original Role configuration", boundRole)
 	}
+
+	reporter, ok := prepared.(interface{ Configuration() SessionConfiguration })
+	if !ok {
+		t.Fatal("prepared Norma session does not report its configuration")
+	}
+
+	wantConfiguration := SessionConfiguration{Model: "gpt-5.6-sol", Reasoning: "high"}
+	if got := reporter.Configuration(); got != wantConfiguration {
+		t.Errorf("session configuration = %+v, want %+v", got, wantConfiguration)
+	}
 }
 
 func TestNormaAgentSessionTurnUsesFinalResponseUsage(t *testing.T) {
@@ -101,6 +117,13 @@ func TestNormaAgentSessionTurnUsesFinalResponseUsage(t *testing.T) {
 				contextUsage.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
 					PromptTokenCount: 100_000,
 					TotalTokenCount:  50_000,
+				}
+
+				contextUsage.Actions.StateDelta[acpagent.SessionStateKey] = map[string]any{
+					"config_values": []map[string]any{
+						{"id": "model", "value": "gpt-5.6-sol"},
+						{"id": "thought_level", "value": "medium"},
+					},
 				}
 				if !yield(contextUsage, nil) {
 					return
@@ -155,6 +178,29 @@ func TestNormaAgentSessionTurnUsesFinalResponseUsage(t *testing.T) {
 	want := TokenUsage{InputTokens: 11, OutputTokens: 3, TotalTokens: 17, CachedReadTokens: 4}
 	if result.Usage == nil || *result.Usage != want {
 		t.Errorf("TurnResult.Usage = %+v, want %+v", result.Usage, want)
+	}
+
+	reporter := created.(interface{ Configuration() SessionConfiguration })
+	wantConfiguration := SessionConfiguration{Model: "gpt-5.6-sol", Reasoning: "medium"}
+
+	if got := reporter.Configuration(); got != wantConfiguration {
+		t.Errorf("session configuration = %+v, want %+v", got, wantConfiguration)
+	}
+}
+
+func TestSessionConfigurationFromStatePreservesFallbackForBlankValues(t *testing.T) {
+	t.Parallel()
+
+	fallback := SessionConfiguration{Model: "configured-model", Reasoning: "high"}
+	state := map[string]any{
+		"config_values": []map[string]any{
+			{"id": "model", "value": "  "},
+			{"id": "reasoning_effort", "value": ""},
+		},
+	}
+
+	if got := sessionConfigurationFromState(state, fallback); got != fallback {
+		t.Errorf("session configuration = %+v, want fallback %+v", got, fallback)
 	}
 }
 

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,6 +31,13 @@ type ProviderProcess interface {
 type AgentSession interface {
 	Prepare(ctx context.Context) error
 	Turn(ctx context.Context, prompt string) (TurnResult, error)
+}
+
+// SessionConfiguration is the model and reasoning selection known for one
+// Role session. Provider-reported values supersede the Role configuration.
+type SessionConfiguration struct {
+	Model     string
+	Reasoning string
 }
 
 // Start initializes one reusable Norma-backed provider process.
@@ -105,6 +113,7 @@ func (p *normaProcess) NewSession(ctx context.Context, role resource.Resource, e
 		sessionID:        created.Session.ID(),
 		role:             role,
 		effectiveID:      effectiveID,
+		configuration:    configuredSessionConfiguration(role),
 		permissionBinder: p.permissionBinder,
 	}, nil
 }
@@ -127,7 +136,13 @@ type normaAgentSession struct {
 	sessionID        string
 	role             resource.Resource
 	effectiveID      string
+	configuration    SessionConfiguration
 	permissionBinder func(acp.SessionId, resource.Resource)
+}
+
+// Configuration returns the current prepared ACP session selections.
+func (s *normaAgentSession) Configuration() SessionConfiguration {
+	return s.configuration
 }
 
 func (s *normaAgentSession) Turn(ctx context.Context, prompt string) (TurnResult, error) {
@@ -136,6 +151,10 @@ func (s *normaAgentSession) Turn(ctx context.Context, prompt string) (TurnResult
 	for event, err := range s.runner.Run(ctx, "callee", s.sessionID, genai.NewContentFromText(prompt, genai.RoleUser), agent.RunConfig{}) {
 		if err != nil {
 			return result, err
+		}
+
+		if acpState, ok := event.Actions.StateDelta[acpagent.SessionStateKey]; ok {
+			s.configuration = sessionConfigurationFromState(acpState, s.configuration)
 		}
 
 		if event.IsFinalResponse() {
@@ -176,6 +195,8 @@ func (s *normaAgentSession) Prepare(ctx context.Context) error {
 
 		acpState, ok := event.Actions.StateDelta[acpagent.SessionStateKey]
 		if ok {
+			s.configuration = sessionConfigurationFromState(acpState, s.configuration)
+
 			if s.permissionBinder != nil {
 				remoteSessionID, err := permissionSessionID(acpState)
 				if err != nil {
@@ -196,6 +217,60 @@ func (s *normaAgentSession) Prepare(ctx context.Context) error {
 	}
 
 	return fmt.Errorf("provider produced no ACP session binding")
+}
+
+func configuredSessionConfiguration(role resource.Resource) SessionConfiguration {
+	if role.Spec.Provider == nil {
+		return SessionConfiguration{}
+	}
+
+	return SessionConfiguration{
+		Model:     strings.TrimSpace(role.Spec.Provider.Model),
+		Reasoning: strings.TrimSpace(role.Spec.Provider.Reasoning),
+	}
+}
+
+func sessionConfigurationFromState(value any, fallback SessionConfiguration) SessionConfiguration {
+	state, ok := value.(map[string]any)
+	if !ok {
+		return fallback
+	}
+
+	data, err := json.Marshal(state["config_values"])
+	if err != nil {
+		return fallback
+	}
+
+	var values []struct {
+		ID    string `json:"id"`
+		Value any    `json:"value"`
+	}
+	if err := json.Unmarshal(data, &values); err != nil {
+		return fallback
+	}
+
+	configuration := fallback
+
+	for _, value := range values {
+		selected, ok := value.Value.(string)
+		if !ok {
+			continue
+		}
+
+		selected = strings.TrimSpace(selected)
+		if selected == "" {
+			continue
+		}
+
+		switch strings.TrimSpace(value.ID) {
+		case "model":
+			configuration.Model = selected
+		case "reasoning", "reasoning_effort", "thought_level":
+			configuration.Reasoning = selected
+		}
+	}
+
+	return configuration
 }
 
 func permissionSessionID(value any) (acp.SessionId, error) {

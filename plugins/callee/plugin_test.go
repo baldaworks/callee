@@ -687,6 +687,20 @@ func TestCodexStarterPromptsUseNaturalLanguage(t *testing.T) {
 	}
 }
 
+func TestRunAgentSkillDocumentsControllingPTYFallback(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("skills", "run-agent", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := string(data)
+	for _, required := range []string{"test -r /dev/tty", "script -qefc", "callee-artifact.txt", "callee-diagnostics.txt"} {
+		if !strings.Contains(content, required) {
+			t.Errorf("run-agent skill does not contain %q", required)
+		}
+	}
+}
+
 func TestDistributionMetadataMatchesRelease(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),

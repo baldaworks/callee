@@ -261,6 +261,9 @@ Task: {{ .Input }}
 
 	requireDiagnosticLine(t, diagnostics,
 		"INF agent finished",
+		"role_provider=codex",
+		"role_model=backend-default",
+		"role_reasoning=backend-default",
 		"role_duration=",
 		"role_wait_duration=0s",
 		"role_token_usage=complete",

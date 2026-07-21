@@ -7,6 +7,7 @@ Callee is a CLI runtime for provider-backed agents and deterministic workflows d
 - [Concepts and architecture](concepts/architecture.md) explains the resource, registry, runtime, state, and ACP process model.
 - [Agent resource format](reference/agent-resources.md) defines discovery, the versioned envelope, kind-specific fields, templates, parameters, and validation rules.
 - [Workflow semantics](reference/workflow-semantics.md) defines node input and output, state updates, composition, edge-authorized Loop escalation, failure, REPL control, and lifecycle behavior.
+- [Execution metrics](reference/execution-metrics.md) defines `agent_*` and `role_*` duration, operator-wait, provider-selection, and token fields, including presence, fallback, and aggregation rules.
 
 ## Install and operate Callee
 

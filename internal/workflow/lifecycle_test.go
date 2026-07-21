@@ -108,14 +108,14 @@ func TestRunnerUsesIdenticalRoleMetricsForDirectAndNestedRoles(t *testing.T) {
 		{
 			name: "direct",
 			resources: func(t *testing.T) []agent.Resource {
-				return []agent.Resource{roleResource(t, "roles/worker", false, nil, "{{ .Input }}")}
+				return []agent.Resource{metricsRoleResource(t)}
 			},
 		},
 		{
 			name: "nested",
 			resources: func(t *testing.T) []agent.Resource {
 				return []agent.Resource{
-					roleResource(t, "roles/worker", false, nil, "{{ .Input }}"),
+					metricsRoleResource(t),
 					compositeResource(t, "workflows/pipeline", agent.SequentialKind, []agent.Child{{Ref: "roles/worker", Alias: "worker"}}, 0, "{{ .Input }}", ""),
 				}
 			},
@@ -131,13 +131,24 @@ func TestRunnerUsesIdenticalRoleMetricsForDirectAndNestedRoles(t *testing.T) {
 	}
 }
 
+func metricsRoleResource(t *testing.T) agent.Resource {
+	t.Helper()
+
+	role := roleResource(t, "roles/worker", false, nil, "{{ .Input }}")
+	role.Spec.Provider.Model = "gpt-5.6-sol"
+	role.Spec.Provider.Reasoning = "high"
+
+	return role
+}
+
 func assertRoleMetrics(t *testing.T, resources []agent.Resource, usage *runtime.TokenUsage) {
 	t.Helper()
 
 	root := resolvedRoot(t, resources...)
 	process := &scriptedProcess{
-		visits: map[string][][]string{"roles/worker": {{"done"}}},
-		usages: map[string][][]*runtime.TokenUsage{"roles/worker": {{usage}}},
+		visits:         map[string][][]string{"roles/worker": {{"done"}}},
+		usages:         map[string][][]*runtime.TokenUsage{"roles/worker": {{usage}}},
+		configurations: map[string]runtime.SessionConfiguration{"roles/worker": {Model: "provider-model", Reasoning: "medium"}},
 	}
 	metrics := &RunMetrics{}
 
@@ -167,6 +178,9 @@ func assertRoleMetrics(t *testing.T, resources []agent.Resource, usage *runtime.
 	}
 
 	for field, want := range map[string]any{
+		"role_provider":           "codex",
+		"role_model":              "provider-model",
+		"role_reasoning":          "medium",
 		"role_token_usage":        "complete",
 		"role_input_tokens":       float64(11),
 		"role_output_tokens":      float64(3),
@@ -230,6 +244,82 @@ func TestRunnerAggregatesPartialUsageAcrossRoles(t *testing.T) {
 	got := metrics.Usage()
 	if got.Status() != runtime.TokenUsagePartial || got.TokenUsage != *usage || got.TurnsAttempted != 2 || got.TurnsReported != 1 {
 		t.Errorf("run usage = %+v, want one of two turns reported", got)
+	}
+}
+
+func TestRunnerLogsRoleProviderFieldsBeforeExecutionFailure(t *testing.T) {
+	t.Parallel()
+
+	worker := metricsRoleResource(t)
+	worker.Spec.State = map[string]any{"failure": `{{ fail "state failed" }}`}
+	root := resolvedRoot(t, worker)
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: &scriptedProcess{}}}).Run(ctx, "task"); err == nil {
+		t.Fatal("Runner.Run() error = nil, want state failure")
+	}
+
+	events := decodeLifecycleEvents(t, &output)
+	finished := events[len(events)-1]
+
+	for field, want := range map[string]any{
+		"role_provider":    "codex",
+		"role_model":       "gpt-5.6-sol",
+		"role_reasoning":   "high",
+		"role_token_usage": "unavailable",
+	} {
+		if finished[field] != want {
+			t.Errorf("%s = %#v, want %#v; event=%#v", field, finished[field], want, finished)
+		}
+	}
+
+	for _, field := range []string{"role_duration", "role_wait_duration"} {
+		if _, ok := finished[field]; ok {
+			t.Errorf("pre-execution failure contains %s: %#v", field, finished)
+		}
+	}
+}
+
+func TestRunnerLogsObservedRoleConfigurationAfterPrepareFailure(t *testing.T) {
+	t.Parallel()
+
+	worker := metricsRoleResource(t)
+	root := resolvedRoot(t, worker)
+	process := &scriptedProcess{
+		visits:                map[string][][]string{"roles/worker": {{"unused"}}},
+		prepareErr:            context.Canceled,
+		prepareConfigurations: map[string]runtime.SessionConfiguration{"roles/worker": {Model: "observed-model", Reasoning: "medium"}},
+	}
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task"); err == nil {
+		t.Fatal("Runner.Run() error = nil, want prepare failure")
+	}
+
+	events := decodeLifecycleEvents(t, &output)
+	finished := events[len(events)-1]
+
+	for field, want := range map[string]any{
+		"role_provider":    "codex",
+		"role_model":       "observed-model",
+		"role_reasoning":   "medium",
+		"role_token_usage": "unavailable",
+	} {
+		if finished[field] != want {
+			t.Errorf("%s = %#v, want %#v; event=%#v", field, finished[field], want, finished)
+		}
+	}
+
+	if _, ok := finished["role_duration"]; ok {
+		t.Errorf("prepare failure contains role_duration: %#v", finished)
 	}
 }
 
@@ -447,6 +537,16 @@ func runREPLLifecycleTest(t *testing.T, test replLifecycleTest) {
 
 func assertUnavailableRoleMetrics(t *testing.T, finished map[string]any, test replLifecycleTest) {
 	t.Helper()
+
+	for field, want := range map[string]any{
+		"role_provider":  "codex",
+		"role_model":     "backend-default",
+		"role_reasoning": "backend-default",
+	} {
+		if finished[field] != want {
+			t.Errorf("%s = %#v, want %#v; event=%#v", field, finished[field], want, finished)
+		}
+	}
 
 	if finished["role_token_usage"] != "unavailable" {
 		t.Errorf("Role token usage = %#v, want unavailable; event=%#v", finished["role_token_usage"], finished)

@@ -142,7 +142,26 @@ on `PATH`.
 
 `agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`.
 
-Each Role visit adds `role_duration`, `role_wait_duration`, and provider-reported `role_*_tokens` fields to its `agent finished` event once its first provider turn has started. These fields have the same meaning for a root Role and a Role nested in a workflow: Role duration begins with its first provider turn, while Role wait counts operator REPL and permission prompts within that visit. A final `agent run finished` event reports `agent_duration`, `agent_wait_duration`, and aggregate `agent_*_tokens` for the complete command. Agent wait also includes the initial prompt and missing parameters. Token status is `complete`, `partial`, or `unavailable`; cached-read fields appear only when nonzero. The successful root artifact is written once to stdout only after provider cleanup and the final metrics event.
+Each Role visit adds `role_provider`, `role_model`, `role_reasoning`, and
+`role_token_usage` to its `agent finished` event, including failures before the
+first provider turn. `role_provider` is the Role's configured provider type.
+Model and reasoning report the latest concrete ACP session selection, falling
+back to the explicit Role value; `backend-default` means neither source supplied
+a concrete value and does not identify the backend's private default.
+
+Once the first provider turn starts, the Role event also includes
+`role_duration` and `role_wait_duration`; provider-reported usage adds the
+numeric `role_*_tokens` fields. Root and nested Roles use the same per-visit
+semantics: Role duration starts with that first turn, while Role wait counts
+operator REPL and permission prompts within the visit. The final
+`agent run finished` event always reports `agent_duration`,
+`agent_wait_duration`, and `agent_token_usage`, plus `agent_*_tokens` aggregated
+across all Role visits when usage is available. Agent wait also includes the
+initial prompt and missing parameters. Token status is `complete`, `partial`, or
+`unavailable`; cached-read fields appear only when nonzero. The successful root
+artifact is written once to stdout only after provider cleanup and the final
+stderr metrics event. See [Execution metrics](docs/reference/execution-metrics.md)
+for the complete field and boundary contract.
 
 ## Manual host setup
 

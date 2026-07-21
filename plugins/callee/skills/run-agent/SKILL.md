@@ -27,6 +27,14 @@ The selected ID may identify a `Role`, `Sequential`, or `Loop`. Treat all kinds 
 
 Every run requires a real controlling PTY, even when `--message` supplies the initial prompt. Keep terminal interaction separate from stdout and stderr.
 
+Verify `/dev/tty` in the same shell invocation before launching Callee; a host tool's `tty` option alone may not create a controlling terminal. If `test -r /dev/tty && test -w /dev/tty` fails on Linux, allocate one with util-linux `script`:
+
+```bash
+script -qefc 'callee agent run "<agent-id>" --message "<task>" > /tmp/callee-artifact.txt 2> /tmp/callee-diagnostics.txt' /dev/null
+```
+
+On BSD/macOS, use `script -q /dev/null /bin/sh -c '<callee command with the same redirections>'`. Keep `/dev/tty` attached for prompts, use unique temporary output paths, inspect the wrapper's exit status, and read the artifact and diagnostics files separately. Do not first launch Callee without a verified controlling terminal; that produces an intentional failed run rather than a useful capability probe.
+
 ```bash
 callee agent run "<agent-id>" \
   --message "<task>" \

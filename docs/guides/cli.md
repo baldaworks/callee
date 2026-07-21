@@ -112,13 +112,7 @@ callee agent run workflows/investigate \
 
 Omit `--message` to enter the root prompt on the controlling terminal. Supplying an explicitly blank `--message` is an error.
 
-Execution metrics are structured fields on stderr lifecycle events; they never change artifact-only stdout:
-
-- Every `agent finished` event for a Role includes `role_token_usage`. Once the first provider turn starts, it also includes `role_duration` and `role_wait_duration`: duration ends with the visit's artifact, control outcome, or error, while wait includes only REPL answers and manual permission decisions during that interval.
-- A final `agent run finished` event includes `agent_duration`, `agent_wait_duration`, and `agent_token_usage`. This scope begins when the command handler starts and ends after workflow provider cleanup, before stdout is written. Its wait also includes the initial prompt and missing parameters.
-- When providers report usage, the corresponding prefix adds `input_tokens`, `output_tokens`, and `total_tokens`; a nonzero `cached_read_tokens` is also included. Status is `complete` when every attempted turn reported usage, `partial` when only some did, and `unavailable` when none did.
-
-Role metric semantics do not depend on whether the Role is the selected root, a child of `Sequential` or `Loop`, aliased, repeated, or backed by a stateful session. Every visit has a separate Role scope, while the `agent_*` fields aggregate every Role turn reached by the selected root.
+Execution metrics are structured fields on stderr lifecycle events and never change artifact-only stdout. Every Role visit reports `role_*` provider-selection and token fields and, after its first provider turn starts, duration and wait fields. The final `agent run finished` event reports `agent_*` metrics for the complete command. See [Execution metrics](../reference/execution-metrics.md) for the complete field list, duration boundaries, operator-wait semantics, provider-selection fallback, token aggregation, and unsupported tool metrics.
 
 Provide required Role parameters by effective node ID:
 
@@ -134,7 +128,7 @@ The two parameter flags are repeatable. Missing values are prompted on the termi
 
 Execution always requires a real controlling TTY. The terminal carries the root prompt, missing parameters, REPL turns, abort input, and ACP permission selection. Lifecycle and provider diagnostics go to stderr. The sole successful root artifact is written to stdout only after provider cleanup succeeds, so automation should determine success from the exit status rather than an empty stderr assumption.
 
-See [ACP permission requests](acp-permissions.md) for the permission-selection contract and [Workflow semantics](../reference/workflow-semantics.md) for exact input, output, Loop, REPL, and failure behavior.
+See [ACP permission requests](acp-permissions.md) for the permission-selection contract, [Workflow semantics](../reference/workflow-semantics.md) for exact input, output, Loop, REPL, and failure behavior, and [Execution metrics](../reference/execution-metrics.md) for emitted run and Role measurements.
 
 ## Generate Roles with PromptKit
 

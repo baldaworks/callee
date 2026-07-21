@@ -23,7 +23,7 @@ Every visit follows the same outer sequence:
 3. Render all string leaves against one pre-node state snapshot.
 4. Atomically commit the state modifier.
 5. Execute the kind-specific behavior.
-6. Emit `agent finished` with status, outcome when available, and a Go duration string.
+6. Emit `agent finished` with status, outcome when available, and a Go duration string. Role visits also emit the per-visit fields defined in [Execution metrics](execution-metrics.md).
 
 If state rendering fails, no part of that visit's modifier is committed and no provider is started for the node.
 

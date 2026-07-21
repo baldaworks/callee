@@ -163,6 +163,9 @@ func (r *runState) node(
 	execution executionContext,
 ) (result nodeResult, resultErr error) {
 	r.visits[node.EffectiveID]++
+	if node.Kind == agent.RoleKind {
+		result.roleMetrics = newRoleMetrics(node.Resource.Spec.Provider)
+	}
 
 	logger := r.lifecycleLogger(ctx, node)
 	started := time.Now()
@@ -174,7 +177,7 @@ func (r *runState) node(
 	}()
 
 	if err := r.applyState(node, input); err != nil {
-		return nodeResult{}, err
+		return result, err
 	}
 
 	switch node.Kind {
@@ -185,7 +188,7 @@ func (r *runState) node(
 	case agent.LoopKind:
 		return r.loop(ctx, node, input, execution)
 	default:
-		return nodeResult{}, fmt.Errorf("agent %q has unsupported kind %q", node.ResourceID, node.Kind)
+		return result, fmt.Errorf("agent %q has unsupported kind %q", node.ResourceID, node.Kind)
 	}
 }
 
@@ -225,7 +228,13 @@ func writeLifecycleFinish(
 	}
 
 	if includeRoleMetrics {
+		event = event.
+			Str("role_provider", result.roleMetrics.provider).
+			Str("role_model", roleConfigurationValue(result.roleMetrics.model)).
+			Str("role_reasoning", roleConfigurationValue(result.roleMetrics.reasoning))
+
 		event = appendUsageMetrics(event, "role", result.roleMetrics.usage)
+
 		if result.roleMetrics.turnStarted {
 			event = event.
 				Dur("role_duration", result.roleMetrics.duration).
@@ -259,9 +268,11 @@ func (r *runState) role(
 	input string,
 	execution executionContext,
 ) (result nodeResult, resultErr error) {
+	result.roleMetrics = newRoleMetrics(node.Resource.Spec.Provider)
+
 	params, err := r.roleParams(ctx, node, input)
 	if err != nil {
-		return nodeResult{}, err
+		return result, err
 	}
 
 	body, err := render(node.ResourceID+" spec.body", node.Resource.Spec.Body, agent.TemplateData{
@@ -271,22 +282,26 @@ func (r *runState) role(
 		Params: params,
 	})
 	if err != nil {
-		return nodeResult{}, err
+		return result, err
 	}
 
 	provider, err := runtime.ProviderForAgent(node.Resource)
 	if err != nil {
-		return nodeResult{}, err
+		return result, err
 	}
 
 	process, err := r.process(ctx, node.Resource, provider)
 	if err != nil {
-		return nodeResult{}, err
+		return result, err
 	}
 
 	session, err := r.session(ctx, node, execution, process)
+	if session != nil {
+		result.roleMetrics.applySessionConfiguration(session)
+	}
+
 	if err != nil {
-		return nodeResult{}, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
+		return result, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
 	}
 
 	if node.Resource.REPL() {
@@ -307,6 +322,7 @@ func (r *runState) role(
 	result.roleMetrics.turnStarted = true
 
 	defer func() {
+		result.roleMetrics.applySessionConfiguration(session)
 		result.roleMetrics.duration = time.Since(roleStarted)
 		result.roleMetrics.wait = r.operatorWaitDuration() - waitStarted
 		r.metrics.add(result.roleMetrics.usage)
@@ -418,7 +434,7 @@ func (r *runState) session(
 
 		session, err := r.newSession(ctx, node, process)
 		if err != nil {
-			return nil, err
+			return session, err
 		}
 
 		scope.sessions[node.EffectiveID] = session
@@ -429,7 +445,7 @@ func (r *runState) session(
 
 	session, err := r.newSession(ctx, node, process)
 	if err != nil {
-		return nil, err
+		return session, err
 	}
 
 	return session, nil
@@ -449,7 +465,7 @@ func (r *runState) newSession(
 	}
 
 	if err := session.Prepare(sessionCtx); err != nil {
-		return nil, err
+		return session, err
 	}
 
 	return session, nil

@@ -764,6 +764,8 @@ func (f *scriptedFactory) Start(ctx context.Context, _ runtime.Provider) (runtim
 type scriptedProcess struct {
 	visits                    map[string][][]string
 	usages                    map[string][][]*runtime.TokenUsage
+	configurations            map[string]runtime.SessionConfiguration
+	prepareConfigurations     map[string]runtime.SessionConfiguration
 	prompts                   map[string][]string
 	processContext            context.Context
 	processContextErrAtClose  error
@@ -797,10 +799,13 @@ func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource, eff
 	}
 
 	return &scriptedSession{
-		roleID:    role.ID,
-		responses: append([]string(nil), visits[0]...),
-		usages:    usages,
-		process:   p,
+		roleID:               role.ID,
+		responses:            append([]string(nil), visits[0]...),
+		usages:               usages,
+		configuration:        runtime.SessionConfiguration{Model: role.Spec.Provider.Model, Reasoning: role.Spec.Provider.Reasoning},
+		prepareConfiguration: p.prepareConfigurations[role.ID],
+		turnConfiguration:    p.configurations[role.ID],
+		process:              p,
 	}, nil
 }
 
@@ -813,17 +818,24 @@ func (p *scriptedProcess) Close() error {
 }
 
 type scriptedSession struct {
-	roleID     string
-	responses  []string
-	usages     []*runtime.TokenUsage
-	process    *scriptedProcess
-	prepared   bool
-	prepareCtx context.Context
+	roleID               string
+	responses            []string
+	usages               []*runtime.TokenUsage
+	configuration        runtime.SessionConfiguration
+	prepareConfiguration runtime.SessionConfiguration
+	turnConfiguration    runtime.SessionConfiguration
+	process              *scriptedProcess
+	prepared             bool
+	prepareCtx           context.Context
 }
 
 func (s *scriptedSession) Prepare(ctx context.Context) error {
 	if _, ok := ctx.Deadline(); !ok {
 		return fmt.Errorf("prepare context for %s has no deadline", s.roleID)
+	}
+
+	if s.prepareConfiguration != (runtime.SessionConfiguration{}) {
+		s.configuration = s.prepareConfiguration
 	}
 
 	if s.process.prepareErr != nil {
@@ -834,6 +846,10 @@ func (s *scriptedSession) Prepare(ctx context.Context) error {
 	s.prepareCtx = ctx
 
 	return nil
+}
+
+func (s *scriptedSession) Configuration() runtime.SessionConfiguration {
+	return s.configuration
 }
 
 func (s *scriptedSession) Turn(_ context.Context, prompt string) (runtime.TurnResult, error) {
@@ -862,6 +878,10 @@ func (s *scriptedSession) Turn(_ context.Context, prompt string) (runtime.TurnRe
 	if len(s.usages) > 0 {
 		usage = s.usages[0]
 		s.usages = s.usages[1:]
+	}
+
+	if s.turnConfiguration != (runtime.SessionConfiguration{}) {
+		s.configuration = s.turnConfiguration
 	}
 
 	return runtime.TurnResult{Content: response, Usage: usage}, nil
