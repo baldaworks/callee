@@ -8,7 +8,7 @@ Each integration exposes two complementary skills:
 
 | Skill | Responsibility |
 | --- | --- |
-| Run Agent | Inspect the catalog and selected tree, collect required parameters, run the chosen agent through a controlling terminal, and return its final artifact with a concise capability trace. |
+| Run Agent | Inspect the catalog and selected tree, collect required parameters, run the chosen agent through a controlling terminal, and return its final artifact with a concise capability trace and emitted execution metrics. |
 | Create Agent | Author a `Role`, `Sequential`, or `Loop` in Markdown or YAML, optionally assemble a Role from PromptKit, validate the physical file, and resolve the complete tree. |
 
 Setup also writes six editable starter resources below `.callee/`: four Roles (`architect`, `explorer`, `implementer`, and `reviewer`) plus the `investigate` and `goalkeeper` workflows. The starter Roles set `spec.provider.type` for the selected setup target and otherwise defer model, mode, and reasoning to that backend.
@@ -86,6 +86,8 @@ OpenCode's `/callee` and `/callee-create-agent` command files load the matching 
 ## Execution boundary
 
 The host skill invokes `callee agent list --json` and `callee agent view <id> --json` to understand the current project before running or authoring. Execution must still occur through `callee agent run` attached to a real controlling terminal. The host should keep terminal interaction separate from stdout and stderr and treat the exit status as authoritative.
+
+After a run, the Run Agent skill returns the stdout artifact and a concise capability trace, then reports metrics read from stderr. Its report includes the final `agent_*` duration, wait, token-status, and emitted numeric token fields. It also identifies every Role visit by effective ID and visit number and includes that visit's `role_*` provider selection, token status, emitted numeric token fields, and duration fields when present. Repeated and nested visits remain separate; omitted metrics remain omitted. On failure, the report includes the exit status and any metrics emitted before termination. See [Execution metrics](../reference/execution-metrics.md) for the field definitions, presence rules, and aggregation boundaries.
 
 Host setup does not:
 

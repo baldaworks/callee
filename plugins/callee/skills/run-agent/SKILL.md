@@ -51,7 +51,12 @@ Callee v1alpha1 does not define `Parallel`; do not imply parallel workflow seman
 
 ## Report results
 
-Return the final stdout artifact and a concise capability trace. Do not expose provider session IDs, internal handles, or raw terminal transcripts.
+Return the final stdout artifact and a concise capability trace. Then read the structured lifecycle events from stderr and include these execution metrics in the final response:
+
+- From the final `agent run finished` event, report `agent_duration`, `agent_wait_duration`, `agent_token_usage`, and every emitted numeric `agent_*_tokens` field.
+- From every Role `agent finished` event, report its effective ID and visit together with `role_provider`, `role_model`, `role_reasoning`, `role_token_usage`, every emitted numeric `role_*_tokens` field, and `role_duration` plus `role_wait_duration` when present.
+
+Keep repeated and nested Role visits separate. Preserve `complete`, `partial`, or `unavailable` token status and do not invent numeric or duration fields that the event omitted. On failure, report the exit status and any metrics emitted before termination. Do not expose provider session IDs, internal handles, or raw terminal transcripts.
 
 ## Setup
 

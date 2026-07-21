@@ -25,7 +25,7 @@ Callee installs two complementary skills in your coding host:
 
 | Skill | What it does | Result |
 | --- | --- | --- |
-| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Sequential`, or `Loop` agent through its controlling terminal. | The completed root artifact and a concise capability trace. |
+| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Sequential`, or `Loop` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by the emitted run-wide and per-Role execution metrics. |
 | **Create Agent** | Authors a reusable `Role`, `Sequential`, or `Loop` in Markdown or YAML, using an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
 
 These skills are host integrations: they teach Codex, Claude Code, Grok Build,
@@ -81,8 +81,12 @@ $callee Create a Loop workflow named workflows/implementation-goalkeeper with ro
 The explicit `$callee:run-agent` and `$callee:create-agent` selectors remain
 available when you want to choose a skill directly. For other hosts, use the
 invocation shown in the setup table. Run Agent inspects the catalog and selected
-tree before execution; Create Agent validates every file it writes and the
-fully resolved tree.
+tree before execution. After completion, it returns the root artifact and a
+concise capability trace, then reports the run-wide and per-Role metrics emitted
+by Callee. Repeated and nested Role visits remain separate, and fields that were
+not emitted remain omitted. See [Execution metrics](docs/reference/execution-metrics.md)
+for field definitions, presence rules, and aggregation boundaries. Create Agent
+validates every file it writes and the fully resolved tree.
 
 ## npm CLI installation and quick start
 
@@ -142,26 +146,11 @@ on `PATH`.
 
 `agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`.
 
-Each Role visit adds `role_provider`, `role_model`, `role_reasoning`, and
-`role_token_usage` to its `agent finished` event, including failures before the
-first provider turn. `role_provider` is the Role's configured provider type.
-Model and reasoning report the latest concrete ACP session selection, falling
-back to the explicit Role value; `backend-default` means neither source supplied
-a concrete value and does not identify the backend's private default.
-
-Once the first provider turn starts, the Role event also includes
-`role_duration` and `role_wait_duration`; provider-reported usage adds the
-numeric `role_*_tokens` fields. Root and nested Roles use the same per-visit
-semantics: Role duration starts with that first turn, while Role wait counts
-operator REPL and permission prompts within the visit. The final
-`agent run finished` event always reports `agent_duration`,
-`agent_wait_duration`, and `agent_token_usage`, plus `agent_*_tokens` aggregated
-across all Role visits when usage is available. Agent wait also includes the
-initial prompt and missing parameters. Token status is `complete`, `partial`, or
-`unavailable`; cached-read fields appear only when nonzero. The successful root
+`agent run` emits run-wide metrics on its final `agent run finished` event and
+per-Role metrics on each Role's `agent finished` event. The successful root
 artifact is written once to stdout only after provider cleanup and the final
 stderr metrics event. See [Execution metrics](docs/reference/execution-metrics.md)
-for the complete field and boundary contract.
+for the complete field, presence, and aggregation contract.
 
 ## Manual host setup
 

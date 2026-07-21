@@ -701,6 +701,41 @@ func TestRunAgentSkillDocumentsControllingPTYFallback(t *testing.T) {
 	}
 }
 
+func TestRunAgentSkillReportsExecutionMetrics(t *testing.T) {
+	paths := []string{
+		filepath.Join("skills", "run-agent", "SKILL.md"),
+		filepath.Join("prefixed-skills", "callee-run-agent", "SKILL.md"),
+	}
+	wants := []string{
+		"agent run finished",
+		"agent_duration",
+		"agent_wait_duration",
+		"agent_token_usage",
+		"agent_*_tokens",
+		"role_provider",
+		"role_model",
+		"role_reasoning",
+		"role_duration",
+		"role_wait_duration",
+		"role_token_usage",
+		"role_*_tokens",
+	}
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		content := string(data)
+		for _, want := range wants {
+			if !strings.Contains(content, want) {
+				t.Errorf("%s does not contain %q", path, want)
+			}
+		}
+	}
+}
+
 func TestDistributionMetadataMatchesRelease(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
