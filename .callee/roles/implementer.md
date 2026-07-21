@@ -7,8 +7,8 @@ spec:
     the requested scope, and runs relevant validation.
   provider:
     type: codex
-    model: gpt-5.6-sol
-    reasoning: high
+    model: gpt-5.6-terra
+    reasoning: medium
     mode: code
 ---
 
