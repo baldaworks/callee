@@ -9,12 +9,12 @@ Callee turns repository-owned agent resources into a statically validated execut
 | Resource | One versioned Markdown or YAML definition with a `Role`, `Sequential`, or `Loop` kind. |
 | Resource ID | The path below a discovery root with the final supported extension removed, such as `roles/reviewer`. |
 | Resolved node | One occurrence of a resource in a selected root tree. An edge alias, when present, becomes its effective ID. |
-| Role | A provider-backed leaf that renders a prompt and performs one or more turns in an ACP session. |
+| Role | A provider-backed leaf that renders a prompt and performs one or more turns in one fresh ACP session. |
 | Sequential | A composite that visits children once in source order. |
 | Loop | A bounded composite that repeatedly visits ordered children until an authorized descendant escalates or the Loop exhausts. |
 | Root-run state | One ephemeral JSON-compatible object shared by every node visit in a run. |
 | Provider process | A reusable ACP transport process identified by provider type and resolved command. |
-| Role visit | One execution of a resolved Role node, using a fresh session by default or its owning Loop's stateful session. |
+| Role visit | One execution of a resolved Role node, with a fresh provider session even when its provider process is reused. |
 
 ## Execution pipeline
 
@@ -34,7 +34,7 @@ resolved root tree + required parameter keys
 workflow runner + one shared ephemeral state object
         |
         v
-Norma Runtime -> ACP provider processes -> fresh or Loop-scoped Role sessions
+Norma Runtime -> ACP provider processes -> fresh Role visit sessions
         |
         v
 one root artifact on stdout after provider cleanup
@@ -50,7 +50,7 @@ At runtime, the runner creates state with an engine-owned `outputs` map. Each no
 
 A root run reuses a provider process when Roles normalize to the same public provider type and command. Session configuration does not change that process identity: `model`, `mode`, and `reasoning` are applied when creating the Role visit session.
 
-Every Role visit receives a fresh provider session by default. A child policy of `session: stateful` retains one prepared session per effective Role ID for one owning Loop invocation; composite children inherit the policy, and the nearest explicit `fresh` or `stateful` value wins. A REPL Role retains its current session across `await` turns under either policy. Provider processes remain live until the root finishes and are closed in reverse start order. A cleanup error suppresses the otherwise successful artifact.
+Every Role visit receives a fresh provider session. Repeated visits to the same Role in a Loop therefore do not continue the previous provider conversation. A REPL Role is the exception only within that single visit: `await` retains its session for the next operator turn. Provider processes remain live until the root finishes and are closed in reverse start order. A cleanup error suppresses the otherwise successful artifact.
 
 Provider process startup, session creation and preparation, and every model turn each receive the Role's effective provider timeout. Operator waits use the CLI's separate REPL timeout, and active provider-turn timeout accounting pauses while an ACP permission request waits for the operator.
 

@@ -34,10 +34,6 @@ func writeTextGraph(output io.Writer, configured *registry.AgentRegistry) error 
 				annotation = " alias=" + child.Alias + annotation
 			}
 
-			if child.Session != "" {
-				annotation += " session=" + string(child.Session)
-			}
-
 			if _, err := fmt.Fprintf(output, "  -> %s%s\n", child.Ref, annotation); err != nil {
 				return err
 			}
@@ -72,9 +68,6 @@ func writeMermaidGraph(output io.Writer, configured *registry.AgentRegistry) err
 			}
 
 			label += fmt.Sprintf(", canEscalate=%t", child.CanEscalate)
-			if child.Session != "" {
-				label += ", session=" + string(child.Session)
-			}
 
 			if _, err := fmt.Fprintf(output, "  %s -->|%s| %s\n", nodes[item.ID], label, nodes[child.Ref]); err != nil {
 				return err
@@ -102,9 +95,6 @@ func writeDOTGraph(output io.Writer, configured *registry.AgentRegistry) error {
 			}
 
 			label += fmt.Sprintf(", canEscalate=%t", child.CanEscalate)
-			if child.Session != "" {
-				label += ", session=" + string(child.Session)
-			}
 
 			if _, err := fmt.Fprintf(output, "  %s -> %s [label=%s];\n", strconv.Quote(item.ID), strconv.Quote(child.Ref), strconv.Quote(label)); err != nil {
 				return err

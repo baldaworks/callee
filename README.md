@@ -379,7 +379,6 @@ spec:
   children:
     - ref: roles/implementer
       alias: worker
-      session: stateful
       input: |
         Goal:
         {{ .Input }}
@@ -391,7 +390,6 @@ spec:
     - ref: roles/reviewer
       alias: validator
       canEscalate: true
-      session: stateful
       input: |
         Goal:
         {{ .Input }}
@@ -411,13 +409,11 @@ spec:
 {{ .Input }}
 ```
 
-A `Loop` repeats its ordered children up to `maxIterations`. It consumes escalation from an authorized child and completes. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. Set `session: stateful` when a child Role should keep its provider conversation between iterations of this Loop invocation; `fresh` remains the default. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
+A `Loop` repeats its ordered children up to `maxIterations`. It consumes escalation from an authorized child and completes. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
 
 ### Children and composition
 
-Children may reference any supported kind, including another `Loop`. A child mapping supports `ref`, optional globally unique `alias`, `canEscalate`, `session`, `input`, shallow `state`, and Role-only `params`. Aliases match `^[a-z][a-z0-9_]*$` and replace the occurrence's effective ID. `canEscalate` and `session` are occurrence-specific, so two aliases of the same Role may have different control and session policies.
-
-`session` accepts `fresh` or `stateful` only beneath a Loop. The nearest explicit value applies to the complete child subtree. An explicit `fresh` opts a descendant subtree out of inherited reuse. Stateful sessions are ephemeral and scoped to one invocation of the Loop that owns the policy; nested Loop invocations can establish their own scope. Role templates and state modifiers still render on every visit.
+Children may reference any supported kind, including another `Loop`. A child mapping supports `ref`, optional globally unique `alias`, `canEscalate`, `input`, shallow `state`, and Role-only `params`. Aliases match `^[a-z][a-z0-9_]*$` and replace the occurrence's effective ID. `canEscalate` is occurrence-specific, so two aliases of the same Role may have different authority.
 
 ## YAML representation and JSON Schema
 
@@ -515,10 +511,8 @@ another operator turn. `return` requires an artifact and completes normally.
 `escalate` is available only when the Role is inside a Loop and returns control
 to the nearest Loop. `fail` aborts the root.
 
-Every Role visit starts a fresh provider session unless its resolved Loop child
-policy is `session: stateful`. A stateful Role reuses its prepared session on
-later visits within the owning Loop invocation. `await` turns also reuse the
-current Role session. A prepared
+Every Role visit starts a fresh provider session, including repeated Loop
+visits; only `await` turns within one REPL visit reuse a session. A prepared
 REPL visit emits one `entering repl` / `exiting repl` lifecycle pair, with all
 `await` turns inside it. `agent run` requires a controlling TTY even when
 `--message` and every parameter are supplied. The default maximum wait for each

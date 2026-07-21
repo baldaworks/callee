@@ -10,7 +10,7 @@ This reference describes how a resolved Callee tree executes. Read [Agent resour
 - one shared, ephemeral state object initialized with an empty `outputs` map;
 - one set of runtime parameter values;
 - reusable provider processes;
-- fresh provider sessions by default and optional Loop-scoped stateful sessions.
+- fresh provider sessions for individual Role visits.
 
 The run succeeds only when the root produces a nonblank artifact and every started provider closes successfully. Callee writes that artifact once to stdout after cleanup. Lifecycle and provider diagnostics use stderr. A nonempty stderr stream is therefore not by itself a failure signal; use the process exit status.
 
@@ -35,24 +35,11 @@ Callee then:
 
 1. renders the Role body from `.Prompt`, current `.Input`, shared `.State`, and resolved `.Params`;
 2. resolves or reuses the ACP provider process;
-3. creates and prepares a fresh provider session, or reuses the resolved Loop-scoped stateful session;
+3. creates and prepares a fresh provider session;
 4. sends the rendered body plus Callee's control instructions;
 5. interprets the final text and either returns, awaits, escalates, or fails.
 
 A normal non-REPL response without a control record is treated as a successful artifact when it is nonempty. Explicit control records use the rules below.
-
-## Loop child session policy
-
-A child mapping beneath a Loop may set `session: fresh` or `session: stateful`. Omission inherits the nearest explicit policy and otherwise defaults to `fresh`.
-
-- `stateful` reuses one prepared ADK/ACP session per effective Role ID within the owning Loop invocation.
-- The policy propagates through `Sequential` and nested `Loop` children. The nearest explicit value wins; `fresh` opts its subtree out of inherited reuse.
-- An explicit `stateful` binds to the nearest active Loop at that edge. Merely entering a nested Loop does not rebind an inherited outer policy. Setting `stateful` on an edge inside the nested Loop creates an inner scope.
-- A new invocation of the owning Loop receives a new scope. Sessions are never persisted between root runs.
-- Role state modifiers, parameters, body, `.Input`, and `.State` are evaluated on every visit. Only provider conversation history is retained.
-- Different aliases are different effective Role occurrences and never share a cached session.
-
-Using `session` outside a Loop subtree is a static graph error. If creation, preparation, or a turn fails, the workflow fails without recreating the session or retrying the turn.
 
 ## Sequential execution
 
@@ -136,7 +123,7 @@ When artifact or diagnostic text precedes a record, exactly one empty line must 
 | `escalate` | Role occurrence whose resolved `canEscalate` is `true` | Optional | Return control toward the nearest Loop. |
 | `fail` | Any Role | Optional diagnostic | Fail the workflow. |
 
-Set `spec.repl: true` only on a Role. Every REPL response must contain one valid final control record; a missing record is an error. The same provider session is retained across `await` turns. A later visit creates a new session under the default `fresh` policy or continues the owning Loop session under `stateful`.
+Set `spec.repl: true` only on a Role. Every REPL response must contain one valid final control record; a missing record is an error. The same provider session is retained across `await` turns, while a later visit to that Role still creates a new session.
 
 An unauthorized `escalate` record is an error even though the parser recognizes it. Callee reports the effective agent ID, source resource ID, and resolved path; no later Sequential child runs after that error.
 
@@ -165,7 +152,7 @@ When an ACP provider requests permission, Callee applies the current Role visit'
 
 Two timeout controls have different purposes:
 
-- `spec.provider.timeout`, default `15m`, independently bounds process startup, initial session creation/preparation, and each provider turn;
+- `spec.provider.timeout`, default `15m`, independently bounds process startup, session creation/preparation, and each provider turn;
 - `--repl-timeout`, default `30m`, bounds each operator prompt, including the initial prompt, missing parameters, REPL responses, and permission selection.
 
 The active provider-turn timeout pauses only while `ask` waits for the operator. Automatic `allow` and `deny` decisions do not pause it. This pause applies only to the current turn's active-time budget; the linked permission guide describes how it interacts with `--repl-timeout` and the other provider operations.

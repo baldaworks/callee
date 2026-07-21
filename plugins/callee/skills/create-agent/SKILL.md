@@ -67,7 +67,7 @@ Keep provider configuration under `spec.provider`. Configure ACP permission hand
 
 ## Author a workflow
 
-For every `Sequential`, `Loop`, or nested-composite request, read [references/workflows.md](references/workflows.md) completely before writing. Follow its placement, representation, child-wiring, state, parameter, loop-control, session-policy, and output rules.
+For every `Sequential`, `Loop`, or nested-composite request, read [references/workflows.md](references/workflows.md) completely before writing. Follow its placement, representation, child-wiring, state, parameter, loop-control, and output rules.
 
 Resolve every referenced child with `callee agent view "<child-id>" --json`. If the request also needs new child Roles or workflows, create and validate those first. Then author the root workflow from the reference and validate the complete resolved tree.
 

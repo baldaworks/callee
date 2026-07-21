@@ -367,14 +367,11 @@ func TestWriteResolvedNodeIncludesEffectivePolicies(t *testing.T) {
 		OnExhausted:   "fail",
 		Children: []*registry.ResolvedNode{
 			{
-				EffectiveID:     "worker",
-				ResourceID:      "roles/worker",
-				Kind:            agent.RoleKind,
-				Session:         agent.SessionModeStateful,
-				SessionScopeID:  "goalkeeper",
-				AuthoredSession: agent.SessionModeStateful,
-				REPL:            &repl,
-				Children:        []*registry.ResolvedNode{},
+				EffectiveID: "worker",
+				ResourceID:  "roles/worker",
+				Kind:        agent.RoleKind,
+				REPL:        &repl,
+				Children:    []*registry.ResolvedNode{},
 			},
 		},
 	}
@@ -384,13 +381,7 @@ func TestWriteResolvedNodeIncludesEffectivePolicies(t *testing.T) {
 		t.Fatalf("writeResolvedNode() error: %v", err)
 	}
 
-	for _, want := range []string{
-		"maxIterations=3 onExhausted=fail",
-		"repl=false",
-		"canEscalate=false",
-		"permissions=ask authoredPermissions=default",
-		"session=stateful authoredSession=stateful sessionScope=goalkeeper",
-	} {
+	for _, want := range []string{"maxIterations=3 onExhausted=fail", "repl=false", "canEscalate=false", "permissions=ask authoredPermissions=default"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("writeResolvedNode() = %q, want containing %q", output.String(), want)
 		}

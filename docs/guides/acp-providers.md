@@ -48,7 +48,7 @@ Provider configuration must remain nested. Flat provider fields in `spec` are no
 
 Norma Runtime supplies the built-in command defaults for `claude`, `opencode`, `copilot`, and `grok`. Callee sets the Cursor default explicitly and replaces the Codex default with its own current executable plus `bridge codex`. A `cmd` override replaces the default executable while `extraArgs` remain ordered appended arguments.
 
-Within one root run, Roles with the same public provider type and fully resolved command reuse one provider process. Model, mode, and reasoning select session configuration and do not contribute to provider process identity. Every Role visit creates and prepares a fresh session by default; a Loop child resolved as `session: stateful` reuses one prepared session for its owning Loop invocation.
+Within one root run, Roles with the same public provider type and fully resolved command reuse one provider process. Model, mode, and reasoning select fresh session configuration and do not contribute to provider process identity. Every Role visit still creates and prepares a fresh session.
 
 ## Codex bridge
 
@@ -85,7 +85,7 @@ The effective provider timeout applies independently to:
 - creating and preparing a Role visit session;
 - each provider turn.
 
-It does not bound an entire root run. Repeated Loop visits and REPL turns each receive their own turn timeout. Stateful session creation and preparation consume this budget only on the first visit. Operator interaction has a separate CLI timeout controlled by `--repl-timeout`; permission waits pause active turn timeout accounting.
+It does not bound an entire root run. Repeated Loop visits and REPL turns each receive their own turn timeout. Operator interaction has a separate CLI timeout controlled by `--repl-timeout`; permission waits pause active turn timeout accounting.
 
 ## Permissions
 

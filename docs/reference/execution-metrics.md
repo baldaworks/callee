@@ -12,7 +12,7 @@ Metrics are INFO-level structured fields on stderr events. They do not alter std
 | `agent finished` for `Sequential` or `Loop` | None | Composite lifecycle events retain their general `duration` field but do not receive `role_*` fields. |
 | `agent run finished` | `agent_*` | The complete `agent run` command, including every Role visit reached by the selected root. |
 
-A Role selected directly as the root has the same `role_*` behavior as a Role nested under `Sequential` or `Loop`. Aliases, repeated visits, and fresh or stateful sessions do not change the field meanings. Each Role visit reports separately, while the final `agent_*` token fields aggregate all attempted provider turns across all visits.
+A Role selected directly as the root has the same `role_*` behavior as a Role nested under `Sequential` or `Loop`. Aliases and repeated visits do not change the field meanings. Each Role visit reports separately, while the final `agent_*` token fields aggregate all attempted provider turns across all visits.
 
 The final `agent run finished` event also has `status=completed` or `status=error` for work inside the agent metric boundary. A successful artifact is written afterward, so a stdout write failure can still make the command exit unsuccessfully after the metrics event reported `status=completed`; always use the command exit status as the final automation signal.
 

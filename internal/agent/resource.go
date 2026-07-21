@@ -32,13 +32,6 @@ const (
 )
 
 const (
-	// SessionModeFresh creates a provider session for every Role visit.
-	SessionModeFresh SessionMode = "fresh"
-	// SessionModeStateful reuses a provider session within one Loop invocation.
-	SessionModeStateful SessionMode = "stateful"
-)
-
-const (
 	defaultProviderTimeout = 15 * time.Minute
 	defaultREPLTimeout     = 30 * time.Minute
 )
@@ -50,9 +43,6 @@ type Kind string
 
 // PermissionMode controls how a Role handles ACP permission requests.
 type PermissionMode string
-
-// SessionMode controls provider session reuse for one child subtree.
-type SessionMode string
 
 // Permissions configures Role-level ACP permission handling.
 type Permissions struct {
@@ -75,7 +65,6 @@ type Child struct {
 	Ref         string            `json:"ref"                   yaml:"ref"`
 	Alias       string            `json:"alias,omitempty"       yaml:"alias,omitempty"`
 	CanEscalate bool              `json:"canEscalate,omitempty" yaml:"canEscalate,omitempty"`
-	Session     SessionMode       `json:"session,omitempty"     yaml:"session,omitempty"`
 	Input       string            `json:"input,omitempty"       yaml:"input,omitempty"`
 	State       map[string]any    `json:"state,omitempty"       yaml:"state,omitempty"`
 	Params      map[string]string `json:"params,omitempty"      yaml:"params,omitempty"`
@@ -213,12 +202,6 @@ func (r Resource) validateChildren() error {
 			return fmt.Errorf("agent %q: spec.children[%d].alias %q must match %s", r.ID, index, child.Alias, aliasPattern)
 		}
 
-		switch child.Session {
-		case "", SessionModeFresh, SessionModeStateful:
-		default:
-			return fmt.Errorf("agent %q: spec.children[%d].session %q must be fresh or stateful", r.ID, index, child.Session)
-		}
-
 		if err := validateState(r.ID, fmt.Sprintf("spec.children[%d].state", index), child.State); err != nil {
 			return err
 		}
@@ -344,7 +327,6 @@ func (c *Child) UnmarshalYAML(node *yaml.Node) error {
 		"ref":         true,
 		"alias":       true,
 		"canEscalate": true,
-		"session":     true,
 		"input":       true,
 		"state":       true,
 		"params":      true,
