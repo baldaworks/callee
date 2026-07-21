@@ -5,7 +5,7 @@ description: Run and combine project-defined Callee agents and deterministic wor
 
 # Run Callee agents
 
-Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.15.0` for every command in the task.
+Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.16.0` for every command in the task.
 
 ## Discover and select
 
