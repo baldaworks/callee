@@ -5,7 +5,7 @@ description: Create project-defined Callee Role, Sequential, and Loop agents in 
 
 # Create a Callee agent
 
-Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.16.0` for every command in the task.
+Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.16.1` for every command in the task.
 
 ## Choose the kind and ID
 

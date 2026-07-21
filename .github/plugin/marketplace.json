@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Markdown-defined agents and deterministic workflows for GitHub Copilot CLI.",
-    "version": "0.16.0"
+    "version": "0.16.1"
   },
   "plugins": [
     {
       "name": "callee",
       "description": "Run Markdown-defined agents and deterministic workflows.",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "./plugins/callee",
       "author": {
         "name": "Baldaworks",
