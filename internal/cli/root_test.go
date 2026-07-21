@@ -175,6 +175,23 @@ func TestRunCodexBridgeVersionKeepsDiagnosticsOffStdout(t *testing.T) {
 	}
 }
 
+func TestRunGlobalVersion(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := Run(context.Background(), []string{"--version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(--version) exit = %d, stderr = %q", code, stderr.String())
+	}
+
+	if got, want := stdout.String(), "callee version "+Version+"\n"; got != want {
+		t.Errorf("Run(--version) stdout = %q, want %q", got, want)
+	}
+
+	if stderr.Len() != 0 {
+		t.Errorf("Run(--version) stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunCodexBridgeErrorsKeepStdoutEmpty(t *testing.T) {
 	tests := []struct {
 		name string
