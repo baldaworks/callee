@@ -298,14 +298,45 @@ func TestSignalExitCode(t *testing.T) {
 	}
 }
 
-func TestRootRequiresCommand(t *testing.T) {
+func TestRootShowsHelpWithoutCommand(t *testing.T) {
 	cmd := NewRootCommand()
 	cmd.SetArgs(nil)
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
 
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "a command is required") {
-		t.Fatalf("Execute() error = %v, want command required", err)
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v, want nil", err)
+	}
+
+	for _, want := range []string{"Usage:", "callee", "agent", "doctor", "setup"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want containing %q", stdout.String(), want)
+		}
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunRootWithoutCommandShowsHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := Run(context.Background(), nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(nil) exit = %d, want 0", code)
+	}
+
+	for _, want := range []string{"Usage:", "callee", "agent", "doctor", "setup"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want containing %q", stdout.String(), want)
+		}
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 }
 

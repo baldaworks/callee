@@ -106,8 +106,8 @@ func NewRootCommand() *cobra.Command {
 			return nil
 		},
 		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("a command is required")
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
 		},
 	}
 	root.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
