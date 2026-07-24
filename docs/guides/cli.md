@@ -118,12 +118,13 @@ Doctor graphs annotate every registry edge with its authored `canEscalate=true|f
 Use `agent import` when you want to copy a Callee catalog subtree from another repository into the current write root:
 
 ```bash
+callee agent import acme/platform-agents
 callee agent import https://github.com/acme/platform-agents.git
 callee agent import https://github.com/acme/platform-agents.git --path catalog/frontend
-callee agent import https://github.com/acme/platform-agents.git --prefix vendor --force
+callee agent import acme/platform-agents --prefix vendor --force
 ```
 
-The command shells out to the local `git` executable, clones the repository into a temporary checkout, discovers supported `.md`, `.yaml`, and `.yml` resources recursively under `--path`, and imports them into the local write root. `--path` defaults to `.callee`.
+The command shells out to the local `git` executable, clones the repository into a temporary checkout, discovers supported `.md`, `.yaml`, and `.yml` resources recursively under `--path`, and imports them into the local write root. `--path` defaults to `.callee`. When the repository argument is in `owner/repo` form, Callee treats it as GitHub shorthand and expands it to `https://github.com/owner/repo.git` before cloning.
 
 `--prefix` rewrites imported resource IDs as `<prefix>/<original-id>` and rewrites `spec.children[].ref` only when the referenced target is also part of the same import set. References to local, non-imported resources are preserved unchanged. Existing destination files are left unchanged by default; `--force` overwrites only the files selected by the current import.
 

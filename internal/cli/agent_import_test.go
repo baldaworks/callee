@@ -102,6 +102,41 @@ spec:
 	}
 }
 
+func TestAgentImportCommandExpandsGitHubRepositoryShorthand(t *testing.T) {
+	isolateAgentRoots(t)
+	repo := writeImportRepository(t, map[string]string{
+		".callee/roles/worker.md": `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Imported worker.
+  provider:
+    type: codex
+---
+{{ .Input }}
+`,
+	})
+
+	var gotRepoURL string
+
+	stubCloneAgentImportRepository(t, repo, func(_ context.Context, repoURL, ref string) (string, error) {
+		gotRepoURL = repoURL
+
+		return repo, nil
+	})
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"agent", "import", "acme/platform-agents"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent import exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	if got, want := gotRepoURL, "https://github.com/acme/platform-agents.git"; got != want {
+		t.Fatalf("clone repo URL = %q, want %q", got, want)
+	}
+}
+
 func TestAgentImportCommandRewritesPrefixedInternalRefsOnly(t *testing.T) {
 	project := isolateAgentRoots(t)
 	writeVersionedAgent(t, filepath.Join(project, defaultProjectAgentDir), "roles/external.md", `---
@@ -558,6 +593,67 @@ func TestCleanImportPrefix(t *testing.T) {
 
 			if got != test.want {
 				t.Fatalf("cleanImportPrefix(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeAgentImportRepository(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "github shorthand",
+			input: "acme/platform-agents",
+			want:  "https://github.com/acme/platform-agents.git",
+		},
+		{
+			name:  "https url unchanged",
+			input: "https://github.com/acme/platform-agents.git",
+			want:  "https://github.com/acme/platform-agents.git",
+		},
+		{
+			name:  "ssh url unchanged",
+			input: "git@github.com:acme/platform-agents.git",
+			want:  "git@github.com:acme/platform-agents.git",
+		},
+		{
+			name:  "dot relative path unchanged",
+			input: "./platform-agents",
+			want:  "./platform-agents",
+		},
+		{
+			name:  "parent relative path unchanged",
+			input: "../platform-agents",
+			want:  "../platform-agents",
+		},
+		{
+			name:  "absolute path unchanged",
+			input: "/tmp/platform-agents",
+			want:  "/tmp/platform-agents",
+		},
+		{
+			name:  "git suffix unchanged",
+			input: "acme/platform-agents.git",
+			want:  "acme/platform-agents.git",
+		},
+		{
+			name:  "deep path unchanged",
+			input: "acme/platform-agents/catalog",
+			want:  "acme/platform-agents/catalog",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := normalizeAgentImportRepository(test.input); got != test.want {
+				t.Fatalf("normalizeAgentImportRepository(%q) = %q, want %q", test.input, got, test.want)
 			}
 		})
 	}

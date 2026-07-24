@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -21,6 +22,8 @@ import (
 const defaultImportRemotePath = ".callee"
 
 var cloneAgentImportRepository = cloneAgentImportRepositoryDefault
+
+var githubImportRepositorySlugPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
 
 type agentImportOptions struct {
 	ref    string
@@ -55,7 +58,7 @@ func agentImportCommand() *cobra.Command {
 	opts := &agentImportOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "import <repo-url>",
+		Use:   "import <repo>",
 		Short: "Import Callee agents from a remote git repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,9 +74,12 @@ func agentImportCommand() *cobra.Command {
 }
 
 func runAgentImport(cmd *cobra.Command, repoURL string, opts *agentImportOptions) error {
-	if strings.TrimSpace(repoURL) == "" {
+	repoSpec := strings.TrimSpace(repoURL)
+	if repoSpec == "" {
 		return fmt.Errorf("repo URL must not be blank")
 	}
+
+	repoURL = normalizeAgentImportRepository(repoSpec)
 
 	remotePath, err := cleanImportRelativeDirectory(opts.path)
 	if err != nil {
@@ -152,6 +158,29 @@ func runAgentImport(cmd *cobra.Command, repoURL string, opts *agentImportOptions
 	}
 
 	return reportAgentImportResult(cmd.OutOrStdout(), result)
+}
+
+func normalizeAgentImportRepository(value string) string {
+	if !githubImportRepositorySlugPattern.MatchString(value) {
+		return value
+	}
+
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 || strings.HasSuffix(parts[1], ".git") {
+		return value
+	}
+
+	for _, part := range parts {
+		if part == "." || part == ".." {
+			return value
+		}
+	}
+
+	if strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") {
+		return value
+	}
+
+	return "https://github.com/" + value + ".git"
 }
 
 func cloneAgentImportRepositoryDefault(ctx context.Context, repoURL, ref string) (string, error) {
