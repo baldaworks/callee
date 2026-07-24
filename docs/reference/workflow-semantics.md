@@ -39,6 +39,12 @@ Callee then:
 4. sends the rendered body plus Callee's control instructions;
 5. interprets the final text and either returns, awaits, escalates, or fails.
 
+While one provider turn remains in flight, Callee emits `agent turn heartbeat`
+every 10 seconds with `turn_duration=<elapsed>`. This lifecycle event starts
+immediately before the turn call and stops as soon as that call returns or
+errors. It does not include Role rendering, process startup, session prepare,
+REPL idle time between turns, or composite execution.
+
 A normal non-REPL response without a control record is treated as a successful artifact when it is nonempty. Explicit control records use the rules below.
 
 ## Sequential execution

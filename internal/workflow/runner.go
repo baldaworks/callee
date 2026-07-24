@@ -320,7 +320,8 @@ func (r *runState) runRoleTurns(
 	result nodeResult,
 ) (nodeResult, error) {
 	for {
-		turnResult, err := session.Turn(turnCtx, turnInput)
+		logger := r.lifecycleLogger(ctx, node)
+		turnResult, err := runTurnWithHeartbeat(turnCtx, logger, session, turnInput)
 
 		cancelTurn()
 		result.roleMetrics.usage.AddTurn(turnResult.Usage)

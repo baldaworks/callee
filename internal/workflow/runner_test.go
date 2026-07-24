@@ -561,6 +561,8 @@ type scriptedProcess struct {
 	usages                    map[string][][]*runtime.TokenUsage
 	configurations            map[string]runtime.SessionConfiguration
 	prepareConfigurations     map[string]runtime.SessionConfiguration
+	releaseTurns              chan struct{}
+	turnStarted               chan struct{}
 	prompts                   map[string][]string
 	processContext            context.Context
 	processContextErrAtClose  error
@@ -568,6 +570,7 @@ type scriptedProcess struct {
 	sessions                  int
 	effectiveIDs              []string
 	prepareErr                error
+	turnErr                   error
 	closeErr                  error
 }
 
@@ -647,7 +650,7 @@ func (s *scriptedSession) Configuration() runtime.SessionConfiguration {
 	return s.configuration
 }
 
-func (s *scriptedSession) Turn(_ context.Context, prompt string) (runtime.TurnResult, error) {
+func (s *scriptedSession) Turn(ctx context.Context, prompt string) (runtime.TurnResult, error) {
 	if !s.prepared {
 		return runtime.TurnResult{}, fmt.Errorf("session for %s was not prepared", s.roleID)
 	}
@@ -665,6 +668,22 @@ func (s *scriptedSession) Turn(_ context.Context, prompt string) (runtime.TurnRe
 	}
 
 	s.process.prompts[s.roleID] = append(s.process.prompts[s.roleID], prompt)
+
+	if s.process.turnStarted != nil {
+		s.process.turnStarted <- struct{}{}
+	}
+
+	if s.process.releaseTurns != nil {
+		select {
+		case <-s.process.releaseTurns:
+		case <-ctx.Done():
+			return runtime.TurnResult{}, ctx.Err()
+		}
+	}
+
+	if s.process.turnErr != nil {
+		return runtime.TurnResult{}, s.process.turnErr
+	}
 
 	response := s.responses[0]
 	s.responses = s.responses[1:]

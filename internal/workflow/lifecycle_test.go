@@ -13,6 +13,39 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type manualTurnHeartbeatTicker struct {
+	ch chan time.Time
+}
+
+func (t manualTurnHeartbeatTicker) Chan() <-chan time.Time { return t.ch }
+func (manualTurnHeartbeatTicker) Stop()                    {}
+
+func withManualTurnHeartbeatHooks(t *testing.T, nowCh <-chan time.Time, tickerCh chan time.Time) {
+	t.Helper()
+
+	previousInterval := turnHeartbeatInterval
+	previousNow := turnHeartbeatNow
+	previousTicker := newTurnHeartbeatTicker
+
+	turnHeartbeatInterval = 10 * time.Second
+	turnHeartbeatNow = func() time.Time { return <-nowCh }
+	newTurnHeartbeatTicker = func(time.Duration) turnHeartbeatTicker {
+		return manualTurnHeartbeatTicker{ch: tickerCh}
+	}
+
+	t.Cleanup(func() {
+		turnHeartbeatInterval = previousInterval
+		turnHeartbeatNow = previousNow
+		newTurnHeartbeatTicker = previousTicker
+	})
+}
+
+func emitTurnHeartbeatTick(tickerCh chan time.Time, nowCh chan time.Time, tick time.Time, observed time.Time) {
+	tickerCh <- tick
+
+	nowCh <- observed
+}
+
 func TestRunnerLogsAgentLifecycleAcrossLoopVisits(t *testing.T) {
 	t.Parallel()
 
@@ -582,6 +615,212 @@ func TestRunnerLogsRuntimeErrorWithoutDuplicatingDiagnostic(t *testing.T) {
 		if _, ok := finished[field]; ok {
 			t.Errorf("finish event contains %q, want final CLI diagnostic to own error detail: %#v", field, finished)
 		}
+	}
+}
+
+func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
+	root := resolvedRoot(t, roleResource(t, "roles/worker", false, nil, "{{ .Input }}"))
+	process := &scriptedProcess{
+		visits:       map[string][][]string{"roles/worker": {{"done"}}},
+		turnStarted:  make(chan struct{}, 1),
+		releaseTurns: make(chan struct{}, 1),
+	}
+	now := time.Unix(1_000, 0).UTC()
+	nowCh := make(chan time.Time, 1)
+	tickerCh := make(chan time.Time)
+	withManualTurnHeartbeatHooks(t, nowCh, tickerCh)
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task")
+		done <- err
+	}()
+
+	nowCh <- now
+
+	<-process.turnStarted
+
+	emitTurnHeartbeatTick(tickerCh, nowCh, now, now.Add(10*time.Second))
+	emitTurnHeartbeatTick(tickerCh, nowCh, now.Add(20*time.Second), now.Add(20*time.Second))
+
+	process.releaseTurns <- struct{}{}
+
+	if err := <-done; err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	events := decodeLifecycleEvents(t, &output)
+
+	wantMessages := []string{"running agent", "agent turn heartbeat", "agent turn heartbeat", "agent finished"}
+
+	if len(events) != len(wantMessages) {
+		t.Fatalf("lifecycle events = %#v, want messages %v", events, wantMessages)
+	}
+
+	for index, want := range wantMessages {
+		if got := events[index]["message"]; got != want {
+			t.Fatalf("event %d message = %#v, want %q; events=%#v", index, got, want, events)
+		}
+	}
+
+	for _, event := range events[1:3] {
+		if event["id"] != "roles/worker" || event["kind"] != "Role" || event["visit"] != float64(1) {
+			t.Errorf("heartbeat event = %#v, want roles/worker Role visit 1", event)
+		}
+	}
+
+	if got := events[1]["turn_duration"]; got != float64(10000) {
+		t.Errorf("first heartbeat turn_duration = %#v, want 10s; event=%#v", got, events[1])
+	}
+
+	if got := events[2]["turn_duration"]; got != float64(20000) {
+		t.Errorf("second heartbeat turn_duration = %#v, want 20s; event=%#v", got, events[2])
+	}
+}
+
+func TestRunnerSkipsTurnHeartbeatForQuickTurn(t *testing.T) {
+	root := resolvedRoot(t, roleResource(t, "roles/worker", false, nil, "{{ .Input }}"))
+	process := &scriptedProcess{visits: map[string][][]string{"roles/worker": {{"done"}}}}
+	nowCh := make(chan time.Time, 1)
+	tickerCh := make(chan time.Time)
+	withManualTurnHeartbeatHooks(t, nowCh, tickerCh)
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	nowCh <- time.Unix(2_000, 0).UTC()
+
+	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task"); err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	for _, event := range decodeLifecycleEvents(t, &output) {
+		if event["message"] == "agent turn heartbeat" {
+			t.Fatalf("unexpected heartbeat event: %#v", event)
+		}
+	}
+}
+
+func TestRunnerLogsSeparateHeartbeatForREPLTurns(t *testing.T) {
+	root := resolvedRoot(t, roleResource(t, "roles/planner", true, nil, "{{ .Input }}"))
+	process := &scriptedProcess{
+		visits: map[string][][]string{
+			"roles/planner": {{"First question?\n\n" + controlAwait, "done\n\n" + controlReturn}},
+		},
+		turnStarted:  make(chan struct{}, 2),
+		releaseTurns: make(chan struct{}, 2),
+	}
+	interactor := &scriptedInteractor{answers: []string{"first answer"}}
+	now := time.Unix(3_000, 0).UTC()
+	nowCh := make(chan time.Time)
+	tickerCh := make(chan time.Time)
+	withManualTurnHeartbeatHooks(t, nowCh, tickerCh)
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}, Interactor: interactor}).Run(ctx, "task")
+		done <- err
+	}()
+
+	nowCh <- now
+
+	<-process.turnStarted
+
+	emitTurnHeartbeatTick(tickerCh, nowCh, now, now.Add(10*time.Second))
+
+	process.releaseTurns <- struct{}{}
+
+	nowCh <- now.Add(20 * time.Second)
+
+	<-process.turnStarted
+
+	emitTurnHeartbeatTick(tickerCh, nowCh, now.Add(20*time.Second), now.Add(30*time.Second))
+
+	process.releaseTurns <- struct{}{}
+
+	if err := <-done; err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	var durations []any
+
+	for _, event := range decodeLifecycleEvents(t, &output) {
+		if event["message"] == "agent turn heartbeat" {
+			durations = append(durations, event["turn_duration"])
+		}
+	}
+
+	if got, want := len(durations), 2; got != want {
+		t.Fatalf("heartbeat events = %#v, want %d", durations, want)
+	}
+
+	if durations[0] != float64(10000) || durations[1] != float64(10000) {
+		t.Fatalf("heartbeat durations = %#v, want [10000 10000]", durations)
+	}
+}
+
+func TestRunnerStopsHeartbeatAfterTurnError(t *testing.T) {
+	root := resolvedRoot(t, roleResource(t, "roles/worker", false, nil, "{{ .Input }}"))
+	process := &scriptedProcess{
+		turnErr:      context.DeadlineExceeded,
+		turnStarted:  make(chan struct{}, 1),
+		releaseTurns: make(chan struct{}, 1),
+		visits:       map[string][][]string{"roles/worker": {{"unused"}}},
+	}
+	now := time.Unix(4_000, 0).UTC()
+	nowCh := make(chan time.Time)
+	tickerCh := make(chan time.Time)
+	withManualTurnHeartbeatHooks(t, nowCh, tickerCh)
+
+	var output bytes.Buffer
+
+	logger := zerolog.New(&output)
+	ctx := logger.WithContext(context.Background())
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task")
+		done <- err
+	}()
+
+	nowCh <- now
+
+	<-process.turnStarted
+
+	emitTurnHeartbeatTick(tickerCh, nowCh, now, now.Add(10*time.Second))
+
+	process.releaseTurns <- struct{}{}
+
+	if err := <-done; err == nil {
+		t.Fatal("Runner.Run() error = nil, want turn error")
+	}
+
+	events := decodeLifecycleEvents(t, &output)
+	if got, want := len(events), 3; got != want {
+		t.Fatalf("lifecycle events = %#v, want %d events", events, want)
+	}
+
+	if events[1]["message"] != "agent turn heartbeat" {
+		t.Fatalf("event 1 = %#v, want heartbeat", events[1])
+	}
+
+	if events[2]["message"] != "agent finished" || events[2]["status"] != "error" {
+		t.Fatalf("final event = %#v, want error finish", events[2])
 	}
 }
 

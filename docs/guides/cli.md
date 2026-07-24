@@ -155,6 +155,8 @@ The two parameter flags are repeatable. Missing values are prompted on the termi
 
 Execution always requires a real controlling TTY. The terminal carries the root prompt, missing parameters, REPL turns, abort input, and ACP permission selection. Lifecycle and provider diagnostics go to stderr. The sole successful root artifact is written to stdout only after provider cleanup succeeds, so automation should determine success from the exit status rather than an empty stderr assumption.
 
+If one provider turn stays active for at least 10 seconds, Callee emits `agent turn heartbeat` on stderr with `turn_duration=<elapsed>`. This heartbeat is per provider turn only: it excludes pre-turn rendering and prepare work, REPL idle time between turns, and composite node execution.
+
 See [ACP permission requests](acp-permissions.md) for the permission-selection contract, [Workflow semantics](../reference/workflow-semantics.md) for exact input, output, Loop, REPL, and failure behavior, and [Execution metrics](../reference/execution-metrics.md) for emitted run and Role measurements.
 
 ## Generate Roles with PromptKit

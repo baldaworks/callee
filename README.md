@@ -150,13 +150,18 @@ callee --version
 Ensure the Go installation directory (normally `$GOBIN` or `$GOPATH/bin`) is
 on `PATH`.
 
-`agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`.
+`agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, long-running provider-turn heartbeats, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`.
 
 `agent run` emits run-wide metrics on its final `agent run finished` event and
 per-Role metrics on each Role's `agent finished` event. The successful root
 artifact is written once to stdout only after provider cleanup and the final
 stderr metrics event. See [Execution metrics](docs/reference/execution-metrics.md)
 for the complete field, presence, and aggregation contract.
+
+While a provider turn remains in flight, Callee also emits `agent turn heartbeat`
+every 10 seconds with `turn_duration=<elapsed>`. This heartbeat is scoped to
+the active provider turn only: it does not include Role rendering, session
+prepare, REPL idle time between turns, or composite execution.
 
 ## Manual host setup
 
