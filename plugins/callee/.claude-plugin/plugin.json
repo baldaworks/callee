@@ -3,7 +3,7 @@
   "version": "0.16.1",
   "description": "Run Markdown-defined agents and deterministic workflows.",
   "author": {
-    "name": "Baldaworks"
+    "name": "Alexey Samoylov"
   },
   "skills": "./skills/"
 }

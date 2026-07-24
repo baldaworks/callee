@@ -3,8 +3,8 @@
   "version": "0.16.1",
   "description": "Run Markdown-defined agents and deterministic workflows.",
   "author": {
-    "name": "Baldaworks",
-    "url": "https://github.com/baldaworks"
+    "name": "Alexey Samoylov",
+    "url": "https://github.com/metalagman"
   },
   "homepage": "https://github.com/baldaworks/callee",
   "repository": "https://github.com/baldaworks/callee",

@@ -1,8 +1,8 @@
 {
   "name": "callee",
   "owner": {
-    "name": "Baldaworks",
-    "url": "https://github.com/baldaworks"
+    "name": "Alexey Samoylov",
+    "url": "https://github.com/metalagman"
   },
   "description": "Marketplace for Markdown-defined agents and deterministic workflows in Grok Build.",
   "plugins": [

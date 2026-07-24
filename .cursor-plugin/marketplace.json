@@ -1,7 +1,7 @@
 {
   "name": "callee",
   "owner": {
-    "name": "Baldaworks"
+    "name": "Alexey Samoylov"
   },
   "metadata": {
     "description": "Markdown-defined agents and deterministic workflows for Cursor."
