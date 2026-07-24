@@ -1,7 +1,7 @@
 {
   "name": "callee",
   "displayName": "Callee",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "description": "Run Markdown-defined agents and deterministic workflows.",
   "author": {
     "name": "Alexey Samoylov"
