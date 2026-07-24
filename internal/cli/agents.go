@@ -85,6 +85,7 @@ func agentCommand() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(agentRunCommand())
+	cmd.AddCommand(agentImportCommand())
 	cmd.AddCommand(agentListCommand())
 	cmd.AddCommand(agentSchemaCommand())
 	cmd.AddCommand(agentViewCommand())

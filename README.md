@@ -121,6 +121,12 @@ Validate one agent file without loading its referenced children:
 npx --yes @baldaworks/callee@latest agent validate .callee/roles/reviewer.md
 ```
 
+Import a remote Callee catalog subtree into the current project root:
+
+```bash
+npx --yes @baldaworks/callee@latest agent import https://github.com/acme/platform-agents.git --prefix vendor
+```
+
 When you are ready to make changes, run GoalKeeper through the same entrypoint:
 
 ```bash
@@ -226,7 +232,9 @@ Agents are discovered recursively below two roots:
 Pass `callee --agent-root <dir> ...` to use one custom discovery root instead.
 When set, Callee ignores both default roots and treats `<dir>` as the only
 agent catalog and the default write target for generated or installed Callee
-resources.
+resources, including `agent import`.
+
+`callee agent import <repo-url> [--ref <git-ref>] [--path <remote-dir>] [--prefix <namespace>] [--force]` clones a remote git repository into a temporary checkout, discovers resources recursively under `--path` (default `.callee`), and stages the resulting local tree before writing anything. `--prefix` rewrites imported IDs and imported internal child refs into a namespace. Existing destination files are preserved unless `--force` is supplied, and `git` must be available on `PATH`.
 
 Lowercase `.md`, `.yaml`, and `.yml` regular files are supported; symlinked
 files are skipped. Directories such as `roles/` and `workflows/` are optional

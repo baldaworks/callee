@@ -481,7 +481,7 @@ func discoverAgentRoot(root agentRoot) ([]discoveredAgent, []error) {
 			return nil
 		}
 
-		id, err := resourceID(relative)
+		id, err := ResourceID(relative)
 		if err != nil {
 			diagnostics = append(diagnostics, fmt.Errorf("resource path %q: %w", path, err))
 
@@ -528,7 +528,8 @@ func discoverAgentRoot(root agentRoot) ([]discoveredAgent, []error) {
 	return discovered, diagnostics
 }
 
-func resourceID(relative string) (string, error) {
+// ResourceID derives a Callee resource ID from a discovery-root-relative path.
+func ResourceID(relative string) (string, error) {
 	clean := filepath.Clean(relative)
 	if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("path escapes its discovery root")

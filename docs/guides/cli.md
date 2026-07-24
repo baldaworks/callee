@@ -37,6 +37,7 @@ Ensure the Go installation directory, normally `$GOBIN` or `$GOPATH/bin`, is on 
 ```text
 callee
 ├── agent
+│   ├── import
 │   ├── list
 │   ├── schema
 │   ├── view
@@ -111,6 +112,22 @@ callee doctor --timeout 90s
 The timeout is applied to each provider group. Doctor requires at least one discovered Role.
 
 Doctor graphs annotate every registry edge with its authored `canEscalate=true|false` value in text, Mermaid, and DOT output. Unlike `agent view`, this is the edge setting rather than a resolved path capability. Compare the graph with a selected resolved view when diagnosing a missing opt-in through a nested composite.
+
+## Import agents from a remote git repository
+
+Use `agent import` when you want to copy a Callee catalog subtree from another repository into the current write root:
+
+```bash
+callee agent import https://github.com/acme/platform-agents.git
+callee agent import https://github.com/acme/platform-agents.git --path catalog/frontend
+callee agent import https://github.com/acme/platform-agents.git --prefix vendor --force
+```
+
+The command shells out to the local `git` executable, clones the repository into a temporary checkout, discovers supported `.md`, `.yaml`, and `.yml` resources recursively under `--path`, and imports them into the local write root. `--path` defaults to `.callee`.
+
+`--prefix` rewrites imported resource IDs as `<prefix>/<original-id>` and rewrites `spec.children[].ref` only when the referenced target is also part of the same import set. References to local, non-imported resources are preserved unchanged. Existing destination files are left unchanged by default; `--force` overwrites only the files selected by the current import.
+
+Before writing anything locally, Callee stages the resulting destination tree and validates the complete discovered registry. If validation fails, nothing is written. Successful runs report created, overwritten, and unchanged destination paths on stdout.
 
 ## Run an agent tree
 

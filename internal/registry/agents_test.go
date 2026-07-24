@@ -373,20 +373,20 @@ func TestResourceIDRemovesSupportedExtension(t *testing.T) {
 	}
 
 	for path, want := range tests {
-		got, err := resourceID(filepath.FromSlash(path))
+		got, err := ResourceID(filepath.FromSlash(path))
 		if err != nil {
-			t.Errorf("resourceID(%q) error: %v", path, err)
+			t.Errorf("ResourceID(%q) error: %v", path, err)
 
 			continue
 		}
 
 		if got != want {
-			t.Errorf("resourceID(%q) = %q, want %q", path, got, want)
+			t.Errorf("ResourceID(%q) = %q, want %q", path, got, want)
 		}
 	}
 
-	if _, err := resourceID("roles/worker.json"); err == nil || !strings.Contains(err.Error(), "unsupported agent file extension") {
-		t.Fatalf("resourceID(.json) error = %v", err)
+	if _, err := ResourceID("roles/worker.json"); err == nil || !strings.Contains(err.Error(), "unsupported agent file extension") {
+		t.Fatalf("ResourceID(.json) error = %v", err)
 	}
 }
 

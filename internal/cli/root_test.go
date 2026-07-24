@@ -74,7 +74,7 @@ func TestRootCommandExposesOnlyWorkflowSurface(t *testing.T) {
 		t.Fatalf("find agent command: %v", err)
 	}
 
-	wantAgent := map[string]bool{"run": true, "list": true, "schema": true, "view": true, "validate": true}
+	wantAgent := map[string]bool{"run": true, "import": true, "list": true, "schema": true, "view": true, "validate": true}
 	for _, command := range agentCommand.Commands() {
 		if !wantAgent[command.Name()] {
 			t.Errorf("unexpected agent command %q", command.Name())
