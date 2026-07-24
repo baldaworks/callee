@@ -503,11 +503,11 @@ immediately before that Role runs.
 
 ## Control and REPL
 
-Set `spec.repl: true` only on a `Role` that needs multiple operator turns in
+Set `spec.interactive: true` only on a `Role` that needs multiple operator turns in
 one provider session. Composite agents do not have a REPL field. PromptKit
 generation also enables this field automatically for templates whose
 `metadata.mode` is `interactive`, or explicitly with
-`callee promptkit role create ... --repl`.
+`callee promptkit role create ... --interactive`.
 
 Callee injects a versioned control protocol into every executed Role. Every
 REPL turn must end with exactly one final record:
@@ -568,7 +568,7 @@ component shapes. Callee exposes catalog `list`, `search`, and `show` commands
 plus its own `role create`; PromptKitty's standalone `assemble` and `setup`
 commands are not mounted.
 
-Generated Roles use the v1alpha1 envelope and Go templates. Unbound PromptKit parameters become `spec.params`; literal template examples in assembled PromptKit text are escaped safely. A template whose `metadata.mode` is `interactive` automatically generates `spec.repl: true`, so its questions and confirmation gates run through the same provider session when the Role is executed. Use `--repl` to force that behavior for an ordinary template.
+Generated Roles use the v1alpha1 envelope and Go templates. Unbound PromptKit parameters become `spec.params`; literal template examples in assembled PromptKit text are escaped safely. A template whose `metadata.mode` is `interactive` automatically generates `spec.interactive: true`, so its questions and confirmation gates run through the same provider session when the Role is executed. Use `--interactive` to force that behavior for an ordinary template.
 
 Unless `--output` is supplied, `role create go-reviewer` writes
 `.callee/roles/go-reviewer.md`; it creates parent directories but refuses to

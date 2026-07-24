@@ -56,7 +56,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 		persona, format                                          string
 		bindings, bindingFiles, extraArgs                        []string
 		protocols, taxonomies                                    []string
-		dryRun, force, noFormat, repl                            bool
+		dryRun, force, noFormat, interactive, repl               bool
 	)
 
 	cmd := &cobra.Command{
@@ -79,7 +79,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 				return err
 			}
 
-			interactive, err := promptKitTemplateInteractive(detail)
+			templateInteractive, err := promptKitTemplateInteractive(detail)
 			if err != nil {
 				return err
 			}
@@ -105,11 +105,11 @@ func promptKitRoleCreateCommand() *cobra.Command {
 				return fmt.Errorf("PromptKit output must not include YAML frontmatter")
 			}
 
-			var replValue *bool
+			var interactiveValue *bool
 
-			if repl || interactive {
+			if interactive || repl || templateInteractive {
 				enabled := true
-				replValue = &enabled
+				interactiveValue = &enabled
 			}
 
 			generated := resource.Resource{
@@ -118,7 +118,7 @@ func promptKitRoleCreateCommand() *cobra.Command {
 				ID:         args[0],
 				Spec: resource.Spec{
 					Description: description,
-					REPL:        replValue,
+					Interactive: interactiveValue,
 					Provider: &resource.Provider{
 						Type:      providerType,
 						Cmd:       runtimeCommand,
@@ -152,11 +152,13 @@ func promptKitRoleCreateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&mode, "mode", "", "runtime session mode")
 	cmd.Flags().StringVar(&runtimeCommand, "cmd", "", "runtime command override")
 	cmd.Flags().StringArrayVar(&extraArgs, "extra-arg", nil, "argument appended to the runtime; repeatable")
-	cmd.Flags().BoolVar(&repl, "repl", false, "enable REPL behavior; interactive PromptKit templates enable it automatically")
+	cmd.Flags().BoolVar(&interactive, "interactive", false, "enable interactive multi-turn behavior; interactive PromptKit templates enable it automatically")
+	cmd.Flags().BoolVar(&repl, "repl", false, "deprecated alias for --interactive")
 	cmd.Flags().StringVar(&output, "output", "", "role file path")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the generated role without writing it")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing role file")
 	cmd.MarkFlagsMutuallyExclusive("format", "no-format")
+	_ = cmd.Flags().MarkHidden("repl")
 	_ = cmd.MarkFlagRequired("template")
 	_ = cmd.MarkFlagRequired("description")
 	_ = cmd.MarkFlagRequired("provider")

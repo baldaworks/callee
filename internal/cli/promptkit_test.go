@@ -109,8 +109,16 @@ func TestPromptKitRoleCreateUsesProviderFlag(t *testing.T) {
 		t.Errorf("promptkit role create help is missing --provider:\n%s", help)
 	}
 
+	if !strings.Contains(help, "--interactive") {
+		t.Errorf("promptkit role create help is missing --interactive:\n%s", help)
+	}
+
 	if !strings.Contains(help, "interactive PromptKit templates enable it automatically") {
 		t.Errorf("promptkit role create help is missing automatic interactive REPL behavior:\n%s", help)
+	}
+
+	if strings.Contains(help, "--repl") {
+		t.Errorf("promptkit role create help exposes deprecated --repl:\n%s", help)
 	}
 
 	if strings.Contains(help, "--type string") {
@@ -189,7 +197,7 @@ func TestPromptKitRoleCreate(t *testing.T) {
 		"--template", "review-code",
 		"--description", "Reviews code changes.",
 		"--provider", "codex",
-		"--repl",
+		"--interactive",
 		"--prompt-param", "code",
 		"--bind", "language=Go",
 		"--bind-file", "context=" + contextPath,
@@ -220,49 +228,19 @@ func TestPromptKitRoleCreate(t *testing.T) {
 		t.Fatalf("agent.DecodeMarkdown(generated role) returned unexpected error: %v", err)
 	}
 
-	if generated.APIVersion != agent.APIVersion || generated.Kind != agent.RoleKind {
-		t.Fatalf("generated identity = %q/%q", generated.APIVersion, generated.Kind)
-	}
-
-	if !generated.REPL() {
-		t.Fatal("generated repl = false, want true")
-	}
-
-	wantProvider := &agent.Provider{
-		Type: "codex", Model: "gpt-5-codex", Reasoning: "high",
-		Mode: "review", ExtraArgs: []string{"--sandbox"},
-	}
-	if !reflect.DeepEqual(generated.Spec.Provider, wantProvider) {
-		t.Fatalf("generated provider = %#v, want %#v", generated.Spec.Provider, wantProvider)
-	}
-
 	wantParams := map[string]string{
 		"additional_protocols": "Optional — specific protocols to apply (e.g., memory-safety-c, thread-safety)",
 		"review_focus":         "What to focus on — e.g., correctness, security, performance, all",
 	}
-	if !reflect.DeepEqual(generated.Spec.Params, wantParams) {
-		t.Errorf("generated params = %#v, want %#v", generated.Spec.Params, wantParams)
-	}
 
-	if got := strings.Count(generated.Spec.Body, "{{ .Input }}"); got != 1 {
-		t.Errorf("generated prompt placeholder count = %d, want 1", got)
-	}
-
-	for _, name := range sortedKeys(wantParams) {
-		if got := strings.Count(generated.Spec.Body, `{{ index .Params "`+name+`" }}`); got != 1 {
-			t.Errorf("generated %q placeholder count = %d, want 1", name, got)
-		}
-	}
-
-	for _, want := range []string{contextValue, "the user message supplied in the Runtime Input section", "the `review_focus` value supplied in the Runtime Input section"} {
-		if !strings.Contains(generated.Spec.Body, want) {
-			t.Errorf("generated role does not contain %q", want)
-		}
-	}
-
-	if strings.Contains(generated.Spec.Body, "{{ language }}") || strings.Contains(generated.Spec.Body, "{{ context }}") {
-		t.Errorf("generated role retained a compile-time binding:\n%s", generated.Spec.Body)
-	}
+	assertPromptKitRole(t, generated, &agent.Provider{
+		Type: "codex", Model: "gpt-5-codex", Reasoning: "high",
+		Mode: "review", ExtraArgs: []string{"--sandbox"},
+	}, wantParams, []string{
+		contextValue,
+		"the user message supplied in the Runtime Input section",
+		"the `review_focus` value supplied in the Runtime Input section",
+	})
 }
 
 func TestPromptKitRoleCreateUsesAgentRootByDefault(t *testing.T) {
@@ -339,8 +317,8 @@ func TestPromptKitRoleCreateDryRun(t *testing.T) {
 		t.Errorf("dry-run output is not a role:\n%s", stdout.String())
 	}
 
-	if strings.Contains(stdout.String(), "repl:") {
-		t.Errorf("dry-run output contains repl without --repl:\n%s", stdout.String())
+	if strings.Contains(stdout.String(), "repl:") || strings.Contains(stdout.String(), "interactive:") {
+		t.Errorf("dry-run output contains interaction field without request:\n%s", stdout.String())
 	}
 }
 
@@ -369,7 +347,81 @@ func TestPromptKitRoleCreateInfersInteractiveREPL(t *testing.T) {
 	}
 
 	if !generated.REPL() {
-		t.Fatal("generated interactive Role repl = false, want true")
+		t.Fatal("generated interactive Role interactive = false, want true")
+	}
+}
+
+func TestPromptKitRoleCreateAcceptsLegacyReplFlag(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"promptkit", "role", "create", "reviewer",
+		"--template", "review-code",
+		"--description", "Reviews code changes.",
+		"--provider", "codex",
+		"--repl",
+		"--prompt-param", "code",
+		"--bind", "language=Go",
+		"--bind", "context=repository",
+		"--bind", "review_focus=all",
+		"--bind", "additional_protocols=",
+		"--dry-run",
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute(promptkit role create --repl) returned unexpected error: %v", err)
+	}
+
+	if strings.Contains(stdout.String(), "repl:") || !strings.Contains(stdout.String(), "interactive: true") {
+		t.Fatalf("legacy --repl output = %q, want canonical interactive field only", stdout.String())
+	}
+}
+
+func assertPromptKitRole(t *testing.T, generated agent.Resource, wantProvider *agent.Provider, wantParams map[string]string, wantBody []string) {
+	t.Helper()
+
+	if generated.APIVersion != agent.APIVersion || generated.Kind != agent.RoleKind {
+		t.Fatalf("generated identity = %q/%q", generated.APIVersion, generated.Kind)
+	}
+
+	if !generated.REPL() {
+		t.Fatal("generated interactive role = false, want true")
+	}
+
+	if generated.Spec.Interactive == nil || !*generated.Spec.Interactive || generated.Spec.LegacyREPL != nil {
+		t.Fatalf("generated interactive fields = interactive %+v repl %+v, want canonical interactive only", generated.Spec.Interactive, generated.Spec.LegacyREPL)
+	}
+
+	if !reflect.DeepEqual(generated.Spec.Provider, wantProvider) {
+		t.Fatalf("generated provider = %#v, want %#v", generated.Spec.Provider, wantProvider)
+	}
+
+	if !reflect.DeepEqual(generated.Spec.Params, wantParams) {
+		t.Errorf("generated params = %#v, want %#v", generated.Spec.Params, wantParams)
+	}
+
+	if got := strings.Count(generated.Spec.Body, "{{ .Input }}"); got != 1 {
+		t.Errorf("generated prompt placeholder count = %d, want 1", got)
+	}
+
+	for _, name := range sortedKeys(wantParams) {
+		if got := strings.Count(generated.Spec.Body, `{{ index .Params "`+name+`" }}`); got != 1 {
+			t.Errorf("generated %q placeholder count = %d, want 1", name, got)
+		}
+	}
+
+	for _, want := range wantBody {
+		if !strings.Contains(generated.Spec.Body, want) {
+			t.Errorf("generated role does not contain %q", want)
+		}
+	}
+
+	if strings.Contains(generated.Spec.Body, "{{ language }}") || strings.Contains(generated.Spec.Body, "{{ context }}") {
+		t.Errorf("generated role retained a compile-time binding:\n%s", generated.Spec.Body)
 	}
 }
 
@@ -530,7 +582,7 @@ func TestEveryPromptKitTemplateCompilesToRole(t *testing.T) {
 				Spec: agent.Spec{
 					Description: template.Description,
 					Provider:    &agent.Provider{Type: "codex"},
-					REPL:        &repl,
+					Interactive: &repl,
 					Params:      params,
 					Body:        promptKitRoleBody(promptParam, params, assembled.Markdown),
 				},

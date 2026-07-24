@@ -2,6 +2,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -75,7 +76,8 @@ type Spec struct {
 	Description   string            `json:"description"             yaml:"description"`
 	Provider      *Provider         `json:"provider,omitempty"      yaml:"provider,omitempty"`
 	Permissions   *Permissions      `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
-	REPL          *bool             `json:"repl,omitempty"          yaml:"repl,omitempty"`
+	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
+	LegacyREPL    *bool             `json:"repl,omitempty"          yaml:"repl,omitempty"`
 	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
 	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
 	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
@@ -120,6 +122,10 @@ func SupportedProviderTypes() []string {
 
 // Validate checks semantic constraints not expressible in the JSON Schema.
 func (r Resource) Validate() error {
+	if err := r.validateInteractiveCompat(); err != nil {
+		return err
+	}
+
 	if err := validateSchema(r); err != nil {
 		return fmt.Errorf("agent %q: validate schema: %w", r.ID, err)
 	}
@@ -149,9 +155,14 @@ func (r Resource) ProviderTimeout() time.Duration {
 	return value
 }
 
+// Interactive reports the effective Role interactive multi-turn policy.
+func (r Resource) Interactive() bool {
+	return r.Spec.InteractiveValue()
+}
+
 // REPL reports the effective Role REPL policy.
 func (r Resource) REPL() bool {
-	return r.Spec.REPL != nil && *r.Spec.REPL
+	return r.Interactive()
 }
 
 // EffectivePermissionMode reports the Role permission mode, defaulting to ask.
@@ -187,6 +198,14 @@ func (r Resource) validateCommon() error {
 
 	if err := validateStateTemplates(r.ID+" spec.state", r.Spec.State); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (r Resource) validateInteractiveCompat() error {
+	if _, err := r.Spec.canonicalInteractivePointer(); err != nil {
+		return fmt.Errorf("agent %q: %w", r.ID, err)
 	}
 
 	return nil
@@ -304,6 +323,80 @@ func (r Resource) validateRole() error {
 // DefaultREPLTimeout returns the CLI operator-wait default.
 func DefaultREPLTimeout() time.Duration {
 	return defaultREPLTimeout
+}
+
+func (s Spec) InteractiveValue() bool {
+	value, err := s.canonicalInteractivePointer()
+	if err != nil || value == nil {
+		return false
+	}
+
+	return *value
+}
+
+func (s Spec) MarshalJSON() ([]byte, error) {
+	canonical, err := s.canonicalMarshaledSpec()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(canonical)
+}
+
+func (s Spec) MarshalYAML() (any, error) {
+	return s.canonicalMarshaledSpec()
+}
+
+func (s Spec) canonicalInteractivePointer() (*bool, error) {
+	switch {
+	case s.Interactive != nil && s.LegacyREPL != nil && *s.Interactive != *s.LegacyREPL:
+		return nil, fmt.Errorf("spec.interactive and deprecated spec.repl must match when both are authored")
+	case s.Interactive != nil:
+		return boolPointer(*s.Interactive), nil
+	case s.LegacyREPL != nil:
+		return boolPointer(*s.LegacyREPL), nil
+	default:
+		return nil, nil
+	}
+}
+
+func (s Spec) canonicalMarshaledSpec() (specMarshalAlias, error) {
+	interactive, err := s.canonicalInteractivePointer()
+	if err != nil {
+		return specMarshalAlias{}, err
+	}
+
+	return specMarshalAlias{
+		Description:   s.Description,
+		Provider:      s.Provider,
+		Permissions:   s.Permissions,
+		Interactive:   interactive,
+		Params:        s.Params,
+		State:         s.State,
+		Children:      s.Children,
+		Body:          s.Body,
+		Output:        s.Output,
+		MaxIterations: s.MaxIterations,
+		OnExhausted:   s.OnExhausted,
+	}, nil
+}
+
+type specMarshalAlias struct {
+	Description   string            `json:"description"             yaml:"description"`
+	Provider      *Provider         `json:"provider,omitempty"      yaml:"provider,omitempty"`
+	Permissions   *Permissions      `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
+	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
+	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
+	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
+	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
+	Body          string            `json:"body"                    yaml:"body,omitempty"`
+	Output        string            `json:"output,omitempty"        yaml:"output,omitempty"`
+	MaxIterations *int              `json:"maxIterations,omitempty" yaml:"maxIterations,omitempty"`
+	OnExhausted   string            `json:"onExhausted,omitempty"   yaml:"onExhausted,omitempty"`
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 // UnmarshalYAML accepts either a scalar resource ID or a child mapping.

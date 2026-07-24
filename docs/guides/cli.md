@@ -185,7 +185,7 @@ without writing it.
 
 The parameter selected by `--prompt-param` comes from the Role's runtime input. `--bind` and `--bind-file` freeze author-time values. Other declared template parameters become runtime `spec.params`. A configurable persona must use `--persona`. Use `--protocol`, `--taxonomy`, `--format`, or `--no-format` to adjust assembly. Provider session fields are available through `--cmd`, `--model`, `--reasoning`, `--mode`, and repeatable `--extra-arg`.
 
-Templates marked with PromptKit `metadata.mode: interactive` automatically generate `spec.repl: true`; `--repl` forces the same behavior for other templates.
+Templates marked with PromptKit `metadata.mode: interactive` automatically generate `spec.interactive: true`; `--interactive` forces the same behavior for other templates.
 
 After generation, validate the file and its resolved tree:
 

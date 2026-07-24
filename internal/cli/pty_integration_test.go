@@ -74,7 +74,7 @@ func runAgentPTYTest(t *testing.T, mode, terminalInput, want string) {
 
 	replDeclaration := ""
 	if repl {
-		replDeclaration = "  repl: true\n"
+		replDeclaration = "  interactive: true\n"
 	}
 
 	writeVersionedAgent(t, filepath.Join(project, ".callee"), "roles/worker.md", `---

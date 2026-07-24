@@ -42,6 +42,7 @@ type ResolvedNode struct {
 	CanEscalate         bool               `json:"canEscalate"`
 	Permissions         *agent.Permissions `json:"permissions,omitempty"`
 	AuthoredPermissions *agent.Permissions `json:"authoredPermissions,omitempty"`
+	Interactive         *bool              `json:"interactive,omitempty"`
 	REPL                *bool              `json:"repl,omitempty"`
 	MaxIterations       *int               `json:"maxIterations,omitempty"`
 	OnExhausted         string             `json:"onExhausted,omitempty"`
@@ -273,8 +274,9 @@ func (r *AgentRegistry) resolve(
 
 	switch resource.Kind {
 	case agent.RoleKind:
-		repl := resource.REPL()
-		node.REPL = &repl
+		interactive := resource.Interactive()
+		node.Interactive = &interactive
+		node.REPL = &interactive
 		node.Permissions = &agent.Permissions{Mode: resource.EffectivePermissionMode()}
 		node.AuthoredPermissions = resource.Spec.Permissions
 	case agent.LoopKind:

@@ -465,7 +465,7 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 			authoredPermissionMode = string(node.AuthoredPermissions.Mode)
 		}
 
-		policy += fmt.Sprintf(" repl=%t permissions=%s authoredPermissions=%s", node.REPL != nil && *node.REPL, permissionMode, authoredPermissionMode)
+		policy += fmt.Sprintf(" interactive=%t permissions=%s authoredPermissions=%s", node.Interactive != nil && *node.Interactive, permissionMode, authoredPermissionMode)
 	case resource.LoopKind:
 		maxIterations := 0
 		if node.MaxIterations != nil {

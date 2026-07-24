@@ -743,7 +743,7 @@ func roleResource(t *testing.T, id string, repl bool, params map[string]string, 
 		Spec: agent.Spec{
 			Description: id,
 			Provider:    &agent.Provider{Type: "codex"},
-			REPL:        &replValue,
+			Interactive: &replValue,
 			Params:      params,
 			Body:        body,
 		},

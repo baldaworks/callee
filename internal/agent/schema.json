@@ -89,7 +89,8 @@
             "description": { "type": "string" },
             "provider": { "$ref": "#/$defs/provider" },
             "permissions": { "$ref": "#/$defs/permissions" },
-            "repl": { "type": "boolean" },
+            "interactive": { "type": "boolean" },
+            "repl": { "type": "boolean", "deprecated": true },
             "params": { "$ref": "#/$defs/params" },
             "state": { "$ref": "#/$defs/state" },
             "body": { "type": "string", "minLength": 1 }

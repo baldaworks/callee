@@ -88,6 +88,10 @@ spec:
 	if resolvedRole.AuthoredPermissions == nil || resolvedRole.AuthoredPermissions.Mode != agent.PermissionModeAllow || resolvedRole.Permissions == nil || resolvedRole.Permissions.Mode != agent.PermissionModeAllow {
 		t.Errorf("resolved permissions = authored %+v effective %+v, want allow/allow", resolvedRole.AuthoredPermissions, resolvedRole.Permissions)
 	}
+
+	if resolvedRole.Interactive == nil || resolvedRole.REPL == nil || *resolvedRole.Interactive != *resolvedRole.REPL {
+		t.Errorf("resolved interactive compat = interactive %+v repl %+v, want matching values", resolvedRole.Interactive, resolvedRole.REPL)
+	}
 }
 
 func TestAgentSchemaCommand(t *testing.T) {
@@ -590,6 +594,7 @@ func TestWriteResolvedNodeIncludesEffectivePolicies(t *testing.T) {
 				EffectiveID: "worker",
 				ResourceID:  "roles/worker",
 				Kind:        agent.RoleKind,
+				Interactive: &repl,
 				REPL:        &repl,
 				Children:    []*registry.ResolvedNode{},
 			},
@@ -601,7 +606,7 @@ func TestWriteResolvedNodeIncludesEffectivePolicies(t *testing.T) {
 		t.Fatalf("writeResolvedNode() error: %v", err)
 	}
 
-	for _, want := range []string{"maxIterations=3 onExhausted=fail", "repl=false", "canEscalate=false", "permissions=ask authoredPermissions=default"} {
+	for _, want := range []string{"maxIterations=3 onExhausted=fail", "interactive=false", "canEscalate=false", "permissions=ask authoredPermissions=default"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("writeResolvedNode() = %q, want containing %q", output.String(), want)
 		}

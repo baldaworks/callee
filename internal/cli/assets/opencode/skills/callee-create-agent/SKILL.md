@@ -37,7 +37,7 @@ callee promptkit role create "<agent-id>" \
   --prompt-param "<runtime-input-parameter>"
 ```
 
-Inspect `metadata.mode` in the selected template. When it is `interactive`, let the generator set `spec.repl: true`; keep its questions and confirmation gates for `callee agent run` and do not execute those phases while authoring the reusable Role. Use `--repl` only to force REPL behavior for a template that is not marked interactive.
+Inspect `metadata.mode` in the selected template. When it is `interactive`, let the generator set `spec.interactive: true`; keep its questions and confirmation gates for `callee agent run` and do not execute those phases while authoring the reusable Role. Use `--interactive` only to force REPL behavior for a template that is not marked interactive.
 
 Bind only values that are fixed when the agent is authored. Leave intended runtime values unbound so they become `spec.params`. Use `--output` when the requested ID must not live below the generator's default `.callee/roles/` namespace.
 
@@ -63,7 +63,7 @@ Focus:
 {{ .Params.focus }}
 ```
 
-Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`; do not choose `allow` unless the user explicitly requests unattended approval. Set `spec.repl: true` on a directly authored Role only when it must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
+Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`; do not choose `allow` unless the user explicitly requests unattended approval. Set `spec.interactive: true` on a directly authored Role only when it must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
 
 ## Author a workflow
 
@@ -80,4 +80,4 @@ callee agent validate "<written-agent-path>"
 callee agent view "<agent-id>" --json
 ```
 
-Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. For a PromptKit template with `metadata.mode: interactive`, confirm that the resolved view reports `repl: true`. Confirm that every Role's authored and effective permission policy in `agent view --json` matches the request. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.
+Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. For a PromptKit template with `metadata.mode: interactive`, confirm that the resolved view reports `interactive: true`. Confirm that every Role's authored and effective permission policy in `agent view --json` matches the request. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.

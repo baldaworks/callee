@@ -62,7 +62,7 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"callee promptkit show \"<template>\" --json",
 		"callee promptkit role create",
 		"metadata.mode",
-		"spec.repl: true",
+		"spec.interactive: true",
 		"questions and confirmation gates",
 		"callee agent run",
 		"apiVersion: callee.metalagman.dev/v1alpha1",

@@ -80,7 +80,7 @@ The supported fields differ by kind:
 | `state` | Optional | Optional | Optional |
 | `provider` | Required | Not allowed | Not allowed |
 | `permissions` | Optional | Not allowed | Not allowed |
-| `repl` | Optional | Not allowed | Not allowed |
+| `interactive` | Optional | Not allowed | Not allowed |
 | `params` | Optional | Not allowed | Not allowed |
 | `children` | Not allowed | Required, nonempty | Required, nonempty |
 | `output` | Not allowed | Optional | Optional |
@@ -116,7 +116,7 @@ The body must contain exactly one unconditional, bare `{{ .Prompt }}` or `{{ .In
 
 `spec.params` maps parameter names to nonblank operator-facing descriptions. Names match `^[A-Za-z][A-Za-z0-9_-]*$`. At runtime, unbound values use `<effective-node-id>.<name>` keys. Access parameters with `.Params.name` when the name permits field syntax or with `index .Params "name"` for the general case.
 
-`spec.repl: true` allows multiple operator turns in one Role visit. Its execution contract is defined in [Control records and REPL](workflow-semantics.md#control-records-and-repl).
+`spec.interactive: true` allows multiple operator turns in one Role visit. Its execution contract is defined in [Control records and REPL](workflow-semantics.md#control-records-and-repl). Legacy `spec.repl` remains accepted as a compatibility alias.
 
 See [ACP provider configuration](../guides/acp-providers.md) for the `provider` object.
 

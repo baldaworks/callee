@@ -169,6 +169,67 @@ func TestDecodeRolePermissions(t *testing.T) {
 	}
 }
 
+func TestDecodeRoleInteractiveCompat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		file string
+		data string
+		want bool
+	}{
+		{
+			name: "interactive only",
+			file: "worker.yaml",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  interactive: true\n  body: '{{ .Input }}'\n",
+			want: true,
+		},
+		{
+			name: "legacy repl only",
+			file: "worker.yaml",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  repl: true\n  body: '{{ .Input }}'\n",
+			want: true,
+		},
+		{
+			name: "both same value",
+			file: "worker.yaml",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  interactive: true\n  repl: true\n  body: '{{ .Input }}'\n",
+			want: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := Decode("roles/worker", test.file, []byte(test.data))
+			if err != nil {
+				t.Fatalf("Decode() error: %v", err)
+			}
+
+			if interactive := got.Interactive(); interactive != test.want {
+				t.Fatalf("Interactive() = %t, want %t", interactive, test.want)
+			}
+
+			if encoded, err := EncodeMarkdown(got); err != nil {
+				t.Fatalf("EncodeMarkdown() error: %v", err)
+			} else if strings.Contains(string(encoded), "\nrepl:") || !strings.Contains(string(encoded), "interactive: true") {
+				t.Fatalf("EncodeMarkdown() = %q, want canonical interactive field only", string(encoded))
+			}
+		})
+	}
+}
+
+func TestDecodeRejectsConflictingInteractiveCompatFields(t *testing.T) {
+	t.Parallel()
+
+	data := "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider: {type: codex}\n  interactive: true\n  repl: false\n  body: '{{ .Input }}'\n"
+
+	if _, err := DecodeYAML("roles/worker", "worker.yaml", []byte(data)); err == nil || !strings.Contains(err.Error(), "spec.interactive and deprecated spec.repl must match") {
+		t.Fatalf("DecodeYAML(conflicting interactive/repl) error = %v", err)
+	}
+}
+
 func TestDecodeRejectsInvalidPermissionPlacementAndMode(t *testing.T) {
 	t.Parallel()
 

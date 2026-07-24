@@ -123,7 +123,7 @@ When artifact or diagnostic text precedes a record, exactly one empty line must 
 | `escalate` | Role occurrence whose resolved `canEscalate` is `true` | Optional | Return control toward the nearest Loop. |
 | `fail` | Any Role | Optional diagnostic | Fail the workflow. |
 
-Set `spec.repl: true` only on a Role. Every REPL response must contain one valid final control record; a missing record is an error. The same provider session is retained across `await` turns, while a later visit to that Role still creates a new session.
+Set `spec.interactive: true` only on a Role. Every REPL response must contain one valid final control record; a missing record is an error. The same provider session is retained across `await` turns, while a later visit to that Role still creates a new session.
 
 An unauthorized `escalate` record is an error even though the parser recognizes it. Callee reports the effective agent ID, source resource ID, and resolved path; no later Sequential child runs after that error.
 

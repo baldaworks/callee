@@ -233,7 +233,7 @@ func doctorRole(id, model string) agent.Resource {
 		Spec: agent.Spec{
 			Description: id,
 			Provider:    &agent.Provider{Type: "codex", Model: model},
-			REPL:        &repl,
+			Interactive: &repl,
 			Body:        "{{ .Input }}",
 		},
 	}
