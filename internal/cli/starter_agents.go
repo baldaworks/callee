@@ -16,9 +16,9 @@ const starterAssetRoot = "assets/starter/"
 var starterAgentAssets embed.FS
 
 type starterAgentAsset struct {
-	id          string
-	source      string
-	destination string
+	id           string
+	source       string
+	relativePath string
 }
 
 type renderedStarterAgent struct {
@@ -28,16 +28,16 @@ type renderedStarterAgent struct {
 }
 
 var starterAgentFiles = []starterAgentAsset{
-	{id: "roles/architect", source: starterAssetRoot + "roles/architect.md", destination: ".callee/roles/architect.md"},
-	{id: "roles/explorer", source: starterAssetRoot + "roles/explorer.md", destination: ".callee/roles/explorer.md"},
-	{id: "roles/implementer", source: starterAssetRoot + "roles/implementer.md", destination: ".callee/roles/implementer.md"},
-	{id: "roles/reviewer", source: starterAssetRoot + "roles/reviewer.md", destination: ".callee/roles/reviewer.md"},
-	{id: "workflows/goalkeeper", source: starterAssetRoot + "workflows/goalkeeper.md", destination: ".callee/workflows/goalkeeper.md"},
-	{id: "workflows/investigate", source: starterAssetRoot + "workflows/investigate.md", destination: ".callee/workflows/investigate.md"},
+	{id: "roles/architect", source: starterAssetRoot + "roles/architect.md", relativePath: "roles/architect.md"},
+	{id: "roles/explorer", source: starterAssetRoot + "roles/explorer.md", relativePath: "roles/explorer.md"},
+	{id: "roles/implementer", source: starterAssetRoot + "roles/implementer.md", relativePath: "roles/implementer.md"},
+	{id: "roles/reviewer", source: starterAssetRoot + "roles/reviewer.md", relativePath: "roles/reviewer.md"},
+	{id: "workflows/goalkeeper", source: starterAssetRoot + "workflows/goalkeeper.md", relativePath: "workflows/goalkeeper.md"},
+	{id: "workflows/investigate", source: starterAssetRoot + "workflows/investigate.md", relativePath: "workflows/investigate.md"},
 }
 
-func writeStarterAgents(providerType string, force bool) (setupInstallResult, error) {
-	rendered, err := renderStarterAgents(providerType)
+func writeStarterAgents(providerType, root string, force bool) (setupInstallResult, error) {
+	rendered, err := renderStarterAgents(providerType, root)
 	if err != nil {
 		return setupInstallResult{}, err
 	}
@@ -60,7 +60,7 @@ func writeStarterAgents(providerType string, force bool) (setupInstallResult, er
 	return result, nil
 }
 
-func renderStarterAgents(providerType string) ([]renderedStarterAgent, error) {
+func renderStarterAgents(providerType, root string) ([]renderedStarterAgent, error) {
 	rendered := make([]renderedStarterAgent, 0, len(starterAgentFiles))
 	resources := make([]agent.Resource, 0, len(starterAgentFiles))
 
@@ -87,7 +87,7 @@ func renderStarterAgents(providerType string) ([]renderedStarterAgent, error) {
 		resources = append(resources, resource)
 		rendered = append(rendered, renderedStarterAgent{
 			resource:    resource,
-			destination: file.destination,
+			destination: starterAgentDestination(root, file),
 			content:     content,
 		})
 	}
@@ -97,6 +97,10 @@ func renderStarterAgents(providerType string) ([]renderedStarterAgent, error) {
 	}
 
 	return rendered, nil
+}
+
+func starterAgentDestination(root string, file starterAgentAsset) string {
+	return filepath.Join(root, filepath.FromSlash(file.relativePath))
 }
 
 func reportStarterAgentInstall(output io.Writer, targetName string, result setupInstallResult) error {

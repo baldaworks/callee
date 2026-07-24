@@ -38,6 +38,7 @@ Ensure the Go installation directory, normally `$GOBIN` or `$GOPATH/bin`, is on 
 callee
 ├── agent
 │   ├── list
+│   ├── schema
 │   ├── view
 │   ├── validate
 │   └── run
@@ -82,6 +83,14 @@ Validate one physical resource without resolving its children:
 
 ```bash
 callee agent validate .callee/workflows/investigate.md
+```
+
+Print the standalone JSON Schema for one kind:
+
+```bash
+callee agent schema Role
+callee agent schema Sequential
+callee agent schema Loop
 ```
 
 Success prints `<path>: ok`. Use `agent view` for a selected resolved tree or `doctor --graph` for the complete static registry graph:
@@ -151,7 +160,11 @@ callee promptkit role create go-reviewer \
   --bind language=Go
 ```
 
-Unless `--output` is supplied, this writes `.callee/roles/go-reviewer.md`. The command creates parent directories and refuses to overwrite an existing file unless `--force` is set. Use `--dry-run` to print the generated resource without writing it.
+Unless `--output` is supplied, this writes `.callee/roles/go-reviewer.md`. With
+`--agent-root <dir>`, the default becomes `<dir>/roles/go-reviewer.md`. The
+command creates parent directories and refuses to overwrite an existing file
+unless `--force` is set. Use `--dry-run` to print the generated resource
+without writing it.
 
 The parameter selected by `--prompt-param` comes from the Role's runtime input. `--bind` and `--bind-file` freeze author-time values. Other declared template parameters become runtime `spec.params`. A configurable persona must use `--persona`. Use `--protocol`, `--taxonomy`, `--format`, or `--no-format` to adjust assembly. Provider session fields are available through `--cmd`, `--model`, `--reasoning`, `--mode`, and repeatable `--extra-arg`.
 
@@ -166,13 +179,20 @@ callee agent view roles/go-reviewer
 
 ## Install coding-host assets
 
-`callee setup <target>` installs a host integration and six editable starter resources. Valid targets are `codex`, `claude`, `grok`, `copilot`, `opencode`, and `cursor`:
+`callee setup <target>` installs a host integration and six editable starter
+resources. Valid targets are `codex`, `claude`, `grok`, `copilot`, `opencode`,
+and `cursor`:
 
 ```bash
 callee setup codex
 ```
 
 Existing setup-managed files are preserved unless `--force` is supplied. Setup does not install or authenticate the ACP provider selected by a Role. See [Coding-host integrations](coding-host-integrations.md) for target-specific behavior.
+
+Pass `--agent-root <dir>` to make the starter Roles and workflows land under
+that root instead of `.callee/`. In that mode, the same directory also becomes
+the only discovery root for `agent list`, `agent view`, `agent run`, and
+`doctor`.
 
 ## Embedded Codex bridge
 

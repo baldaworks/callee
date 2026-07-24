@@ -105,7 +105,7 @@ func TestSetupCommandInstallsPluginAndStarterAgents(t *testing.T) {
 
 			configured, err := registry.LoadAgents(registry.AgentLoadOptions{
 				UserDir:    filepath.Join(root, "missing-user-agents"),
-				ProjectDir: filepath.Join(root, ".callee"),
+				ProjectDir: filepath.Join(root, defaultProjectAgentDir),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -153,8 +153,8 @@ func assertStarterInstallOutput(t *testing.T, output string) {
 
 	for _, want := range []string{
 		"Installed starter agents for ",
-		".callee/roles/reviewer.md",
-		".callee/workflows/investigate.md",
+		filepath.Join(defaultProjectAgentDir, "roles", "reviewer.md"),
+		filepath.Join(defaultProjectAgentDir, "workflows", "investigate.md"),
 		"callee agent list",
 		"callee agent view workflows/investigate",
 		"callee agent run workflows/investigate",
@@ -461,12 +461,13 @@ func TestSetupCommandPreservesExistingAgentAndAddsMissingAgents(t *testing.T) {
 	}
 
 	for _, file := range starterAgentFiles {
-		if file.destination == ".callee/roles/reviewer.md" {
+		if starterAgentDestination(defaultProjectAgentDir, file) == filepath.FromSlash(".callee/roles/reviewer.md") {
 			continue
 		}
 
-		if _, err := os.Stat(filepath.FromSlash(file.destination)); err != nil {
-			t.Errorf("missing starter agent %s: %v", file.destination, err)
+		destination := starterAgentDestination(defaultProjectAgentDir, file)
+		if _, err := os.Stat(destination); err != nil {
+			t.Errorf("missing starter agent %s: %v", destination, err)
 		}
 	}
 
@@ -478,7 +479,7 @@ func TestSetupCommandPreservesExistingAgentAndAddsMissingAgents(t *testing.T) {
 
 	if _, err := registry.LoadAgents(registry.AgentLoadOptions{
 		UserDir:    filepath.Join(root, "missing-user-agents"),
-		ProjectDir: filepath.Join(root, ".callee"),
+		ProjectDir: filepath.Join(root, defaultProjectAgentDir),
 	}); err == nil || !strings.Contains(err.Error(), "reviewer") {
 		t.Fatalf("LoadAgents() error = %v, want preserved invalid reviewer to remain visible to doctor", err)
 	}
@@ -555,7 +556,7 @@ func TestCheckedInExamplesFormValidAgentRegistry(t *testing.T) {
 func TestWriteStarterAgentsIsRepeatable(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	first, err := writeStarterAgents("codex", false)
+	first, err := writeStarterAgents("codex", defaultProjectAgentDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,7 +565,7 @@ func TestWriteStarterAgentsIsRepeatable(t *testing.T) {
 		t.Fatalf("first install result = %#v", first)
 	}
 
-	second, err := writeStarterAgents("codex", false)
+	second, err := writeStarterAgents("codex", defaultProjectAgentDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +579,7 @@ func TestWriteStarterAgentsValidatesBeforeWriting(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 
-	if _, err := writeStarterAgents("unknown", false); err == nil || !strings.Contains(err.Error(), "embedded starter agent") {
+	if _, err := writeStarterAgents("unknown", defaultProjectAgentDir, false); err == nil || !strings.Contains(err.Error(), "embedded starter agent") {
 		t.Fatalf("writeStarterAgents() error = %v", err)
 	}
 
@@ -593,5 +594,53 @@ func TestSetupCommandRejectsUnknownTarget(t *testing.T) {
 
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unsupported setup target") {
 		t.Fatalf("setup error = %v", err)
+	}
+}
+
+func TestSetupCommandUsesAgentRootForStarterAgents(t *testing.T) {
+	root := t.TempDir()
+
+	agentRoot := filepath.Join(root, "agents")
+	if err := os.MkdirAll(agentRoot, setupDirMode); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(root)
+
+	original := runSetupCommand
+
+	t.Cleanup(func() { runSetupCommand = original })
+
+	runSetupCommand = func(context.Context, io.Writer, io.Writer, string, ...string) error { return nil }
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"--agent-root", agentRoot, "setup", "codex"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	configured, err := registry.LoadAgents(registry.AgentLoadOptions{
+		UserDir:      filepath.Join(root, "missing-user-agents"),
+		ExclusiveDir: agentRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantIDs := []string{
+		"roles/architect",
+		"roles/explorer",
+		"roles/implementer",
+		"roles/reviewer",
+		"workflows/goalkeeper",
+		"workflows/investigate",
+	}
+	if got := configured.IDs(); !reflect.DeepEqual(got, wantIDs) {
+		t.Fatalf("agent IDs = %#v, want %#v", got, wantIDs)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, ".callee")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected default .callee directory: %v", err)
 	}
 }

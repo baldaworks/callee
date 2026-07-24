@@ -84,6 +84,8 @@ func writeCommandError(args []string, stderr io.Writer, err error) {
 func NewRootCommand() *cobra.Command {
 	var debug, trace bool
 
+	var agentRoot string
+
 	root := &cobra.Command{
 		Use:           "callee",
 		Short:         "Run provider-aware agents and workflows defined in Markdown or YAML.",
@@ -110,6 +112,7 @@ func NewRootCommand() *cobra.Command {
 	}
 	root.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
 	root.PersistentFlags().BoolVar(&trace, "trace", false, "enable trace logging (overrides --debug)")
+	root.PersistentFlags().StringVar(&agentRoot, agentRootFlagName, "", "use this directory as the only Callee agent root")
 	root.AddCommand(agentCommand())
 	root.AddCommand(bridgeCommand())
 	root.AddCommand(doctorCommand())
@@ -164,7 +167,7 @@ func doctorCommand() *cobra.Command {
 		Long:  "Validate the complete agent graph, then initialize every configured Role runtime without sending a model prompt.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			configured, err := loadAgentRegistry()
+			configured, err := loadAgentRegistry(cmd)
 			if err != nil {
 				return err
 			}

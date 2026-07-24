@@ -11,7 +11,7 @@ Each integration exposes two complementary skills:
 | Run Agent | Inspect the catalog and selected tree, collect required parameters, run the chosen agent through a controlling terminal, and return its final artifact with a concise capability trace and emitted execution metrics. |
 | Create Agent | Author a `Role`, `Sequential`, or `Loop` in Markdown or YAML, optionally assemble a Role from PromptKit, validate the physical file, and resolve the complete tree. |
 
-Setup also writes six editable starter resources below `.callee/`: four Roles (`architect`, `explorer`, `implementer`, and `reviewer`) plus the `investigate` and `goalkeeper` workflows. The starter Roles set `spec.provider.type` for the selected setup target and otherwise defer model, mode, and reasoning to that backend.
+Setup also writes six editable starter resources below `.callee/`: four Roles (`architect`, `explorer`, `implementer`, and `reviewer`) plus the `investigate` and `goalkeeper` workflows. The starter Roles set `spec.provider.type` for the selected setup target and otherwise defer model, mode, and reasoning to that backend. Pass `--agent-root <dir>` to place those starter resources under a different exclusive Callee root.
 
 ## One-command setup
 

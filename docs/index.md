@@ -25,4 +25,4 @@ Callee is a CLI runtime for provider-backed agents and deterministic workflows d
 
 The current resource API is `callee.metalagman.dev/v1alpha1`. It supports `Role`, `Sequential`, and `Loop`. Callee is CLI-only and intentionally has no `Parallel` kind, Gemini provider, server transport, durable thread store, or handle binding. Treat the Workflows API as a clean break: removed legacy command and resource forms are not compatibility surfaces.
 
-The checked-in [JSON Schema](../internal/agent/schema.json) is the machine-readable resource contract. Source, tests, CLI help, manifests, and repository instructions remain authoritative when implementation behavior changes.
+The checked-in [JSON Schema](../internal/agent/schema.json) is the machine-readable resource contract. `callee agent schema <Role|Sequential|Loop>` prints standalone per-kind schema documents derived from that same embedded source. Source, tests, CLI help, manifests, and repository instructions remain authoritative when implementation behavior changes.

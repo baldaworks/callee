@@ -14,9 +14,10 @@ import (
 
 // AgentLoadOptions controls versioned agent resource discovery.
 type AgentLoadOptions struct {
-	UserDir    string
-	ProjectDir string
-	HomeDir    string
+	UserDir      string
+	ProjectDir   string
+	HomeDir      string
+	ExclusiveDir string
 }
 
 // AgentRegistry is an immutable registry of versioned agent resources.
@@ -55,6 +56,10 @@ type ResolvedNode struct {
 // project .callee tree. Duplicate IDs are fatal; project resources never
 // shadow user resources.
 func LoadAgents(opts AgentLoadOptions) (*AgentRegistry, error) {
+	if opts.ExclusiveDir != "" {
+		return loadAgentRoots([]agentRoot{{label: "exclusive", path: opts.ExclusiveDir}})
+	}
+
 	if opts.HomeDir == "" {
 		opts.HomeDir, _ = os.UserHomeDir()
 	}

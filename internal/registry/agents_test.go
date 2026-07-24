@@ -27,6 +27,31 @@ func TestLoadAgentsDiscoversKindsAndNestedIDs(t *testing.T) {
 	}
 }
 
+func TestLoadAgentsExclusiveDirIgnoresDefaultRoots(t *testing.T) {
+	t.Parallel()
+
+	user := filepath.Join(t.TempDir(), "user")
+	project := filepath.Join(t.TempDir(), "project")
+	exclusive := filepath.Join(t.TempDir(), "exclusive")
+
+	writeAgent(t, user, "roles/user.yaml", yamlRoleAgent("user"))
+	writeAgent(t, project, "roles/project.yaml", yamlRoleAgent("project"))
+	writeAgent(t, exclusive, "roles/exclusive.yaml", yamlRoleAgent("exclusive"))
+
+	registry, err := LoadAgents(AgentLoadOptions{
+		UserDir:      user,
+		ProjectDir:   project,
+		ExclusiveDir: exclusive,
+	})
+	if err != nil {
+		t.Fatalf("LoadAgents() error: %v", err)
+	}
+
+	if got, want := strings.Join(registry.IDs(), ","), "roles/exclusive"; got != want {
+		t.Errorf("registry.IDs() = %q, want %q", got, want)
+	}
+}
+
 func TestNewAgentRegistryResolveAndRequiredParams(t *testing.T) {
 	t.Parallel()
 

@@ -1,6 +1,6 @@
 # Agent resource format
 
-Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code.
+Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Sequential|Loop>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 
@@ -8,6 +8,10 @@ Callee recursively discovers regular files under both of these roots:
 
 - `$XDG_CONFIG_HOME/callee`, or `$HOME/.config/callee` when `XDG_CONFIG_HOME` is unset;
 - `.callee` in the current working directory.
+
+Pass `callee --agent-root <dir> ...` to switch into exclusive discovery mode.
+When set, Callee ignores both default roots and discovers resources only under
+`<dir>`. The resource ID remains relative to that directory.
 
 Only lowercase `.md`, `.yaml`, and `.yml` extensions are supported. Symlinked files and unsupported extensions are skipped. The resource ID is the slash-separated relative path with its final supported extension removed. For example, `.callee/workflows/review.yml` has ID `workflows/review`.
 

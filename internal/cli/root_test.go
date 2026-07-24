@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/baldaworks/callee/internal/agent"
 	"github.com/baldaworks/callee/internal/logging"
+	"github.com/baldaworks/callee/internal/runtime"
 	"github.com/normahq/codex-acp-bridge/pkg/cobracmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -69,7 +74,7 @@ func TestRootCommandExposesOnlyWorkflowSurface(t *testing.T) {
 		t.Fatalf("find agent command: %v", err)
 	}
 
-	wantAgent := map[string]bool{"run": true, "list": true, "view": true, "validate": true}
+	wantAgent := map[string]bool{"run": true, "list": true, "schema": true, "view": true, "validate": true}
 	for _, command := range agentCommand.Commands() {
 		if !wantAgent[command.Name()] {
 			t.Errorf("unexpected agent command %q", command.Name())
@@ -86,6 +91,10 @@ func TestRootCommandExposesOnlyWorkflowSurface(t *testing.T) {
 		if root.PersistentFlags().Lookup(flag) != nil || agentCommand.Flags().Lookup(flag) != nil {
 			t.Errorf("legacy flag %q is still exposed", flag)
 		}
+	}
+
+	if root.PersistentFlags().Lookup(agentRootFlagName) == nil {
+		t.Fatalf("root is missing --%s", agentRootFlagName)
 	}
 }
 
@@ -297,6 +306,73 @@ func TestRootRequiresCommand(t *testing.T) {
 
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "a command is required") {
 		t.Fatalf("Execute() error = %v, want command required", err)
+	}
+}
+
+func TestDoctorUsesExclusiveAgentRoot(t *testing.T) {
+	project := isolateAgentRoots(t)
+	defaultDir := filepath.Join(project, ".callee")
+	customDir := filepath.Join(project, "agents")
+
+	writeVersionedAgent(t, defaultDir, "roles/default.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: default
+  provider:
+    type: codex
+---
+{{ .Input }}
+`)
+	writeVersionedAgent(t, customDir, "roles/custom.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: custom
+  provider:
+    type: codex
+---
+{{ .Input }}
+`)
+
+	oldDoctor := runAgentDoctor
+
+	t.Cleanup(func() { runAgentDoctor = oldDoctor })
+
+	var gotIDs []string
+
+	runAgentDoctor = func(_ context.Context, agents []agent.Resource, _ runtime.ProcessFactory, _ time.Duration, _ io.Writer) error {
+		for _, item := range agents {
+			gotIDs = append(gotIDs, item.ID)
+		}
+
+		return nil
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	code := Run(context.Background(), []string{"--agent-root", customDir, "doctor"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(doctor) exit = %d, stderr = %q", code, stderr.String())
+	}
+
+	if got, want := strings.Join(gotIDs, ","), "roles/custom"; got != want {
+		t.Fatalf("doctor agents = %q, want %q", got, want)
+	}
+}
+
+func TestAgentRootRequiresExistingDirectory(t *testing.T) {
+	project := isolateAgentRoots(t)
+
+	var stdout, stderr bytes.Buffer
+
+	code := Run(context.Background(), []string{"--agent-root", filepath.Join(project, "missing"), "agent", "list"}, &stdout, &stderr)
+	if code != exitError {
+		t.Fatalf("Run(agent list) exit = %d, want %d", code, exitError)
+	}
+
+	if !strings.Contains(stderr.String(), "does not exist") {
+		t.Fatalf("stderr = %q, want missing root error", stderr.String())
 	}
 }
 

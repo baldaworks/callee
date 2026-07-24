@@ -75,10 +75,6 @@ type agentViewOutput struct {
 	RequiredParams []registry.RequiredParam `json:"requiredParams"`
 }
 
-func loadAgentRegistry() (*registry.AgentRegistry, error) {
-	return registry.LoadAgents(registry.AgentLoadOptions{})
-}
-
 func agentCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
@@ -90,6 +86,7 @@ func agentCommand() *cobra.Command {
 	}
 	cmd.AddCommand(agentRunCommand())
 	cmd.AddCommand(agentListCommand())
+	cmd.AddCommand(agentSchemaCommand())
 	cmd.AddCommand(agentViewCommand())
 	cmd.AddCommand(agentValidateCommand())
 
@@ -149,6 +146,31 @@ func agentRunCommand() *cobra.Command {
 	return cmd
 }
 
+func agentSchemaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "schema <kind>",
+		Short: "Print the JSON Schema for one Callee kind",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			kind, err := parseKindFilter(args[0])
+			if err != nil {
+				return err
+			}
+
+			data, err := resource.SchemaForKind(kind)
+			if err != nil {
+				return err
+			}
+
+			_, err = cmd.OutOrStdout().Write(data)
+
+			return err
+		},
+	}
+
+	return cmd
+}
+
 func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (resultErr error) {
 	started := time.Now()
 	runMetrics := &workflow.RunMetrics{}
@@ -187,7 +209,7 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (res
 		return fmt.Errorf("repl-timeout must be greater than zero")
 	}
 
-	configured, err := loadAgentRegistry()
+	configured, err := loadAgentRegistry(cmd)
 	if err != nil {
 		return err
 	}
@@ -290,7 +312,7 @@ func agentListCommand() *cobra.Command {
 		Short: "List versioned Callee agents",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			configured, err := loadAgentRegistry()
+			configured, err := loadAgentRegistry(cmd)
 			if err != nil {
 				return err
 			}
@@ -351,7 +373,7 @@ func agentViewCommand() *cobra.Command {
 		Short: "View a versioned Callee agent and its resolved tree",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			configured, err := loadAgentRegistry()
+			configured, err := loadAgentRegistry(cmd)
 			if err != nil {
 				return err
 			}

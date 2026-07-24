@@ -50,7 +50,12 @@ func setupCommand() *cobra.Command {
 				return err
 			}
 
-			result, err := writeStarterAgents(target.providerType, force)
+			agentRoot, err := defaultAgentRoot(cmd)
+			if err != nil {
+				return err
+			}
+
+			result, err := writeStarterAgents(target.providerType, agentRoot, force)
 			if err != nil {
 				return err
 			}

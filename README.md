@@ -212,7 +212,8 @@ To install the editable starter Roles and workflows manually, copy the contents
 of `internal/cli/assets/starter/` into `.callee/`, preserving the `roles/` and
 `workflows/` directories. Review existing files before replacing them. Starter
 Roles select only `spec.provider.type`; provider model, mode, and reasoning use
-the ACP backend defaults.
+the ACP backend defaults. Pass `--agent-root <dir>` to `callee` when these
+resources should be discovered from and written under a different root.
 
 ## Agent format
 
@@ -221,6 +222,11 @@ Agents are discovered recursively below two roots:
 - `$XDG_CONFIG_HOME/callee`, or `$HOME/.config/callee` when
   `XDG_CONFIG_HOME` is unset;
 - the current project's `.callee` directory.
+
+Pass `callee --agent-root <dir> ...` to use one custom discovery root instead.
+When set, Callee ignores both default roots and treats `<dir>` as the only
+agent catalog and the default write target for generated or installed Callee
+resources.
 
 Lowercase `.md`, `.yaml`, and `.yml` regular files are supported; symlinked
 files are skipped. Directories such as `roles/` and `workflows/` are optional
@@ -419,7 +425,7 @@ Children may reference any supported kind, including another `Loop`. A child map
 
 Markdown is the canonical authoring format: its physical body becomes `spec.body` and `spec.body` must not also appear in frontmatter. A `.yaml` or `.yml` file represents the same complete resource object and must author `spec.body` inline.
 
-Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. For editor integration, use the raw schema from the repository:
+Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Sequential|Loop>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json

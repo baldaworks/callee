@@ -90,6 +90,169 @@ spec:
 	}
 }
 
+func TestAgentSchemaCommand(t *testing.T) {
+	tests := []struct {
+		kind       string
+		definition string
+	}{
+		{kind: "Role", definition: "role"},
+		{kind: "Sequential", definition: "sequential"},
+		{kind: "Loop", definition: "loop"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.kind, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			exitCode := Run(context.Background(), []string{"agent", "schema", test.kind}, &stdout, &stderr)
+			if exitCode != 0 {
+				t.Fatalf("agent schema exit = %d, stderr = %q", exitCode, stderr.String())
+			}
+
+			var document map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+				t.Fatalf("json.Unmarshal(%q): %v", test.kind, err)
+			}
+
+			if got, want := document["$ref"], "#/$defs/"+test.definition; got != want {
+				t.Fatalf("schema[%q] $ref = %#v, want %q", test.kind, got, want)
+			}
+
+			if _, exists := document["$id"]; exists {
+				t.Fatalf("schema[%q] unexpectedly contains $id", test.kind)
+			}
+
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want empty", stderr.String())
+			}
+		})
+	}
+}
+
+func TestAgentSchemaCommandReportsKindErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "missing kind",
+			args: []string{"agent", "schema"},
+			want: "accepts 1 arg(s), received 0",
+		},
+		{
+			name: "unsupported kind",
+			args: []string{"agent", "schema", "Parallel"},
+			want: `unsupported kind "Parallel"`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			exitCode := Run(context.Background(), test.args, &stdout, &stderr)
+			if exitCode != exitError {
+				t.Fatalf("agent schema exit = %d, want %d", exitCode, exitError)
+			}
+
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty", stdout.String())
+			}
+
+			if !strings.Contains(stderr.String(), test.want) {
+				t.Fatalf("stderr = %q, want containing %q", stderr.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestAgentListUsesExclusiveAgentRoot(t *testing.T) {
+	project := isolateAgentRoots(t)
+	defaultDir := filepath.Join(project, ".callee")
+	customDir := filepath.Join(project, "agents")
+
+	writeVersionedAgent(t, defaultDir, "roles/default.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Default worker.
+  provider:
+    type: codex
+---
+{{ .Input }}
+`)
+	writeVersionedAgent(t, customDir, "roles/custom.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Custom worker.
+  provider:
+    type: codex
+---
+{{ .Input }}
+`)
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"--agent-root", customDir, "agent", "list", "--json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent list exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var catalog agentListOutput
+	if err := json.Unmarshal(stdout.Bytes(), &catalog); err != nil {
+		t.Fatalf("decode agent list: %v", err)
+	}
+
+	if len(catalog.Agents) != 1 || catalog.Agents[0].ResourceID != "roles/custom" {
+		t.Fatalf("agent list = %+v, want only roles/custom", catalog.Agents)
+	}
+}
+
+func TestAgentViewUsesExclusiveAgentRoot(t *testing.T) {
+	project := isolateAgentRoots(t)
+	defaultDir := filepath.Join(project, ".callee")
+	customDir := filepath.Join(project, "agents")
+
+	writeVersionedAgent(t, defaultDir, "roles/default.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Default worker.
+  provider:
+    type: codex
+---
+{{ .Input }}
+`)
+	writeVersionedAgent(t, customDir, "roles/custom.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Custom worker.
+  provider:
+    type: codex
+---
+{{ .Input }}
+`)
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"--agent-root", customDir, "agent", "view", "roles/custom", "--json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var view agentViewOutput
+	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+		t.Fatalf("decode agent view: %v", err)
+	}
+
+	if view.ResourceID != "roles/custom" {
+		t.Fatalf("agent view = %+v, want roles/custom", view)
+	}
+}
+
 func TestAgentValidateStandaloneFiles(t *testing.T) {
 	root := t.TempDir()
 	tests := []struct {
@@ -295,6 +458,63 @@ Task: {{ .Input }}
 
 	if !process.closed {
 		t.Errorf("provider process was not closed before command return")
+	}
+}
+
+func TestAgentRunUsesExclusiveAgentRoot(t *testing.T) {
+	project := isolateAgentRoots(t)
+	defaultDir := filepath.Join(project, ".callee")
+	customDir := filepath.Join(project, "agents")
+
+	writeVersionedAgent(t, defaultDir, "roles/default.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Default worker.
+  provider:
+    type: codex
+---
+default: {{ .Input }}
+`)
+	writeVersionedAgent(t, customDir, "roles/custom.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Custom worker.
+  provider:
+    type: codex
+---
+custom: {{ .Input }}
+`)
+
+	oldOpenTerminal := openTerminal
+	oldFactory := newWorkflowFactory
+
+	t.Cleanup(func() {
+		openTerminal = oldOpenTerminal
+		newWorkflowFactory = oldFactory
+	})
+
+	terminal := &splitTerminal{input: strings.NewReader("build\n")}
+	openTerminal = func() (io.ReadWriteCloser, error) { return terminal, nil }
+	process := &cliTestProcess{response: "implemented"}
+	newWorkflowFactory = func(io.Writer, *terminalInteractor, *workflow.PauseController) runtime.ProcessFactory {
+		return cliTestFactory{process: process}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"--agent-root", customDir, "agent", "run", "roles/custom"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent run exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	if got, want := stdout.String(), "implemented"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+
+	if diagnostics := stripANSI(stderr.String()); !strings.Contains(diagnostics, "id=roles/custom") {
+		t.Fatalf("stderr = %q, want custom role diagnostics", stderr.String())
 	}
 }
 

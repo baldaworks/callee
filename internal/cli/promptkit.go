@@ -328,7 +328,7 @@ func sortedKeys(values map[string]string) []string {
 }
 
 func writePromptKitRole(cmd *cobra.Command, roleID, output string, generated resource.Resource, dryRun, force bool) error {
-	path, err := generatedRolePath(roleID, output)
+	path, err := generatedRolePath(cmd, roleID, output)
 	if err != nil {
 		return err
 	}
@@ -361,7 +361,7 @@ func marshalPromptKitRole(generated resource.Resource) ([]byte, error) {
 	return resource.EncodeMarkdown(generated)
 }
 
-func generatedRolePath(roleID, output string) (string, error) {
+func generatedRolePath(cmd *cobra.Command, roleID, output string) (string, error) {
 	if output != "" {
 		return output, nil
 	}
@@ -373,7 +373,12 @@ func generatedRolePath(roleID, output string) (string, error) {
 		return "", fmt.Errorf("invalid role ID %q", roleID)
 	}
 
-	return filepath.Join(".callee", "roles", clean+".md"), nil
+	root, err := defaultAgentRoot(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(root, "roles", clean+".md"), nil
 }
 
 func writeGeneratedRole(path string, content []byte, force bool) (err error) {

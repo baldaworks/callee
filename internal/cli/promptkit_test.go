@@ -265,6 +265,47 @@ func TestPromptKitRoleCreate(t *testing.T) {
 	}
 }
 
+func TestPromptKitRoleCreateUsesAgentRootByDefault(t *testing.T) {
+	project := t.TempDir()
+
+	agentRoot := filepath.Join(project, "agents")
+	if err := os.MkdirAll(agentRoot, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(%q) returned unexpected error: %v", agentRoot, err)
+	}
+
+	t.Chdir(project)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"--agent-root", agentRoot,
+		"promptkit", "role", "create", "reviewer",
+		"--template", "review-code",
+		"--description", "Reviews code changes.",
+		"--provider", "codex",
+		"--prompt-param", "code",
+		"--bind", "language=Go",
+		"--bind", "context=repository",
+		"--bind", "review_focus=all",
+		"--bind", "additional_protocols=",
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute(promptkit role create) returned unexpected error: %v", err)
+	}
+
+	wantPath := filepath.Join(agentRoot, "roles", "reviewer.md")
+	if got, want := stdout.String(), "created "+wantPath+"\n"; got != want {
+		t.Fatalf("promptkit role create stdout = %q, want %q", got, want)
+	}
+
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("os.Stat(%q) returned unexpected error: %v", wantPath, err)
+	}
+}
+
 func TestPromptKitRoleCreateDryRun(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "reviewer.md")
 	cmd := NewRootCommand()
