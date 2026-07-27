@@ -675,11 +675,11 @@ func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
 		}
 	}
 
-	if got := events[1]["turn_duration"]; got != float64(10000) {
+	if got := events[1]["turn_duration"]; got != "10s" {
 		t.Errorf("first heartbeat turn_duration = %#v, want 10s; event=%#v", got, events[1])
 	}
 
-	if got := events[2]["turn_duration"]; got != float64(20000) {
+	if got := events[2]["turn_duration"]; got != "20s" {
 		t.Errorf("second heartbeat turn_duration = %#v, want 20s; event=%#v", got, events[2])
 	}
 }
@@ -768,8 +768,8 @@ func TestRunnerLogsSeparateHeartbeatForREPLTurns(t *testing.T) {
 		t.Fatalf("heartbeat events = %#v, want %d", durations, want)
 	}
 
-	if durations[0] != float64(10000) || durations[1] != float64(10000) {
-		t.Fatalf("heartbeat durations = %#v, want [10000 10000]", durations)
+	if durations[0] != "10s" || durations[1] != "10s" {
+		t.Fatalf("heartbeat durations = %#v, want [10s 10s]", durations)
 	}
 }
 

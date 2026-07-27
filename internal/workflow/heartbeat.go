@@ -69,7 +69,9 @@ func runTurnWithHeartbeat(
 			default:
 			}
 
-			logger.Info().Dur("turn_duration", turnHeartbeatNow().Sub(started)).Msg("agent turn heartbeat")
+			logger.Info().
+				Str("turn_duration", turnHeartbeatNow().Sub(started).String()).
+				Msg("agent turn heartbeat")
 		}
 	}
 }
