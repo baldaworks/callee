@@ -575,6 +575,24 @@ maximum wait for each operator prompt is `30m`; change it with `--repl-timeout`.
 Hosts must answer on the TTY and must not send `/done`, `quit`, or `exit` to
 choose completion.
 
+### Human smoke test
+
+The repository includes PTY-backed smoke tests that run the current checkout
+against an exclusive fixture catalog:
+
+```bash
+./scripts/smoke-test-callee-human.sh questions
+./scripts/smoke-test-callee-human.sh loop
+```
+
+`questions` needs no provider. `loop` uses the configured Codex ACP runtime to
+verify that a normal Role return continues into a Human response, that the
+response reaches shared state, and that the Loop starts Role visit 2. It then
+stops intentionally instead of waiting for the fixture Loop to converge. The
+Codex CLI must be installed and authenticated, with writable `$CODEX_HOME` or
+`~/.codex`. Pass `--keep-temp` to retain artifacts and diagnostics under
+`/tmp`.
+
 ## Doctor and graphs
 
 ```bash
