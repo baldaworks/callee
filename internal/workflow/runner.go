@@ -166,6 +166,8 @@ func (r *runState) node(
 		return r.role(ctx, node, input)
 	case agent.ScriptKind:
 		return r.script(ctx, node, input)
+	case agent.HumanKind:
+		return r.human(ctx, node, input)
 	case agent.SequentialKind:
 		return r.sequential(ctx, node, input)
 	case agent.LoopKind:

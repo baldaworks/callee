@@ -376,6 +376,36 @@ func TestDecodeYAMLRejectsInvalidDocuments(t *testing.T) {
 	}
 }
 
+func TestDecodeYAMLHumanResource(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("apiVersion: callee.metalagman.dev/v1alpha1\nkind: Human\nspec:\n  description: Ask the operator\n  responseKey: approval\n  body: |\n    Question: {{ .Input }}\n")
+
+	got, err := DecodeYAML("workflows/request-input", "request-input.yaml", data)
+	if err != nil {
+		t.Fatalf("DecodeYAML() error: %v", err)
+	}
+
+	if got.Kind != HumanKind {
+		t.Fatalf("DecodeYAML() kind = %q, want %q", got.Kind, HumanKind)
+	}
+
+	if got.Spec.ResponseKey != "approval" {
+		t.Fatalf("DecodeYAML() responseKey = %q, want approval", got.Spec.ResponseKey)
+	}
+}
+
+func TestDecodeYAMLHumanRequiresResponseKey(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("apiVersion: callee.metalagman.dev/v1alpha1\nkind: Human\nspec:\n  description: Ask the operator\n  body: |\n    Question: {{ .Input }}\n")
+
+	_, err := DecodeYAML("workflows/request-input", "request-input.yaml", data)
+	if err == nil || !strings.Contains(err.Error(), "missing property 'responseKey'") {
+		t.Fatalf("DecodeYAML() error = %v, want missing responseKey", err)
+	}
+}
+
 func TestMarkdownRoundTripPreservesBody(t *testing.T) {
 	t.Parallel()
 
@@ -441,7 +471,7 @@ func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 		{
 			name: "unsupported kind",
 			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Parallel\nspec: {}\n---\n{{ .Input }}",
-			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Sequential, Loop`,
+			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Human, Sequential, Loop`,
 		},
 		{
 			name: "wrong field case",

@@ -61,6 +61,14 @@ Callee also renders optional `cwd` and `env` values from the restricted template
 
 If the Script completed and `onNonZero` allows continuation, the Script returns a compact summary artifact and promotes it to `State.outputs[effectiveId]`. A timeout always fails the workflow. A completed non-zero exit fails unless `onNonZero: continue` is set.
 
+## Human execution
+
+For a Human visit, Callee renders the Human body from `.Prompt`, current `.Input`, and shared `.State`, then displays the rendered text on the controlling terminal and prompts the operator for one nonblank response.
+
+The collected response is written to `State[responseKey]`, where `responseKey` is the authored `spec.responseKey` value. The same response is also promoted to `State.outputs[effectiveId]` and returned as the Human artifact.
+
+Human visits require an interactor backed by a controlling terminal. If no interactor is available, the workflow fails when the Human node is reached.
+
 ## Sequential execution
 
 A Sequential renders its `spec.body` to obtain nonblank local input. It then visits children once in source order.
@@ -119,7 +127,7 @@ If no escalation occurs before the bound:
 
 ## Artifact promotion
 
-Every successful nonblank Role or Script artifact is written to `State.outputs[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation also promotes its final artifact before returning the escalation.
+Every successful nonblank Role, Script, or Human artifact is written to `State.outputs[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation also promotes its final artifact before returning the escalation.
 
 Failed outcomes are not promoted. Repeated successful visits to the same effective ID replace the previous value.
 
@@ -166,14 +174,14 @@ Use `callee agent view <agent-id>` to inspect the required qualified keys before
 
 ## TTY, permissions, and timeouts
 
-`agent run` always opens `/dev/tty`, even when `--message` and all parameters are supplied. This keeps operator prompts and ACP permission choices separate from stdout and stderr and means noninteractive environments without a controlling TTY cannot run a tree.
+`agent run` always opens `/dev/tty`, even when `--message` and all parameters are supplied. This keeps operator prompts, Human-node responses, and ACP permission choices separate from stdout and stderr and means noninteractive environments without a controlling TTY cannot run a tree.
 
 When an ACP provider requests permission, Callee applies the current Role visit's `spec.permissions.mode`. The default `ask` policy uses the controlling TTY for an interactive numbered selection; `allow` and `deny` select compatible provider options automatically. The complete selection and failure contract is defined in [ACP permission requests](../guides/acp-permissions.md).
 
 Two timeout controls have different purposes:
 
 - `spec.provider.timeout`, default `15m`, independently bounds process startup, session creation/preparation, and each provider turn;
-- `--repl-timeout`, default `30m`, bounds each operator prompt, including the initial prompt, missing parameters, REPL responses, and permission selection.
+- `--repl-timeout`, default `30m`, bounds each operator prompt, including the initial prompt, missing parameters, Human responses, REPL responses, and permission selection.
 
 The active provider-turn timeout pauses only while `ask` waits for the operator. Automatic `allow` and `deny` decisions do not pause it. This pause applies only to the current turn's active-time budget; the linked permission guide describes how it interacts with `--repl-timeout` and the other provider operations.
 

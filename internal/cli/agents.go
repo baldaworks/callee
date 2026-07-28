@@ -360,7 +360,7 @@ func agentListCommand() *cobra.Command {
 			return out.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Sequential, or Loop")
+	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, Sequential, or Loop")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the catalog as JSON")
 
 	return cmd
@@ -411,10 +411,10 @@ func parseKindFilter(value string) (resource.Kind, error) {
 	switch resource.Kind(value) {
 	case "":
 		return "", nil
-	case resource.RoleKind, resource.ScriptKind, resource.SequentialKind, resource.LoopKind:
+	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.SequentialKind, resource.LoopKind:
 		return resource.Kind(value), nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Sequential, or Loop)", value)
+		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Sequential, or Loop)", value)
 	}
 }
 

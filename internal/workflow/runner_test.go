@@ -53,6 +53,63 @@ func TestRunnerSequentialPromotesOutputs(t *testing.T) {
 	}
 }
 
+func TestHumanCapturesResponseAndPromotesOutput(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t, humanResource(t, "workflows/request-input", "approval", "Need approval for: {{ .Input }}"))
+	interactor := &scriptedInteractor{answers: []string{"approved"}}
+	run := &runState{
+		prompt:     "prompt",
+		state:      map[string]any{"outputs": map[string]string{}, "scripts": map[string]any{}, "ticket": "CAL-123"},
+		interactor: interactor,
+	}
+
+	result, err := run.human(context.Background(), root, "deploy")
+	if err != nil {
+		t.Fatalf("runState.human() error: %v", err)
+	}
+
+	if result.outcome != outcomeReturn {
+		t.Fatalf("runState.human() outcome = %v, want return", result.outcome)
+	}
+
+	if got, want := result.artifact, "approved"; got != want {
+		t.Fatalf("runState.human() artifact = %q, want %q", got, want)
+	}
+
+	if got, want := interactor.displayed, []string{"Need approval for: deploy"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("displayed prompts = %#v, want %#v", got, want)
+	}
+
+	if got, want := interactor.labels, []string{"workflows/request-input response"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("prompt labels = %#v, want %#v", got, want)
+	}
+
+	if got, want := run.state["approval"], "approved"; got != want {
+		t.Fatalf("state[approval] = %#v, want %q", got, want)
+	}
+
+	outputs := run.state["outputs"].(map[string]string)
+	if got, want := outputs["workflows/request-input"], "approved"; got != want {
+		t.Fatalf("outputs[workflows/request-input] = %q, want %q", got, want)
+	}
+}
+
+func TestHumanRequiresInteractor(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t, humanResource(t, "workflows/request-input", "approval", "Need approval for: {{ .Input }}"))
+	run := &runState{
+		prompt: "prompt",
+		state:  map[string]any{"outputs": map[string]string{}, "scripts": map[string]any{}},
+	}
+
+	_, err := run.human(context.Background(), root, "deploy")
+	if err == nil || !strings.Contains(err.Error(), `requires an interactor`) {
+		t.Fatalf("runState.human() error = %v, want missing interactor", err)
+	}
+}
+
 func TestRunnerLoopConsumesEscalation(t *testing.T) {
 	t.Parallel()
 
@@ -769,6 +826,27 @@ func roleResource(t *testing.T, id string, repl bool, params map[string]string, 
 	}
 	if err := resource.Validate(); err != nil {
 		t.Fatalf("role resource %q validation error: %v", id, err)
+	}
+
+	return resource
+}
+
+func humanResource(t *testing.T, id, responseKey, body string) agent.Resource {
+	t.Helper()
+
+	resource := agent.Resource{
+		APIVersion: agent.APIVersion,
+		Kind:       agent.HumanKind,
+		ID:         id,
+		Source:     id + ".md",
+		Spec: agent.Spec{
+			Description: id,
+			ResponseKey: responseKey,
+			Body:        body,
+		},
+	}
+	if err := resource.Validate(); err != nil {
+		t.Fatalf("human resource %q validation error: %v", id, err)
 	}
 
 	return resource

@@ -1,6 +1,6 @@
 # Agent resource format
 
-Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Sequential|Loop>` to print a standalone schema document for one kind.
+Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|Sequential|Loop>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 
@@ -29,7 +29,7 @@ kind: Role
 spec: {}
 ```
 
-The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Sequential`, and `Loop`. Unknown fields are rejected at every schema-defined object boundary.
+The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `Sequential`, and `Loop`. Unknown fields are rejected at every schema-defined object boundary.
 
 ## Markdown and YAML representations
 
@@ -73,24 +73,25 @@ All kinds require a nonblank `description` and nonblank `body`. Every kind may d
 
 The supported fields differ by kind:
 
-| Field | Role | Script | Sequential | Loop |
-| --- | --- | --- | --- | --- |
-| `description` | Required | Required | Required | Required |
-| `body` | Required | Required | Required | Required |
-| `state` | Optional | Optional | Optional | Optional |
-| `provider` | Required | Not allowed | Not allowed | Not allowed |
-| `permissions` | Optional | Not allowed | Not allowed | Not allowed |
-| `interactive` | Optional | Not allowed | Not allowed | Not allowed |
-| `params` | Optional | Not allowed | Not allowed | Not allowed |
-| `shell` | Not allowed | Optional: `sh` or `bash` | Not allowed | Not allowed |
-| `cwd` | Not allowed | Optional | Not allowed | Not allowed |
-| `env` | Not allowed | Optional string map | Not allowed | Not allowed |
-| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Not allowed |
-| `onNonZero` | Not allowed | Optional: `fail` or `continue` | Not allowed | Not allowed |
-| `children` | Not allowed | Not allowed | Required, nonempty | Required, nonempty |
-| `output` | Not allowed | Not allowed | Optional | Optional |
-| `maxIterations` | Not allowed | Not allowed | Not allowed | Required, integer at least 1 |
-| `onExhausted` | Not allowed | Not allowed | Not allowed | Optional: `fail` or `complete` |
+| Field | Role | Script | Human | Sequential | Loop |
+| --- | --- | --- | --- | --- | --- |
+| `description` | Required | Required | Required | Required | Required |
+| `body` | Required | Required | Required | Required | Required |
+| `state` | Optional | Optional | Optional | Optional | Optional |
+| `provider` | Required | Not allowed | Not allowed | Not allowed | Not allowed |
+| `permissions` | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
+| `interactive` | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
+| `params` | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
+| `responseKey` | Not allowed | Not allowed | Required, nonblank | Not allowed | Not allowed |
+| `shell` | Not allowed | Optional: `sh` or `bash` | Not allowed | Not allowed | Not allowed |
+| `cwd` | Not allowed | Optional | Not allowed | Not allowed | Not allowed |
+| `env` | Not allowed | Optional string map | Not allowed | Not allowed | Not allowed |
+| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Not allowed | Not allowed |
+| `onNonZero` | Not allowed | Optional: `fail` or `continue` | Not allowed | Not allowed | Not allowed |
+| `children` | Not allowed | Not allowed | Not allowed | Required, nonempty | Required, nonempty |
+| `output` | Not allowed | Not allowed | Not allowed | Optional | Optional |
+| `maxIterations` | Not allowed | Not allowed | Not allowed | Not allowed | Required, integer at least 1 |
+| `onExhausted` | Not allowed | Not allowed | Not allowed | Not allowed | Optional: `fail` or `complete` |
 
 ## Role
 
@@ -150,6 +151,27 @@ The body uses the restricted template surface: `.Prompt`, `.Input`, and `.State`
 `spec.timeout` is a positive Go duration and defaults to `15m`. `spec.onNonZero` defaults to `fail`; set it to `continue` when a later child or later Loop iteration should inspect the validator result and keep going.
 
 Every completed Script visit records a result object at `State.scripts[effectiveId]` with `status`, `exitCode`, `stdout`, `stderr`, and `timedOut`. A successful or continued Script visit also promotes a compact summary artifact to `State.outputs[effectiveId]`.
+
+## Human
+
+A `Human` is an operator-backed interactive leaf:
+
+```yaml
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Human
+spec:
+  description: Requests a release approval.
+  responseKey: approval
+  body: |
+    Release candidate:
+    {{ .Input }}
+```
+
+The body uses the restricted template surface: `.Prompt`, `.Input`, and `.State` are available, while `.Params` and `.Output` are not.
+
+`spec.responseKey` names the top-level shared-state entry that receives the collected operator response. The key must be nonblank and cannot be the reserved `outputs` or `scripts` keys.
+
+At runtime, Callee renders `body`, displays the rendered text on the controlling terminal, prompts once for a nonblank response, stores that string at `State[responseKey]`, and also promotes it to `State.outputs[effectiveId]`.
 
 ## Composite children
 

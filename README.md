@@ -25,8 +25,8 @@ Callee installs two complementary skills in your coding host:
 
 | Skill | What it does | Result |
 | --- | --- | --- |
-| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Sequential`, or `Loop` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by the emitted run-wide and per-Role execution metrics. |
-| **Create Agent** | Authors a reusable `Role`, `Sequential`, or `Loop` in Markdown or YAML, using an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
+| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `Sequential`, or `Loop` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by the emitted run-wide and per-Role execution metrics. |
+| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `Sequential`, or `Loop` in Markdown or YAML, using an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
 
 These skills are host integrations: they teach Codex, Claude Code, Grok Build,
 Copilot CLI, OpenCode, or Cursor how to create and run Callee agents. Runtime
@@ -454,7 +454,7 @@ Children may reference any supported kind, including another `Loop`. A child map
 
 Markdown is the canonical authoring format: its physical body becomes `spec.body` and `spec.body` must not also appear in frontmatter. A `.yaml` or `.yml` file represents the same complete resource object and must author `spec.body` inline.
 
-Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Sequential|Loop>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
+Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Human|Sequential|Loop>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json

@@ -4,6 +4,7 @@
   "oneOf": [
     { "$ref": "#/$defs/role" },
     { "$ref": "#/$defs/script" },
+    { "$ref": "#/$defs/human" },
     { "$ref": "#/$defs/sequential" },
     { "$ref": "#/$defs/loop" }
   ],
@@ -125,6 +126,26 @@
             },
             "timeout": { "type": "string" },
             "onNonZero": { "enum": ["fail", "continue"] },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "human": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "Human" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "responseKey", "body"],
+          "properties": {
+            "description": { "type": "string" },
+            "responseKey": { "type": "string", "minLength": 1 },
             "state": { "$ref": "#/$defs/state" },
             "body": { "type": "string", "minLength": 1 }
           },

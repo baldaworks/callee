@@ -101,6 +101,7 @@ func TestAgentSchemaCommand(t *testing.T) {
 	}{
 		{kind: "Role", definition: "role"},
 		{kind: "Script", definition: "script"},
+		{kind: "Human", definition: "human"},
 		{kind: "Sequential", definition: "sequential"},
 		{kind: "Loop", definition: "loop"},
 	}
@@ -169,6 +170,81 @@ func TestAgentSchemaCommandReportsKindErrors(t *testing.T) {
 				t.Fatalf("stderr = %q, want containing %q", stderr.String(), test.want)
 			}
 		})
+	}
+}
+
+func TestAgentListAndViewIncludeHumanNodes(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+
+	writeVersionedAgent(t, dir, "workflows/request-input.yaml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Human
+spec:
+  description: Requests operator input.
+  responseKey: approval
+  body: |
+    Question: {{ .Input }}
+`)
+	writeVersionedAgent(t, dir, "workflows/pipeline.yml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Sequential
+spec:
+  description: Runs a human step.
+  children:
+    - ref: workflows/request-input
+      alias: approver
+  body: |
+    {{ .Input }}
+`)
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"agent", "list", "--json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent list exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var catalog agentListOutput
+	if err := json.Unmarshal(stdout.Bytes(), &catalog); err != nil {
+		t.Fatalf("decode agent list: %v", err)
+	}
+
+	if len(catalog.Agents) != 2 {
+		t.Fatalf("agent list count = %d, want 2", len(catalog.Agents))
+	}
+
+	foundHuman := false
+
+	for _, item := range catalog.Agents {
+		if item.ResourceID == "workflows/request-input" && item.Kind == agent.HumanKind {
+			foundHuman = true
+
+			break
+		}
+	}
+
+	if !foundHuman {
+		t.Fatalf("agent list = %+v, want workflows/request-input with kind Human", catalog.Agents)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	exitCode = Run(context.Background(), []string{"agent", "view", "workflows/pipeline", "--json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var view agentViewOutput
+	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+		t.Fatalf("decode agent view: %v", err)
+	}
+
+	if len(view.ResolvedTree.Children) != 1 {
+		t.Fatalf("resolved children = %d, want 1", len(view.ResolvedTree.Children))
+	}
+
+	if got, want := view.ResolvedTree.Children[0].Kind, agent.HumanKind; got != want {
+		t.Fatalf("resolved child kind = %q, want %q", got, want)
 	}
 }
 

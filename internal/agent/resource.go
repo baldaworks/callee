@@ -19,6 +19,8 @@ const (
 	RoleKind Kind = "Role"
 	// ScriptKind identifies a deterministic local validator leaf.
 	ScriptKind Kind = "Script"
+	// HumanKind identifies an operator-backed interactive leaf.
+	HumanKind Kind = "Human"
 	// SequentialKind identifies an ordered composite agent.
 	SequentialKind Kind = "Sequential"
 	// LoopKind identifies a bounded repeated composite agent.
@@ -82,6 +84,7 @@ type Spec struct {
 	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
 	LegacyREPL    *bool             `json:"repl,omitempty"          yaml:"repl,omitempty"`
 	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
+	ResponseKey   string            `json:"responseKey,omitempty"   yaml:"responseKey,omitempty"`
 	Shell         string            `json:"shell,omitempty"         yaml:"shell,omitempty"`
 	Cwd           string            `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
 	Env           map[string]string `json:"env,omitempty"           yaml:"env,omitempty"`
@@ -291,6 +294,8 @@ func (r Resource) validateKind() error {
 		return r.validateRole()
 	case ScriptKind:
 		return r.validateScript()
+	case HumanKind:
+		return r.validateHuman()
 	case SequentialKind, LoopKind:
 		if _, err := ParseTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
 			return err
@@ -413,6 +418,23 @@ func (r Resource) validateScript() error {
 	return nil
 }
 
+func (r Resource) validateHuman() error {
+	if strings.TrimSpace(r.Spec.ResponseKey) == "" {
+		return fmt.Errorf("agent %q: Human requires nonblank spec.responseKey", r.ID)
+	}
+
+	switch r.Spec.ResponseKey {
+	case "outputs", "scripts":
+		return fmt.Errorf("agent %q: spec.responseKey %q is reserved", r.ID, r.Spec.ResponseKey)
+	}
+
+	if _, err := ParseRestrictedTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // DefaultREPLTimeout returns the CLI operator-wait default.
 func DefaultREPLTimeout() time.Duration {
 	return defaultREPLTimeout
@@ -465,6 +487,7 @@ func (s Spec) canonicalMarshaledSpec() (specMarshalAlias, error) {
 		Permissions:   s.Permissions,
 		Interactive:   interactive,
 		Params:        s.Params,
+		ResponseKey:   s.ResponseKey,
 		Shell:         s.Shell,
 		Cwd:           s.Cwd,
 		Env:           s.Env,
@@ -485,6 +508,7 @@ type specMarshalAlias struct {
 	Permissions   *Permissions      `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
 	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
 	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
+	ResponseKey   string            `json:"responseKey,omitempty"   yaml:"responseKey,omitempty"`
 	Shell         string            `json:"shell,omitempty"         yaml:"shell,omitempty"`
 	Cwd           string            `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
 	Env           map[string]string `json:"env,omitempty"           yaml:"env,omitempty"`
