@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
+	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/registry"
 	"github.com/baldaworks/callee/internal/runtime"
 	"github.com/rs/zerolog"
@@ -222,12 +223,12 @@ func writeLifecycleFinish(
 
 		if result.roleMetrics.turnStarted {
 			event = event.
-				Dur("role_duration", result.roleMetrics.duration).
-				Dur("role_wait_duration", result.roleMetrics.wait)
+				Dur("role_duration", logging.RoundElapsed(result.roleMetrics.duration)).
+				Dur("role_wait_duration", logging.RoundElapsed(result.roleMetrics.wait))
 		}
 	}
 
-	event.Dur("duration", time.Since(started)).Msg(message)
+	event.Dur("duration", logging.RoundElapsed(time.Since(started))).Msg(message)
 }
 
 func appendUsageMetrics(event *zerolog.Event, prefix string, usage runtime.UsageMetrics) *zerolog.Event {

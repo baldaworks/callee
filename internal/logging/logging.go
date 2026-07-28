@@ -29,6 +29,11 @@ const (
 	LevelError                    = "error"
 )
 
+// RoundElapsed reduces elapsed telemetry to whole-second precision.
+func RoundElapsed(duration time.Duration) time.Duration {
+	return duration.Round(time.Second)
+}
+
 // Option configures application logging.
 type Option func(*options)
 

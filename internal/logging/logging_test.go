@@ -16,6 +16,29 @@ import (
 
 const humanDuration = 43*time.Second + 453998585*time.Nanosecond
 
+func TestRoundElapsed(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		raw  time.Duration
+		want time.Duration
+	}{
+		{name: "small fraction", raw: 2*time.Minute + 40*time.Second + 2*time.Millisecond, want: 2*time.Minute + 40*time.Second},
+		{name: "large fraction", raw: 2*time.Minute + 40*time.Second + 800*time.Millisecond, want: 2*time.Minute + 41*time.Second},
+		{name: "below half second", raw: 499 * time.Millisecond, want: 0},
+		{name: "half second", raw: 500 * time.Millisecond, want: time.Second},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := RoundElapsed(test.raw); got != test.want {
+				t.Errorf("RoundElapsed(%s) = %s, want %s", test.raw, got, test.want)
+			}
+		})
+	}
+}
+
 func TestInitConfiguresZerologAndSlog(t *testing.T) {
 	t.Cleanup(func() { _ = Init(WithLevel(LevelInfo)) })
 
@@ -57,6 +80,27 @@ func TestInitWithJSONWritesStructuredLogs(t *testing.T) {
 	}
 }
 
+func TestInitWithJSONWritesRoundedElapsedDurations(t *testing.T) {
+	var output bytes.Buffer
+
+	t.Cleanup(func() { _ = Init(WithLevel(LevelInfo)) })
+
+	if err := Init(WithLevel(LevelInfo), WithJSON(true), WithWriter(&output)); err != nil {
+		t.Fatal(err)
+	}
+
+	log.Info().Dur("duration", RoundElapsed(humanDuration)).Msg("agent finished")
+
+	var event map[string]any
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatalf("unmarshal JSON log: %v\n%s", err, output.String())
+	}
+
+	if event["duration"] != "43s" {
+		t.Fatalf("duration = %#v, want 43s; event=%#v", event["duration"], event)
+	}
+}
+
 func TestInitWritesHumanReadableConsoleDurations(t *testing.T) {
 	var output bytes.Buffer
 
@@ -66,10 +110,10 @@ func TestInitWritesHumanReadableConsoleDurations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	log.Info().Dur("duration", humanDuration).Msg("agent finished")
+	log.Info().Dur("duration", RoundElapsed(humanDuration)).Msg("agent finished")
 
-	if got := stripANSI(output.String()); !strings.Contains(got, "duration=43.453998585s") {
-		t.Fatalf("console output = %q, want human-readable duration", got)
+	if got := stripANSI(output.String()); !strings.Contains(got, "duration=43s") {
+		t.Fatalf("console output = %q, want whole-second duration", got)
 	}
 }
 

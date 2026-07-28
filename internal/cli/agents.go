@@ -16,6 +16,7 @@ import (
 	"time"
 
 	resource "github.com/baldaworks/callee/internal/agent"
+	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/registry"
 	"github.com/baldaworks/callee/internal/runtime"
 	"github.com/baldaworks/callee/internal/workflow"
@@ -280,8 +281,8 @@ func writeAgentRunFinish(
 ) {
 	event := log.Ctx(ctx).Info().
 		Str("id", id).
-		Dur("agent_duration", duration).
-		Dur("agent_wait_duration", wait).
+		Dur("agent_duration", logging.RoundElapsed(duration)).
+		Dur("agent_wait_duration", logging.RoundElapsed(wait)).
 		Str("agent_token_usage", string(usage.Status()))
 	if resultErr != nil {
 		event = event.Str("status", "error")
@@ -620,21 +621,21 @@ func (c *workflowPermissionController) Handle(ctx context.Context, request acp.R
 
 	if !ok {
 		err := fmt.Errorf("permission request for unbound ACP session %q", request.SessionId)
-		logger.Error().Err(err).Dur("duration", time.Since(started)).Msg("permission request failed")
+		logger.Error().Err(err).Dur("duration", logging.RoundElapsed(time.Since(started))).Msg("permission request failed")
 
 		return acp.RequestPermissionResponse{}, err
 	}
 
 	response, err := c.respond(ctx, policy, request)
 	if err != nil {
-		logger.Error().Err(err).Dur("duration", time.Since(started)).Msg("permission request failed")
+		logger.Error().Err(err).Dur("duration", logging.RoundElapsed(time.Since(started))).Msg("permission request failed")
 
 		return acp.RequestPermissionResponse{}, err
 	}
 
 	answer := logger.Info().
 		Str("outcome", permissionOutcomeLabel(response.Outcome)).
-		Dur("duration", time.Since(started))
+		Dur("duration", logging.RoundElapsed(time.Since(started)))
 	if kind, found := selectedPermissionOptionKind(response.Outcome, request.Options); found {
 		answer = answer.Str("option_kind", string(kind))
 	}

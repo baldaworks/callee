@@ -527,12 +527,6 @@ Task: {{ .Input }}
 		"agent_cached_read_tokens=4",
 	)
 
-	for line := range strings.SplitSeq(diagnostics, "\n") {
-		if strings.Contains(line, "INF agent run finished") && strings.Contains(line, "agent_wait_duration=0s") {
-			t.Errorf("agent run did not include initial prompt wait: %s", line)
-		}
-	}
-
 	if strings.Contains(stderr.String(), "implemented") {
 		t.Errorf("stderr = %q, want artifact only on stdout", stderr.String())
 	}

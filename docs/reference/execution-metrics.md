@@ -9,7 +9,7 @@ Metrics are INFO-level structured fields on stderr events. They do not alter std
 | Event | Metrics | Scope |
 | --- | --- | --- |
 | `agent finished` for a `Role` | `role_*` | One visit to that Role occurrence. Repeated Loop visits have separate scopes. |
-| `agent finished` for `Script`, `Sequential`, or `Loop` | None | Non-Role lifecycle events retain their general `duration` field but do not receive `role_*` fields. |
+| `agent finished` for `Script`, `Human`, `Sequential`, or `Loop` | None | Non-Role lifecycle events retain their general `duration` field but do not receive `role_*` fields. |
 | `agent run finished` | `agent_*` | The complete `agent run` command, including every Role visit reached by the selected root. |
 
 A Role selected directly as the root has the same `role_*` behavior as a Role nested under `Sequential` or `Loop`. Aliases and repeated visits do not change the field meanings. Each Role visit reports separately, while the final `agent_*` token fields aggregate all attempted provider turns across all visits.
@@ -18,7 +18,7 @@ The final `agent run finished` event also has `status=completed` or `status=erro
 
 ## Duration boundaries
 
-Durations are wall-clock measurements rendered as Go duration strings, such as `2.418s` or `0s`.
+Durations are wall-clock measurements rounded to the nearest second at the logging boundary and rendered as Go duration strings, such as `2s` or `0s`. Internal measurement and timeout handling retain their original precision. A positive duration below 500 milliseconds therefore appears as `0s`.
 
 | Field | Start | End | Presence |
 | --- | --- | --- | --- |
@@ -39,6 +39,7 @@ Wait duration measures elapsed time inside controlling-TTY prompt calls, includi
 
 - the initial prompt when `--message` is omitted;
 - missing Role parameters;
+- Human-node responses;
 - responses requested by a REPL Role after `callee.control.v1.await`;
 - numbered ACP permission selections under `permissions.mode: ask`.
 
@@ -58,7 +59,7 @@ Every Role `agent finished` event identifies the effective provider selections f
 
 Callee resolves model and reasoning independently. For each field, the latest concrete ACP value wins over the explicit Role value. If ACP does not report a concrete value, the explicit Role selection remains the fallback. Only when neither source supplies a concrete value does Callee emit `backend-default`. This marker does not identify or make a claim about the backend's private default. `role_provider` is always the validated Role provider type and does not use the marker.
 
-These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Script`, `Sequential`, and `Loop` events do not receive any `role_*` fields.
+These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Script`, `Human`, `Sequential`, and `Loop` events do not receive any `role_*` fields.
 
 ## Token fields and aggregation
 
@@ -91,8 +92,8 @@ When at least one turn reports usage, input, output, and total fields are emitte
 The console logger renders structured fields as `key=value` pairs. A successful one-visit run with provider usage produces events shaped like:
 
 ```text
-INF agent finished id=roles/worker kind=Role visit=1 status=completed outcome=return role_provider=codex role_model=gpt-5.6-sol role_reasoning=high role_token_usage=complete role_input_tokens=11 role_output_tokens=3 role_total_tokens=17 role_cached_read_tokens=4 role_duration=2.418s role_wait_duration=0s duration=2.621s
-INF agent run finished id=roles/worker agent_duration=2.734s agent_wait_duration=0s agent_token_usage=complete status=completed agent_input_tokens=11 agent_output_tokens=3 agent_total_tokens=17 agent_cached_read_tokens=4
+INF agent finished id=roles/worker kind=Role visit=1 status=completed outcome=return role_provider=codex role_model=gpt-5.6-sol role_reasoning=high role_token_usage=complete role_input_tokens=11 role_output_tokens=3 role_total_tokens=17 role_cached_read_tokens=4 role_duration=2s role_wait_duration=0s duration=3s
+INF agent run finished id=roles/worker agent_duration=3s agent_wait_duration=0s agent_token_usage=complete status=completed agent_input_tokens=11 agent_output_tokens=3 agent_total_tokens=17 agent_cached_read_tokens=4
 ```
 
 Field order is not an interface. Select records by their event message and read fields by name.
@@ -100,10 +101,10 @@ Field order is not an interface. Select records by their event message and read 
 A Role that fails during parameter resolution, rendering, provider startup, session creation, or preparation still reports its provider-selection and token-status fields. It has no Role timing fields because no provider turn started:
 
 ```text
-INF agent finished id=roles/worker kind=Role visit=1 status=error role_provider=codex role_model=backend-default role_reasoning=high role_token_usage=unavailable duration=83.2ms
+INF agent finished id=roles/worker kind=Role visit=1 status=error role_provider=codex role_model=backend-default role_reasoning=high role_token_usage=unavailable duration=0s
 ```
 
-The exact error is reported separately. A containing `Script`, `Sequential`, or `Loop` finish event retains its unprefixed lifecycle `duration` but does not copy these `role_*` fields.
+The exact error is reported separately. A containing `Script`, `Human`, `Sequential`, or `Loop` finish event retains its unprefixed lifecycle `duration` but does not copy these `role_*` fields.
 
 ## No tool metrics
 

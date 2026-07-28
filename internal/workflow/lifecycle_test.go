@@ -26,9 +26,11 @@ func withManualTurnHeartbeatHooks(t *testing.T, nowCh <-chan time.Time, tickerCh
 	previousInterval := turnHeartbeatInterval
 	previousNow := turnHeartbeatNow
 	previousTicker := newTurnHeartbeatTicker
+	previousDurationFormat := zerolog.DurationFieldFormat
 
 	turnHeartbeatInterval = 10 * time.Second
 	turnHeartbeatNow = func() time.Time { return <-nowCh }
+	zerolog.DurationFieldFormat = zerolog.DurationFormatString
 	newTurnHeartbeatTicker = func(time.Duration) turnHeartbeatTicker {
 		return manualTurnHeartbeatTicker{ch: tickerCh}
 	}
@@ -37,6 +39,7 @@ func withManualTurnHeartbeatHooks(t *testing.T, nowCh <-chan time.Time, tickerCh
 		turnHeartbeatInterval = previousInterval
 		turnHeartbeatNow = previousNow
 		newTurnHeartbeatTicker = previousTicker
+		zerolog.DurationFieldFormat = previousDurationFormat
 	})
 }
 
@@ -646,8 +649,8 @@ func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
 
 	<-process.turnStarted
 
-	emitTurnHeartbeatTick(tickerCh, nowCh, now, now.Add(10*time.Second))
-	emitTurnHeartbeatTick(tickerCh, nowCh, now.Add(20*time.Second), now.Add(20*time.Second))
+	emitTurnHeartbeatTick(tickerCh, nowCh, now, now.Add(10*time.Second+2*time.Millisecond))
+	emitTurnHeartbeatTick(tickerCh, nowCh, now.Add(20*time.Second), now.Add(20*time.Second+800*time.Millisecond))
 
 	process.releaseTurns <- struct{}{}
 
@@ -679,8 +682,8 @@ func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
 		t.Errorf("first heartbeat turn_duration = %#v, want 10s; event=%#v", got, events[1])
 	}
 
-	if got := events[2]["turn_duration"]; got != "20s" {
-		t.Errorf("second heartbeat turn_duration = %#v, want 20s; event=%#v", got, events[2])
+	if got := events[2]["turn_duration"]; got != "21s" {
+		t.Errorf("second heartbeat turn_duration = %#v, want 21s; event=%#v", got, events[2])
 	}
 }
 

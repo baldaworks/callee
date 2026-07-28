@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/runtime"
 	"github.com/rs/zerolog"
 )
@@ -70,7 +71,7 @@ func runTurnWithHeartbeat(
 			}
 
 			logger.Info().
-				Str("turn_duration", turnHeartbeatNow().Sub(started).String()).
+				Dur("turn_duration", logging.RoundElapsed(turnHeartbeatNow().Sub(started))).
 				Msg("agent turn heartbeat")
 		}
 	}
