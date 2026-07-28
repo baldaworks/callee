@@ -21,6 +21,11 @@ func TestDecodeMarkdownKinds(t *testing.T) {
 			kind: RoleKind,
 		},
 		{
+			name: "script",
+			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Script\nspec:\n  description: validator\n---\necho {{ .Input }}\n",
+			kind: ScriptKind,
+		},
+		{
 			name: "sequential",
 			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Sequential\nspec:\n  description: pipeline\n  children: [roles/worker]\n---\n{{ .Input }}\n",
 			kind: SequentialKind,
@@ -60,6 +65,11 @@ func TestDecodeYAMLKinds(t *testing.T) {
 			name: "role",
 			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider:\n    type: codex\n  body: |\n    Do this:\n    {{ .Input }}\n",
 			kind: RoleKind,
+		},
+		{
+			name: "script",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Script\nspec:\n  description: validator\n  body: |\n    echo {{ .Input }}\n",
+			kind: ScriptKind,
 		},
 		{
 			name: "sequential",
@@ -431,7 +441,7 @@ func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 		{
 			name: "unsupported kind",
 			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Parallel\nspec: {}\n---\n{{ .Input }}",
-			want: `unsupported kind "Parallel"; supported kinds: Role, Sequential, Loop`,
+			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Sequential, Loop`,
 		},
 		{
 			name: "wrong field case",

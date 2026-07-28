@@ -17,6 +17,8 @@ const (
 
 	// RoleKind identifies a provider-backed leaf agent.
 	RoleKind Kind = "Role"
+	// ScriptKind identifies a deterministic local validator leaf.
+	ScriptKind Kind = "Script"
 	// SequentialKind identifies an ordered composite agent.
 	SequentialKind Kind = "Sequential"
 	// LoopKind identifies a bounded repeated composite agent.
@@ -35,6 +37,7 @@ const (
 const (
 	defaultProviderTimeout = 15 * time.Minute
 	defaultREPLTimeout     = 30 * time.Minute
+	defaultScriptShell     = "sh"
 )
 
 var aliasPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -79,6 +82,11 @@ type Spec struct {
 	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
 	LegacyREPL    *bool             `json:"repl,omitempty"          yaml:"repl,omitempty"`
 	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
+	Shell         string            `json:"shell,omitempty"         yaml:"shell,omitempty"`
+	Cwd           string            `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
+	Env           map[string]string `json:"env,omitempty"           yaml:"env,omitempty"`
+	Timeout       string            `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
+	OnNonZero     string            `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
 	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
 	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
 	Body          string            `json:"body"                    yaml:"body,omitempty"`
@@ -165,6 +173,38 @@ func (r Resource) REPL() bool {
 	return r.Interactive()
 }
 
+// ScriptShell returns the effective shell used by a Script.
+func (r Resource) ScriptShell() string {
+	if strings.TrimSpace(r.Spec.Shell) == "" {
+		return defaultScriptShell
+	}
+
+	return strings.TrimSpace(r.Spec.Shell)
+}
+
+// ScriptTimeout returns the effective per-script execution timeout.
+func (r Resource) ScriptTimeout() time.Duration {
+	if strings.TrimSpace(r.Spec.Timeout) == "" {
+		return defaultProviderTimeout
+	}
+
+	value, err := time.ParseDuration(r.Spec.Timeout)
+	if err != nil {
+		return defaultProviderTimeout
+	}
+
+	return value
+}
+
+// NonZeroPolicy reports the effective Script exit handling policy.
+func (r Resource) NonZeroPolicy() string {
+	if r.Spec.OnNonZero == "" {
+		return "fail"
+	}
+
+	return r.Spec.OnNonZero
+}
+
 // EffectivePermissionMode reports the Role permission mode, defaulting to ask.
 func (r Resource) EffectivePermissionMode() PermissionMode {
 	if r.Spec.Permissions == nil || r.Spec.Permissions.Mode == "" {
@@ -249,6 +289,8 @@ func (r Resource) validateKind() error {
 	switch r.Kind {
 	case RoleKind:
 		return r.validateRole()
+	case ScriptKind:
+		return r.validateScript()
 	case SequentialKind, LoopKind:
 		if _, err := ParseTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
 			return err
@@ -320,6 +362,57 @@ func (r Resource) validateRole() error {
 	return ValidateRoleTemplate(r.ID, r.Spec.Body)
 }
 
+func (r Resource) validateScript() error {
+	if _, err := ParseRestrictedTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
+		return err
+	}
+
+	switch r.ScriptShell() {
+	case "sh", "bash":
+	default:
+		return fmt.Errorf("agent %q: spec.shell %q must be sh or bash", r.ID, r.Spec.Shell)
+	}
+
+	if r.Spec.Cwd != "" {
+		if _, err := ParseRestrictedTemplate(r.ID+" spec.cwd", r.Spec.Cwd); err != nil {
+			return err
+		}
+	}
+
+	for name, value := range r.Spec.Env {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("agent %q: spec.env contains a blank name", r.ID)
+		}
+
+		if strings.Contains(name, "=") {
+			return fmt.Errorf("agent %q: spec.env name %q must not contain =", r.ID, name)
+		}
+
+		if _, err := ParseRestrictedTemplate(r.ID+" spec.env."+name, value); err != nil {
+			return err
+		}
+	}
+
+	if r.Spec.Timeout != "" {
+		timeout, err := time.ParseDuration(r.Spec.Timeout)
+		if err != nil {
+			return fmt.Errorf("agent %q: spec.timeout %q: %w", r.ID, r.Spec.Timeout, err)
+		}
+
+		if timeout <= 0 {
+			return fmt.Errorf("agent %q: spec.timeout must be greater than zero", r.ID)
+		}
+	}
+
+	switch r.NonZeroPolicy() {
+	case "fail", "continue":
+	default:
+		return fmt.Errorf("agent %q: spec.onNonZero %q must be fail or continue", r.ID, r.Spec.OnNonZero)
+	}
+
+	return nil
+}
+
 // DefaultREPLTimeout returns the CLI operator-wait default.
 func DefaultREPLTimeout() time.Duration {
 	return defaultREPLTimeout
@@ -372,6 +465,11 @@ func (s Spec) canonicalMarshaledSpec() (specMarshalAlias, error) {
 		Permissions:   s.Permissions,
 		Interactive:   interactive,
 		Params:        s.Params,
+		Shell:         s.Shell,
+		Cwd:           s.Cwd,
+		Env:           s.Env,
+		Timeout:       s.Timeout,
+		OnNonZero:     s.OnNonZero,
 		State:         s.State,
 		Children:      s.Children,
 		Body:          s.Body,
@@ -387,6 +485,11 @@ type specMarshalAlias struct {
 	Permissions   *Permissions      `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
 	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
 	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
+	Shell         string            `json:"shell,omitempty"         yaml:"shell,omitempty"`
+	Cwd           string            `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
+	Env           map[string]string `json:"env,omitempty"           yaml:"env,omitempty"`
+	Timeout       string            `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
+	OnNonZero     string            `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
 	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
 	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
 	Body          string            `json:"body"                    yaml:"body,omitempty"`

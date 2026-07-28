@@ -6,10 +6,11 @@ Callee turns repository-owned agent resources into a statically validated execut
 
 | Concept | Meaning |
 | --- | --- |
-| Resource | One versioned Markdown or YAML definition with a `Role`, `Sequential`, or `Loop` kind. |
+| Resource | One versioned Markdown or YAML definition with a `Role`, `Script`, `Sequential`, or `Loop` kind. |
 | Resource ID | The path below a discovery root with the final supported extension removed, such as `roles/reviewer`. |
 | Resolved node | One occurrence of a resource in a selected root tree. An edge alias, when present, becomes its effective ID. |
 | Role | A provider-backed leaf that renders a prompt and performs one or more turns in one fresh ACP session. |
+| Script | A deterministic local validator leaf that runs a shell step and records structured results in workflow state. |
 | Sequential | A composite that visits children once in source order. |
 | Loop | A bounded composite that repeatedly visits ordered children until an authorized descendant escalates or the Loop exhausts. |
 | Root-run state | One ephemeral JSON-compatible object shared by every node visit in a run. |
@@ -44,7 +45,7 @@ Discovery loads the user and project roots together. Registry construction rejec
 
 Escalation authority belongs to child edges, not resource definitions. A Role may escalate to its nearest enclosing Loop only when every edge from that Loop to the Role occurrence sets `canEscalate: true`; omitted values are `false`. Entering a nested Loop starts a new authorization boundary, so its descendants do not inherit authority from the outer Loop. The resolved effective capability is visible in `agent view`, while doctor graphs show the authored value on every edge. See [Escalation authorization](../reference/workflow-semantics.md#escalation-authorization) for the runtime consequences.
 
-At runtime, the runner creates state with an engine-owned `outputs` map. Each node may render a state modifier against a pre-node snapshot. A Role renders its body and calls its provider session. Composites render their body to produce local input, visit children, and optionally render `spec.output` to transform the natural child result. See [Workflow semantics](../reference/workflow-semantics.md) for the precise data flow.
+At runtime, the runner creates state with engine-owned `outputs` and `scripts` maps. Each node may render a state modifier against a pre-node snapshot. A Role renders its body and calls its provider session. A Script renders and executes a local validator step, then records its structured result under `State.scripts`. Composites render their body to produce local input, visit children, and optionally render `spec.output` to transform the natural child result. See [Workflow semantics](../reference/workflow-semantics.md) for the precise data flow.
 
 ## Process and session ownership
 
@@ -60,11 +61,12 @@ The runner owns one state object for the entire root run:
 
 ```yaml
 outputs: {}
+scripts: {}
 ```
 
-Authored `spec.state` and child-edge `state` values add or replace top-level keys; they cannot author `outputs`. Edge state wins over resource state for the same key. All string leaves are templates rendered against one immutable pre-node snapshot, and the complete modifier commits atomically.
+Authored `spec.state` and child-edge `state` values add or replace top-level keys; they cannot author `outputs` or `scripts`. Edge state wins over resource state for the same key. All string leaves are templates rendered against one immutable pre-node snapshot, and the complete modifier commits atomically.
 
-Each successful, nonblank node artifact is promoted to `State.outputs[effectiveId]`. Repeated visits use last-successful-write-wins. State is neither persisted after the command exits nor shared across root runs.
+Each successful, nonblank node artifact is promoted to `State.outputs[effectiveId]`. Completed Script visits also record `status`, `exitCode`, `stdout`, `stderr`, and `timedOut` at `State.scripts[effectiveId]`. Repeated visits use last-successful-write-wins. State is neither persisted after the command exits nor shared across root runs.
 
 ## Host integration versus runtime provider
 

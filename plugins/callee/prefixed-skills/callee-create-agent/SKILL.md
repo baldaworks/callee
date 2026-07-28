@@ -1,6 +1,6 @@
 ---
 name: callee-create-agent
-description: Create project-defined Callee Role, Sequential, and Loop agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
+description: Create project-defined Callee Role, Script, Sequential, and Loop agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
 ---
 
 # Create a Callee agent
@@ -18,6 +18,7 @@ callee agent list --json
 Choose exactly one supported kind:
 
 - `Role`: one provider-backed leaf agent.
+- `Script`: one deterministic local validator leaf.
 - `Sequential`: ordered child agents that each run once.
 - `Loop`: ordered child agents repeated until an authorized Role escalates or the iteration limit is exhausted.
 
@@ -64,6 +65,24 @@ Focus:
 ```
 
 Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`; do not choose `allow` unless the user explicitly requests unattended approval. Set `spec.interactive: true` on a directly authored Role only when it must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
+
+## Author a Script
+
+Author a `Script` directly when the requested node is a deterministic validator such as tests, lint, formatting checks, or other local gates:
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Script
+spec:
+  description: Runs a validator.
+  shell: sh
+  onNonZero: continue
+---
+go test ./...
+```
+
+Use `shell: sh` unless the request clearly needs Bash-specific syntax. Set `onNonZero: fail` for hard gates and `onNonZero: continue` only when a later node or later Loop iteration must inspect the validator result in `.State.scripts`. Use `cwd`, `env`, and `timeout` only when the request explicitly needs them.
 
 ## Author a workflow
 

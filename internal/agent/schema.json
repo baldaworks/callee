@@ -3,6 +3,7 @@
   "$id": "https://callee.metalagman.dev/schema/v1alpha1/agent.json",
   "oneOf": [
     { "$ref": "#/$defs/role" },
+    { "$ref": "#/$defs/script" },
     { "$ref": "#/$defs/sequential" },
     { "$ref": "#/$defs/loop" }
   ],
@@ -51,7 +52,12 @@
     },
     "state": {
       "type": "object",
-      "not": { "required": ["outputs"] },
+      "not": {
+        "anyOf": [
+          { "required": ["outputs"] },
+          { "required": ["scripts"] }
+        ]
+      },
       "additionalProperties": { "$ref": "#/$defs/stateValue" }
     },
     "params": {
@@ -92,6 +98,33 @@
             "interactive": { "type": "boolean" },
             "repl": { "type": "boolean", "deprecated": true },
             "params": { "$ref": "#/$defs/params" },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "script": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "Script" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "body"],
+          "properties": {
+            "description": { "type": "string" },
+            "shell": { "type": "string" },
+            "cwd": { "type": "string" },
+            "env": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "timeout": { "type": "string" },
+            "onNonZero": { "enum": ["fail", "continue"] },
             "state": { "$ref": "#/$defs/state" },
             "body": { "type": "string", "minLength": 1 }
           },

@@ -360,7 +360,7 @@ func agentListCommand() *cobra.Command {
 			return out.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Sequential, or Loop")
+	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Sequential, or Loop")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the catalog as JSON")
 
 	return cmd
@@ -411,10 +411,10 @@ func parseKindFilter(value string) (resource.Kind, error) {
 	switch resource.Kind(value) {
 	case "":
 		return "", nil
-	case resource.RoleKind, resource.SequentialKind, resource.LoopKind:
+	case resource.RoleKind, resource.ScriptKind, resource.SequentialKind, resource.LoopKind:
 		return resource.Kind(value), nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Sequential, or Loop)", value)
+		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Sequential, or Loop)", value)
 	}
 }
 
@@ -466,6 +466,12 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 		}
 
 		policy += fmt.Sprintf(" interactive=%t permissions=%s authoredPermissions=%s", node.Interactive != nil && *node.Interactive, permissionMode, authoredPermissionMode)
+	case resource.ScriptKind:
+		policy += fmt.Sprintf(
+			" shell=%s onNonZero=%s",
+			node.Resource.ScriptShell(),
+			node.Resource.NonZeroPolicy(),
+		)
 	case resource.LoopKind:
 		maxIterations := 0
 		if node.MaxIterations != nil {

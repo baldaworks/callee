@@ -9,7 +9,7 @@ Metrics are INFO-level structured fields on stderr events. They do not alter std
 | Event | Metrics | Scope |
 | --- | --- | --- |
 | `agent finished` for a `Role` | `role_*` | One visit to that Role occurrence. Repeated Loop visits have separate scopes. |
-| `agent finished` for `Sequential` or `Loop` | None | Composite lifecycle events retain their general `duration` field but do not receive `role_*` fields. |
+| `agent finished` for `Script`, `Sequential`, or `Loop` | None | Non-Role lifecycle events retain their general `duration` field but do not receive `role_*` fields. |
 | `agent run finished` | `agent_*` | The complete `agent run` command, including every Role visit reached by the selected root. |
 
 A Role selected directly as the root has the same `role_*` behavior as a Role nested under `Sequential` or `Loop`. Aliases and repeated visits do not change the field meanings. Each Role visit reports separately, while the final `agent_*` token fields aggregate all attempted provider turns across all visits.
@@ -58,7 +58,7 @@ Every Role `agent finished` event identifies the effective provider selections f
 
 Callee resolves model and reasoning independently. For each field, the latest concrete ACP value wins over the explicit Role value. If ACP does not report a concrete value, the explicit Role selection remains the fallback. Only when neither source supplies a concrete value does Callee emit `backend-default`. This marker does not identify or make a claim about the backend's private default. `role_provider` is always the validated Role provider type and does not use the marker.
 
-These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Sequential` and `Loop` events do not receive any `role_*` fields.
+These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Script`, `Sequential`, and `Loop` events do not receive any `role_*` fields.
 
 ## Token fields and aggregation
 
@@ -103,7 +103,7 @@ A Role that fails during parameter resolution, rendering, provider startup, sess
 INF agent finished id=roles/worker kind=Role visit=1 status=error role_provider=codex role_model=backend-default role_reasoning=high role_token_usage=unavailable duration=83.2ms
 ```
 
-The exact error is reported separately. A containing `Sequential` or `Loop` finish event retains its unprefixed lifecycle `duration` but does not copy these `role_*` fields.
+The exact error is reported separately. A containing `Script`, `Sequential`, or `Loop` finish event retains its unprefixed lifecycle `duration` but does not copy these `role_*` fields.
 
 ## No tool metrics
 

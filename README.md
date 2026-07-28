@@ -361,6 +361,22 @@ and put every argument in `extraArgs`:
 
 See the runnable [`reviewer`](examples/roles/reviewer.md) example.
 
+### Script
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Script
+spec:
+  description: Runs a local validator.
+  shell: sh
+  onNonZero: continue
+---
+go test ./...
+```
+
+`Script` runs a local validator step through `sh` or `bash`, captures `stdout` and `stderr`, and records structured results in `.State.scripts[effectiveId]`. Use `onNonZero: fail` for hard gates and `onNonZero: continue` when a later node should inspect the failure and decide what to do next.
+
 ### Sequential
 
 ```markdown
@@ -438,7 +454,7 @@ Children may reference any supported kind, including another `Loop`. A child map
 
 Markdown is the canonical authoring format: its physical body becomes `spec.body` and `spec.body` must not also appear in frontmatter. A `.yaml` or `.yml` file represents the same complete resource object and must author `spec.body` inline.
 
-Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Sequential|Loop>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
+Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Sequential|Loop>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json
@@ -478,7 +494,7 @@ The common template root exposes:
 - `.Params`: current Role parameter map.
 - `.Output`: natural child-derived output, only while rendering composite `spec.output`.
 
-Every successful nonblank node artifact is promoted to `.State.outputs[effectiveId]`. The engine owns `outputs`; authored state cannot replace it. Repeated loop visits use last-successful-write-wins.
+Every successful nonblank node artifact is promoted to `.State.outputs[effectiveId]`. `Script` also records its detailed validator result at `.State.scripts[effectiveId]`, including `status`, `exitCode`, `stdout`, `stderr`, and `timedOut`. The engine owns both `outputs` and `scripts`; authored state cannot replace either key. Repeated visits use last-successful-write-wins.
 
 State modifiers are shallow top-level replacements. String leaves are templates evaluated against one pre-node snapshot, and the complete modifier commits atomically.
 

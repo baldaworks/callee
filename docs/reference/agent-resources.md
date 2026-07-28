@@ -1,6 +1,6 @@
 # Agent resource format
 
-Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Sequential|Loop>` to print a standalone schema document for one kind.
+Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Sequential|Loop>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 
@@ -29,7 +29,7 @@ kind: Role
 spec: {}
 ```
 
-The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Sequential`, and `Loop`. Unknown fields are rejected at every schema-defined object boundary.
+The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Sequential`, and `Loop`. Unknown fields are rejected at every schema-defined object boundary.
 
 ## Markdown and YAML representations
 
@@ -73,19 +73,24 @@ All kinds require a nonblank `description` and nonblank `body`. Every kind may d
 
 The supported fields differ by kind:
 
-| Field | Role | Sequential | Loop |
-| --- | --- | --- | --- |
-| `description` | Required | Required | Required |
-| `body` | Required | Required | Required |
-| `state` | Optional | Optional | Optional |
-| `provider` | Required | Not allowed | Not allowed |
-| `permissions` | Optional | Not allowed | Not allowed |
-| `interactive` | Optional | Not allowed | Not allowed |
-| `params` | Optional | Not allowed | Not allowed |
-| `children` | Not allowed | Required, nonempty | Required, nonempty |
-| `output` | Not allowed | Optional | Optional |
-| `maxIterations` | Not allowed | Not allowed | Required, integer at least 1 |
-| `onExhausted` | Not allowed | Not allowed | Optional: `fail` or `complete` |
+| Field | Role | Script | Sequential | Loop |
+| --- | --- | --- | --- | --- |
+| `description` | Required | Required | Required | Required |
+| `body` | Required | Required | Required | Required |
+| `state` | Optional | Optional | Optional | Optional |
+| `provider` | Required | Not allowed | Not allowed | Not allowed |
+| `permissions` | Optional | Not allowed | Not allowed | Not allowed |
+| `interactive` | Optional | Not allowed | Not allowed | Not allowed |
+| `params` | Optional | Not allowed | Not allowed | Not allowed |
+| `shell` | Not allowed | Optional: `sh` or `bash` | Not allowed | Not allowed |
+| `cwd` | Not allowed | Optional | Not allowed | Not allowed |
+| `env` | Not allowed | Optional string map | Not allowed | Not allowed |
+| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Not allowed |
+| `onNonZero` | Not allowed | Optional: `fail` or `continue` | Not allowed | Not allowed |
+| `children` | Not allowed | Not allowed | Required, nonempty | Required, nonempty |
+| `output` | Not allowed | Not allowed | Optional | Optional |
+| `maxIterations` | Not allowed | Not allowed | Not allowed | Required, integer at least 1 |
+| `onExhausted` | Not allowed | Not allowed | Not allowed | Optional: `fail` or `complete` |
 
 ## Role
 
@@ -121,6 +126,30 @@ The body must contain exactly one unconditional, bare `{{ .Prompt }}` or `{{ .In
 See [ACP provider configuration](../guides/acp-providers.md) for the `provider` object.
 
 `spec.permissions.mode` accepts exactly `ask`, `allow`, or `deny` and defaults to `ask` when `permissions` is omitted. It is a Role-only runtime policy and is independent of backend-specific `spec.provider.mode`. See [ACP permission requests](../guides/acp-permissions.md) for option selection and failure semantics.
+
+## Script
+
+A `Script` is a local deterministic validator leaf:
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Script
+spec:
+  description: Runs the Go test suite.
+  shell: sh
+  onNonZero: continue
+  env:
+    PKG: ./...
+---
+go test "$PKG"
+```
+
+The body uses the restricted template surface: `.Prompt`, `.Input`, and `.State` are available, while `.Params` and `.Output` are not. `shell` defaults to `sh`; `bash` is the only other supported value. `cwd`, `env`, and `body` string values may render templates from the restricted surface.
+
+`spec.timeout` is a positive Go duration and defaults to `15m`. `spec.onNonZero` defaults to `fail`; set it to `continue` when a later child or later Loop iteration should inspect the validator result and keep going.
+
+Every completed Script visit records a result object at `State.scripts[effectiveId]` with `status`, `exitCode`, `stdout`, `stderr`, and `timedOut`. A successful or continued Script visit also promotes a compact summary artifact to `State.outputs[effectiveId]`.
 
 ## Composite children
 
@@ -254,7 +283,7 @@ Callee exposes a deterministic positive allowlist from Sprig v3.3.0 plus explici
 
 ## State modifiers
 
-`spec.state` and child `state` accept JSON-compatible strings, booleans, finite numbers, arrays, and string-keyed objects. Null is not supported. The top-level `outputs` key is reserved.
+`spec.state` and child `state` accept JSON-compatible strings, booleans, finite numbers, arrays, and string-keyed objects. Null is not supported. The top-level `outputs` and `scripts` keys are reserved.
 
 State application is shallow. Resource state is combined with edge state, with edge values replacing resource values at the same top-level key. String leaves are templates. Callee renders every value against the same immutable pre-node snapshot and commits the whole modifier only if every render succeeds.
 

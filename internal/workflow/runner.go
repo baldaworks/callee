@@ -60,6 +60,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		prompt: prompt,
 		state: map[string]any{
 			"outputs": map[string]string{},
+			"scripts": map[string]any{},
 		},
 		factory:    r.Factory,
 		interactor: r.Interactor,
@@ -163,6 +164,8 @@ func (r *runState) node(
 	switch node.Kind {
 	case agent.RoleKind:
 		return r.role(ctx, node, input)
+	case agent.ScriptKind:
+		return r.script(ctx, node, input)
 	case agent.SequentialKind:
 		return r.sequential(ctx, node, input)
 	case agent.LoopKind:

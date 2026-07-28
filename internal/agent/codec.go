@@ -243,14 +243,14 @@ func validateDocumentDispatch(id, source string, document *yaml.Node, lineOffset
 
 	kind := nodeAtPath(document, "kind")
 	if kind == nil {
-		return fmt.Errorf("agent %q: %s: missing kind; supported kinds: Role, Sequential, Loop", id, sourcePosition(source, firstValueLine, 1))
+		return fmt.Errorf("agent %q: %s: missing kind; supported kinds: Role, Script, Sequential, Loop", id, sourcePosition(source, firstValueLine, 1))
 	}
 
 	switch Kind(kind.Value) {
-	case RoleKind, SequentialKind, LoopKind:
+	case RoleKind, ScriptKind, SequentialKind, LoopKind:
 		return nil
 	default:
-		return fmt.Errorf("agent %q: %s: unsupported kind %q; supported kinds: Role, Sequential, Loop", id, sourcePosition(source, kind.Line+lineOffset, kind.Column), kind.Value)
+		return fmt.Errorf("agent %q: %s: unsupported kind %q; supported kinds: Role, Script, Sequential, Loop", id, sourcePosition(source, kind.Line+lineOffset, kind.Column), kind.Value)
 	}
 }
 

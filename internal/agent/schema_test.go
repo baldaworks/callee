@@ -30,6 +30,7 @@ func TestSchemaForKindReturnsStandaloneSchema(t *testing.T) {
 		definition string
 	}{
 		{kind: RoleKind, definition: "role"},
+		{kind: ScriptKind, definition: "script"},
 		{kind: SequentialKind, definition: "sequential"},
 		{kind: LoopKind, definition: "loop"},
 	}
@@ -106,7 +107,7 @@ func assertSchemaDefinitions(t *testing.T, kind Kind, definition string, documen
 		t.Fatalf("schema[%q] missing selected definition %q", kind, definition)
 	}
 
-	for _, other := range []string{"role", "sequential", "loop"} {
+	for _, other := range []string{"role", "script", "sequential", "loop"} {
 		if other == definition {
 			continue
 		}

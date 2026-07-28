@@ -27,7 +27,7 @@ complete resource object and must include `spec.body` explicitly.
 
 ## Compose the resolved tree
 
-Use only `Role`, `Sequential`, and `Loop`. A workflow child may reference
+Use only `Role`, `Script`, `Sequential`, and `Loop`. A workflow child may reference
 any supported kind, so workflows may nest other workflows. Do not author
 `Parallel`.
 
@@ -43,7 +43,7 @@ Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
   child artifact.
 - Use `state` for shallow top-level state replacements applied before the node
   runs. String leaves are Go templates. Never author the reserved `outputs`
-  key.
+  key or the reserved `scripts` key.
 - Use child `params` only when that child resolves directly to a `Role` and
   only for parameters declared by that Role. Bindings are Go templates over
   `.Prompt`, `.Input`, and `.State`; they must render nonblank. Leave an
@@ -54,7 +54,9 @@ Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
 
 Every successful nonblank node artifact is stored at
 `.State.outputs[effectiveID]`. Repeated visits overwrite that key with the
-last successful artifact. Use `index` for robust lookup:
+last successful artifact. Completed `Script` visits also record structured
+validator results at `.State.scripts[effectiveID]`. Use `index` for robust
+lookup:
 
 ```gotemplate
 {{ index .State.outputs "validator" }}

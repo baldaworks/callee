@@ -7,7 +7,7 @@ This reference describes how a resolved Callee tree executes. Read [Agent resour
 `callee agent run <agent-id>` resolves one root and requires a nonblank prompt. The run owns:
 
 - one immutable original prompt;
-- one shared, ephemeral state object initialized with an empty `outputs` map;
+- one shared, ephemeral state object initialized with empty `outputs` and `scripts` maps;
 - one set of runtime parameter values;
 - reusable provider processes;
 - fresh provider sessions for individual Role visits.
@@ -46,6 +46,20 @@ errors. It does not include Role rendering, process startup, session prepare,
 REPL idle time between turns, or composite execution.
 
 A normal non-REPL response without a control record is treated as a successful artifact when it is nonempty. Explicit control records use the rules below.
+
+## Script execution
+
+For a Script visit, Callee renders the Script body from `.Prompt`, current `.Input`, and shared `.State`, then executes it locally through `sh` or `bash`.
+
+Callee also renders optional `cwd` and `env` values from the restricted template surface. It captures `stdout`, `stderr`, exit status, and timeout outcome, then writes a result object to `State.scripts[effectiveId]` with:
+
+- `status`: `passed` or `failed`
+- `exitCode`: process exit code, or `-1` when a timeout prevented a normal exit code
+- `stdout`: captured standard output
+- `stderr`: captured standard error
+- `timedOut`: whether the Script hit its timeout
+
+If the Script completed and `onNonZero` allows continuation, the Script returns a compact summary artifact and promotes it to `State.outputs[effectiveId]`. A timeout always fails the workflow. A completed non-zero exit fails unless `onNonZero: continue` is set.
 
 ## Sequential execution
 
@@ -105,7 +119,7 @@ If no escalation occurs before the bound:
 
 ## Artifact promotion
 
-Every successful nonblank Role artifact is written to `State.outputs[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation also promotes its final artifact before returning the escalation.
+Every successful nonblank Role or Script artifact is written to `State.outputs[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation also promotes its final artifact before returning the escalation.
 
 Failed outcomes are not promoted. Repeated successful visits to the same effective ID replace the previous value.
 

@@ -100,6 +100,7 @@ func TestAgentSchemaCommand(t *testing.T) {
 		definition string
 	}{
 		{kind: "Role", definition: "role"},
+		{kind: "Script", definition: "script"},
 		{kind: "Sequential", definition: "sequential"},
 		{kind: "Loop", definition: "loop"},
 	}

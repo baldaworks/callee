@@ -15,6 +15,10 @@ func validateState(id, path string, state map[string]any) error {
 		return fmt.Errorf("agent %q: %s.outputs is reserved", id, path)
 	}
 
+	if _, ok := state["scripts"]; ok {
+		return fmt.Errorf("agent %q: %s.scripts is reserved", id, path)
+	}
+
 	if err := validateStateValue(state); err != nil {
 		return fmt.Errorf("agent %q: %s: %w", id, path, err)
 	}
