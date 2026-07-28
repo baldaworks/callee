@@ -1,6 +1,6 @@
 ---
 name: create-agent
-description: Create project-defined Callee Role, Script, Sequential, and Loop agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
+description: Create project-defined Callee Role, Script, Human, Sequential, and Loop agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
 ---
 
 # Create a Callee agent
@@ -19,6 +19,7 @@ Choose exactly one supported kind:
 
 - `Role`: one provider-backed leaf agent.
 - `Script`: one deterministic local validator leaf.
+- `Human`: one operator-backed interactive leaf.
 - `Sequential`: ordered child agents that each run once.
 - `Loop`: ordered child agents repeated until an authorized Role escalates or the iteration limit is exhausted.
 
@@ -84,6 +85,24 @@ go test ./...
 
 Use `shell: sh` unless the request clearly needs Bash-specific syntax. Set `onNonZero: fail` for hard gates and `onNonZero: continue` only when a later node or later Loop iteration must inspect the validator result in `.State.scripts`. Use `cwd`, `env`, and `timeout` only when the request explicitly needs them.
 
+## Author a Human
+
+Author a `Human` directly when the workflow must collect one explicit operator response:
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Human
+spec:
+  description: Requests operator approval.
+  responseKey: approval
+---
+Review and approve this request:
+{{ .Input }}
+```
+
+Use a nonblank `responseKey` other than the reserved `outputs` and `scripts` keys. A Human has no provider, permissions, parameters, or REPL setting. At runtime it displays the rendered body on the controlling TTY, waits for one nonblank response, stores that response at the selected top-level state key and `.State.outputs[effectiveId]`, and returns it as the node artifact.
+
 ## Author a workflow
 
 For every `Sequential`, `Loop`, or nested-composite request, read [references/workflows.md](references/workflows.md) completely before writing. Follow its placement, representation, child-wiring, state, parameter, loop-control, and output rules.
@@ -99,4 +118,4 @@ callee agent validate "<written-agent-path>"
 callee agent view "<agent-id>" --json
 ```
 
-Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. For a PromptKit template with `metadata.mode: interactive`, confirm that the resolved view reports `interactive: true`. Confirm that every Role's authored and effective permission policy in `agent view --json` matches the request. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.
+Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. For a PromptKit template with `metadata.mode: interactive`, confirm that the resolved view reports `interactive: true`. Confirm that every Role's authored and effective permission policy in `agent view --json` matches the request, and that every Human has the intended `responseKey` without Role-only fields. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.

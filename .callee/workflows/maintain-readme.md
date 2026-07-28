@@ -106,7 +106,8 @@ spec:
 
         If README.md is accurate, complete, well structured, and within scope,
         return concise approval with evidence and escalate to finish the loop.
-        Otherwise return actionable findings normally. Do not escalate on an
+        Otherwise return actionable findings normally. Reserve
+        fail for unrecoverable review conditions. Do not escalate on an
         incomplete or uncertain result.
   maxIterations: 5
   onExhausted: fail

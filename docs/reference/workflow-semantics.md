@@ -78,7 +78,7 @@ A Sequential renders its `spec.body` to obtain nonblank local input. It then vis
 - A child `input` template sees the composite local input as `.Input`, the immutable root prompt as `.Prompt`, and current shared state as `.State`.
 - Failure stops the sequence immediately.
 
-Authorized escalation is sticky. When a child escalates, Sequential records the escalation but continues running its remaining children. After the last child, the Sequential propagates escalation upward with the final child's artifact. This allows cleanup or finalization children to run while preserving a descendant's request to return to an enclosing Loop. A later failure overrides the pending escalation.
+Authorized escalation is sticky beneath a Sequential. When a child escalates, Sequential records the signal but continues running its remaining children. After the last child, the Sequential propagates escalation upward with the final child's artifact. This allows cleanup or finalization children to run while preserving a descendant's request to complete an enclosing Loop. A later failure overrides the pending escalation.
 
 Without sticky escalation, the natural output is the last child's artifact. An optional `spec.output` renders a replacement from the composite local `.Input`, natural `.Output`, root `.Prompt`, and final `.State`.
 
@@ -116,7 +116,9 @@ A Loop renders local input once, then runs its ordered children for at most `max
 - Explicit child `input` templates still see the Loop's local input as `.Input`; state outputs are the usual way to reference prior work.
 - Failure stops the Loop and fails the root.
 
-An authorized descendant may emit `callee.control.v1.escalate`. The nearest Loop consumes that escalation and completes immediately, applying its optional `spec.output`. A nested Loop therefore consumes an escalation from its own subtree; its successful result continues through the outer composition and cannot complete the outer Loop. Sticky escalation propagated by a Sequential is likewise consumed by the nearest enclosing Loop after the Sequential finishes its remaining children.
+An authorized descendant may emit `callee.control.v1.escalate`. When an immediate Loop child returns escalation, the Loop consumes it and completes immediately, skipping later children and applying its optional `spec.output`. A nested Sequential first finishes its own remaining children under sticky escalation, then returns escalation for the nearest Loop to consume. A nested Loop consumes escalation from its own subtree; its successful result continues through the outer composition and cannot complete the outer Loop.
+
+A normal Role return is recoverable. The Loop continues through any remaining children and, unless a later child escalates or fails, begins the next iteration. Callee's injected instructions tell Roles beneath a Loop to return recoverable findings normally and reserve `fail` for unrecoverable conditions. A Role `fail` outcome is never a request for another iteration: it fails the entire workflow.
 
 If no escalation occurs before the bound:
 
@@ -147,15 +149,17 @@ When artifact or diagnostic text precedes a record, exactly one empty line must 
 | Record | Allowed context | Preceding text | Effect |
 | --- | --- | --- | --- |
 | `await` | REPL Role only | Required | Display text on the TTY, ask the operator for another turn, and reuse the visit session. |
-| `return` | Any Role | Required | Complete the Role successfully. |
+| `return` | Any Role | Required | Complete the Role successfully. Beneath a Loop, ordinary Loop execution continues. |
 | `escalate` | Role occurrence whose resolved `canEscalate` is `true` | Optional | Return control toward the nearest Loop. |
-| `fail` | Any Role | Optional diagnostic | Fail the workflow. |
+| `fail` | Any Role | Optional diagnostic | Fail the entire workflow. |
 
 Set `spec.interactive: true` only on a Role. Every REPL response must contain one valid final control record; a missing record is an error. The same provider session is retained across `await` turns, while a later visit to that Role still creates a new session.
 
+There is no `callee.control.v1.continue` record. A Role beneath a Loop continues the workflow by returning normally. The similarly named Script setting `onNonZero: continue` applies only to completed non-zero Script exits; it does not add a Role control outcome.
+
 An unauthorized `escalate` record is an error even though the parser recognizes it. Callee reports the effective agent ID, source resource ID, and resolved path; no later Sequential child runs after that error.
 
-The CLI obtains the next operator response from the controlling terminal, not stdin. Empty replies are retried. Enter `/abort` to abort the workflow; strings such as `/done`, `quit`, or `exit` do not select a Callee outcome. The Role must choose `return`, `escalate`, or `fail` in its control record.
+The CLI obtains the next operator response from the controlling terminal, not stdin. Empty replies are retried. Enter `/abort` to abort the workflow; strings such as `/done`, `quit`, or `exit` do not select a Callee outcome. The Role must choose `return`, authorized `escalate`, or `fail`.
 
 ## Parameters
 

@@ -21,7 +21,7 @@ Resolve a naturally named agent against its exact agent ID or unambiguous descri
 callee agent view "<agent-id>" --json
 ```
 
-The selected ID may identify a `Role`, `Sequential`, or `Loop`. Treat all kinds as the same run boundary. Do not invent a separate workflow command.
+The selected ID may identify a `Role`, `Script`, `Human`, `Sequential`, or `Loop`. Treat all kinds as the same run boundary. Do not invent a separate workflow command.
 
 ## Execute
 
@@ -43,7 +43,7 @@ callee agent run "<agent-id>" \
 
 Use `--param-file "<effective-node-id>.<name>=<path>"` for exact multiline values. Supply known parameters shown by `agent view`; let Callee collect the rest just in time through the PTY.
 
-Read questions and permission requests from the terminal and answer through the same terminal. A Role inside a workflow may enter REPL mode; its stderr lifecycle has one `entering repl` / `exiting repl` pair, with every `await` turn inside that pair. Do not send `quit`, `exit`, `/done`, or a synthetic completion marker; the Role selects control through Callee's injected protocol.
+Read Human prompts, Human responses, Role questions, and permission requests through the same terminal. A Role inside a workflow may enter REPL mode; its stderr lifecycle has one `entering repl` / `exiting repl` pair, with every `await` turn inside that pair. Do not send `quit`, `exit`, `/done`, or a synthetic completion marker; the Role selects control through Callee's injected protocol.
 
 Wait for automatic root completion. The sole successful root artifact is written to stdout only after provider cleanup succeeds. Info lifecycle events and diagnostics are written to stderr, so use the exit status rather than stderr emptiness to determine success. Treat empty stdout on failure as intentional.
 

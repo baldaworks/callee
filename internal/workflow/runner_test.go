@@ -110,6 +110,45 @@ func TestHumanRequiresInteractor(t *testing.T) {
 	}
 }
 
+func TestRunnerLoopPassesHumanResponseToRole(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		humanResource(t, "humans/approver", "approval", "Review: {{ .Input }}"),
+		roleResource(t, "roles/gate", false, nil, "Input: {{ .Input }}\nDecision: {{ .State.approval }}"),
+		compositeResource(t, "workflows/approval", agent.LoopKind, []agent.Child{
+			{Ref: "humans/approver", Alias: "approver"},
+			{Ref: "roles/gate", Alias: "gate", CanEscalate: true},
+		}, 3, "{{ .Input }}", "{{ .State.outputs.gate }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/gate": {
+			{"needs changes"},
+			{"approved\n\n" + controlEscalate},
+		},
+	}}
+	interactor := &scriptedInteractor{answers: []string{"revise", "approve"}}
+
+	got, err := (Runner{
+		Root:       root,
+		Factory:    &scriptedFactory{process: process},
+		Interactor: interactor,
+	}).Run(context.Background(), "release")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "approved" {
+		t.Errorf("Runner.Run() = %q, want approved", got)
+	}
+
+	for index, want := range []string{"Decision: revise", "Decision: approve"} {
+		if prompt := process.prompts["roles/gate"][index]; !strings.Contains(prompt, want) {
+			t.Errorf("gate prompt %d = %q, want containing %q", index, prompt, want)
+		}
+	}
+}
+
 func TestRunnerLoopConsumesEscalation(t *testing.T) {
 	t.Parallel()
 
@@ -153,6 +192,10 @@ func TestRunnerLoopConsumesEscalation(t *testing.T) {
 
 	if !strings.Contains(validatorPrompts[1], controlEscalate) {
 		t.Errorf("validator prompt does not allow escalation beneath Loop:\n%s", validatorPrompts[1])
+	}
+
+	if !strings.Contains(validatorPrompts[0], "recoverable findings") {
+		t.Errorf("validator prompt does not explain recoverable Loop returns:\n%s", validatorPrompts[0])
 	}
 }
 
@@ -379,6 +422,35 @@ func TestRunnerREPLRoleCanEscalateOnlyInsideLoop(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("reviewer REPL prompt is missing %q:\n%s", want, prompt)
 		}
+	}
+}
+
+func TestRunnerEscalationSkipsRemainingLoopChildren(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		roleResource(t, "roles/evaluator", false, nil, "Evaluate: {{ .Input }}"),
+		roleResource(t, "roles/recorder", false, nil, "Record: {{ .Input }}"),
+		compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+			{Ref: "roles/evaluator", Alias: "evaluator", CanEscalate: true},
+			{Ref: "roles/recorder", Alias: "recorder", CanEscalate: true},
+		}, 3, "{{ .Input }}", "result={{ .State.outputs.evaluator }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/evaluator": {{"approved\n\n" + controlEscalate}},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "evaluate")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "result=approved" {
+		t.Errorf("Runner.Run() = %q, want result=approved", got)
+	}
+
+	if len(process.prompts["roles/recorder"]) != 0 {
+		t.Fatalf("recorder turns = %d, want 0", len(process.prompts["roles/recorder"]))
 	}
 }
 

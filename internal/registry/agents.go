@@ -40,6 +40,7 @@ type ResolvedNode struct {
 	ResourceID          string             `json:"resourceId"`
 	Kind                agent.Kind         `json:"kind"`
 	CanEscalate         bool               `json:"canEscalate"`
+	WithinLoop          bool               `json:"-"`
 	Permissions         *agent.Permissions `json:"permissions,omitempty"`
 	AuthoredPermissions *agent.Permissions `json:"authoredPermissions,omitempty"`
 	Interactive         *bool              `json:"interactive,omitempty"`
@@ -266,6 +267,7 @@ func (r *AgentRegistry) resolve(
 		ResourceID:  resource.ID,
 		Kind:        resource.Kind,
 		CanEscalate: canEscalate,
+		WithinLoop:  withinLoop,
 		Children:    make([]*ResolvedNode, 0, len(resource.Spec.Children)),
 		Resource:    resource,
 		Edge:        edge,

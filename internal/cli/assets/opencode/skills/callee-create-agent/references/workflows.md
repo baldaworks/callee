@@ -27,7 +27,7 @@ complete resource object and must include `spec.body` explicitly.
 
 ## Compose the resolved tree
 
-Use only `Role`, `Script`, `Sequential`, and `Loop`. A workflow child may reference
+Use only `Role`, `Script`, `Human`, `Sequential`, and `Loop`. A workflow child may reference
 any supported kind, so workflows may nest other workflows. Do not author
 `Parallel`.
 
@@ -55,8 +55,9 @@ Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
 Every successful nonblank node artifact is stored at
 `.State.outputs[effectiveID]`. Repeated visits overwrite that key with the
 last successful artifact. Completed `Script` visits also record structured
-validator results at `.State.scripts[effectiveID]`. Use `index` for robust
-lookup:
+validator results at `.State.scripts[effectiveID]`. A `Human` additionally
+stores its response at the top-level key selected by `spec.responseKey`. Use
+`index` for robust lookup:
 
 ```gotemplate
 {{ index .State.outputs "validator" }}
@@ -127,7 +128,8 @@ integer of at least one. `onExhausted` defaults to `fail`; set it to
 Preserve the original goal explicitly in worker and validator inputs. Feed the
 last validator artifact back to the worker so later iterations can act on
 feedback. Tell the validator to escalate only when the goal is satisfied and to
-return actionable feedback normally otherwise.
+return actionable feedback normally otherwise. Reserve `fail` for an
+unrecoverable condition because it aborts the entire workflow.
 
 ```markdown
 ---
@@ -172,9 +174,10 @@ Callee injects the concrete control protocol only into Roles whose resolved
 occurrence is authorized to escalate. Set `canEscalate: true` on every edge
 from the nearest `Loop` to that Role; the default is `false`. Describe the
 semantic choice in the authored prompt; do not invent a custom stop token.
-Escalation from an authorized nested workflow propagates to the nearest Loop,
-while remaining children of a nested `Sequential` still run under the sticky
-escalation state.
+Escalation from an authorized direct Loop child completes that Loop immediately
+and skips its later children. A nested `Sequential` still runs its remaining
+children under sticky escalation before propagating it. The nearest Loop
+consumes the escalation.
 
 A nested `Loop` is an ordinary child: its Markdown body renders that node's
 input, its children run with the same shared state object, and its final artifact

@@ -155,12 +155,24 @@ spec:
 		t.Error("phase CanEscalate = false, want true")
 	}
 
+	if !root.Children[0].WithinLoop {
+		t.Error("phase WithinLoop = false, want true")
+	}
+
 	if !root.Children[0].Children[0].CanEscalate {
 		t.Error("allowed_worker CanEscalate = false, want true")
 	}
 
+	if !root.Children[0].Children[0].WithinLoop {
+		t.Error("allowed_worker WithinLoop = false, want true")
+	}
+
 	if root.Children[0].Children[1].CanEscalate {
 		t.Error("denied_worker CanEscalate = true, want false")
+	}
+
+	if !root.Children[0].Children[1].WithinLoop {
+		t.Error("denied_worker WithinLoop = false, want true")
 	}
 }
 

@@ -9,7 +9,7 @@
 
 ## Markdown-defined agents and deterministic workflows
 
-Callee lets a repository define provider-backed `Role`, `Sequential`, and `Loop` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
+Callee lets a repository define `Role`, `Script`, `Human`, `Sequential`, and `Loop` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
 
 Callee remains CLI-only. It uses [Norma Runtime](https://github.com/normahq/runtime) for ACP provider processes and Go ADK-aligned escalation semantics. It has no server, durable thread store, or handle binding.
 
@@ -26,7 +26,7 @@ Callee installs two complementary skills in your coding host:
 | Skill | What it does | Result |
 | --- | --- | --- |
 | **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `Sequential`, or `Loop` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by the emitted run-wide and per-Role execution metrics. |
-| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `Sequential`, or `Loop` in Markdown or YAML, using an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
+| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `Sequential`, or `Loop` in Markdown or YAML. For a `Role`, it uses an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
 
 These skills are host integrations: they teach Codex, Claude Code, Grok Build,
 Copilot CLI, OpenCode, or Cursor how to create and run Callee agents. Runtime
@@ -150,7 +150,7 @@ callee --version
 Ensure the Go installation directory (normally `$GOBIN` or `$GOPATH/bin`) is
 on `PATH`.
 
-`agent run` always requires a real controlling TTY. Initial input, missing parameters, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Sequential`, and `Loop` visit, long-running provider-turn heartbeats, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Lifecycle durations use standard Go strings with units, such as `43.453998585s`.
+`agent run` always requires a real controlling TTY. Initial input, missing parameters, Human responses, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Script`, `Human`, `Sequential`, and `Loop` visit, long-running provider-turn heartbeats, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Measured lifecycle durations are rounded to the nearest second and use standard Go strings with units, such as `43s`.
 
 `agent run` emits run-wide metrics on its final `agent run finished` event and
 per-Role metrics on each Role's `agent finished` event. The successful root
@@ -167,8 +167,9 @@ prepare, REPL idle time between turns, or composite execution.
 
 The one-shot `npx ... setup` commands above are the recommended installation
 path. Use the following steps only when you need to manage the host integration
-yourself. These marketplace commands install the two Callee skills but do not
-write the six starter agents:
+yourself. The marketplace commands and file mappings install only the two
+Callee skills and any host command wrappers; they do not write the six starter
+agents.
 
 ### Marketplace hosts
 
@@ -178,9 +179,6 @@ Codex:
 codex plugin marketplace add baldaworks/callee
 codex plugin add callee@callee
 ```
-
-If Codex already has a `callee` marketplace registration, remove it with
-`codex plugin marketplace remove callee` before adding it again.
 
 Claude Code:
 
@@ -216,8 +214,6 @@ matching project directories without replacing unrelated or customized files:
 
 The OpenCode command files provide `/callee` and `/callee-create-agent`
 wrappers around the `callee-run-agent` and `callee-create-agent` skills.
-Cursor also exposes the same skills through the repository's
-[Cursor marketplace](.cursor-plugin/marketplace.json).
 
 To install the editable starter Roles and workflows manually, copy the contents
 of `internal/cli/assets/starter/` into `.callee/`, preserving the `roles/` and
@@ -377,6 +373,26 @@ go test ./...
 
 `Script` runs a local validator step through `sh` or `bash`, captures `stdout` and `stderr`, and records structured results in `.State.scripts[effectiveId]`. Use `onNonZero: fail` for hard gates and `onNonZero: continue` when a later node should inspect the failure and decide what to do next.
 
+### Human
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Human
+spec:
+  description: Requests operator approval.
+  responseKey: approval
+---
+Review and approve this request:
+{{ .Input }}
+```
+
+`Human` renders its body on the controlling TTY and waits for one nonblank
+operator response. The response becomes the node artifact, is promoted to
+`.State.outputs[effectiveId]`, and is also stored at the top-level state key
+selected by `responseKey`; `outputs` and `scripts` are reserved response keys.
+A Human has no provider, permissions, parameters, or REPL setting.
+
 ### Sequential
 
 ```markdown
@@ -444,7 +460,7 @@ spec:
 {{ .Input }}
 ```
 
-A `Loop` repeats its ordered children up to `maxIterations`. It consumes escalation from an authorized child and completes. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
+A `Loop` repeats its ordered children up to `maxIterations`. A normal Role return is a recoverable result: the Loop continues through its remaining children and later iterations. An authorized escalation returned by a direct child completes the Loop immediately and skips later Loop children; a nested `Sequential` first finishes its own remaining children before propagating sticky escalation. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. Reserve `fail` for unrecoverable conditions because it aborts the entire workflow. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
 
 ### Children and composition
 
@@ -478,7 +494,7 @@ spec:
     {{ .Params.focus }}
 ```
 
-This YAML object is canonically identical to the Markdown Role above. The same representation rule applies to `Sequential` and `Loop`.
+This YAML object is canonically identical to the Markdown Role above. The same representation rule applies to every supported kind.
 
 `agent validate` performs schema, semantic, state, and template validation for exactly one file. It intentionally does not resolve workflow child references; use `agent view <id>` or `doctor` to validate the discovered graph.
 
@@ -543,16 +559,21 @@ callee.control.v1.fail
 Artifact text, when present, is separated from the record by exactly one empty
 line. `await` requires question text and retains the same visit session for
 another operator turn. `return` requires an artifact and completes normally.
-`escalate` is available only when the Role is inside a Loop and returns control
-to the nearest Loop. `fail` aborts the root.
+`escalate` is available only to a Role whose path to the nearest Loop sets
+`canEscalate: true` on every edge, and it returns control to that Loop. Inside
+a Loop, `return` is the recoverable choice and lets normal Loop execution
+continue. `fail` aborts the entire workflow and is reserved for unrecoverable
+conditions.
 
 Every Role visit starts a fresh provider session, including repeated Loop
 visits; only `await` turns within one REPL visit reuse a session. A prepared
 REPL visit emits one `entering repl` / `exiting repl` lifecycle pair, with all
 `await` turns inside it. `agent run` requires a controlling TTY even when
-`--message` and every parameter are supplied. The default maximum wait for each
-operator prompt is `30m`; change it with `--repl-timeout`. Hosts must answer on
-the TTY and must not send `/done`, `quit`, or `exit` to choose completion.
+`--message` and every parameter are supplied. Initial input, missing parameters,
+Human responses, permission choices, and REPL turns all use the TTY. The default
+maximum wait for each operator prompt is `30m`; change it with `--repl-timeout`.
+Hosts must answer on the TTY and must not send `/done`, `quit`, or `exit` to
+choose completion.
 
 ## Doctor and graphs
 
@@ -619,7 +640,7 @@ Callee was built during OpenAI Build Week using Codex and GPT-5.6 as the primary
 
 Codex and GPT-5.6 were used to:
 
-- design the `Role`, `Sequential`, and `Loop` agent model;
+- design the `Role`, `Script`, `Human`, `Sequential`, and `Loop` agent model;
 - implement CLI commands, runtime behavior, and validation flows;
 - build graph inspection, doctor checks, and setup integrations;
 - create starter agents, examples, and user-facing documentation;

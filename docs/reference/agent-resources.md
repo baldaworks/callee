@@ -148,7 +148,7 @@ go test "$PKG"
 
 The body uses the restricted template surface: `.Prompt`, `.Input`, and `.State` are available, while `.Params` and `.Output` are not. `shell` defaults to `sh`; `bash` is the only other supported value. `cwd`, `env`, and `body` string values may render templates from the restricted surface.
 
-`spec.timeout` is a positive Go duration and defaults to `15m`. `spec.onNonZero` defaults to `fail`; set it to `continue` when a later child or later Loop iteration should inspect the validator result and keep going.
+`spec.timeout` is a positive Go duration and defaults to `15m`. `spec.onNonZero` defaults to `fail`; set it to `continue` when a later child or later Loop iteration should inspect the validator result and keep going. This field controls Script exit handling and is unrelated to Role [control records](workflow-semantics.md#control-records-and-repl); there is no `callee.control.v1.continue` record.
 
 Every completed Script visit records a result object at `State.scripts[effectiveId]` with `status`, `exitCode`, `stdout`, `stderr`, and `timedOut`. A successful or continued Script visit also promotes a compact summary artifact to `State.outputs[effectiveId]`.
 
@@ -285,7 +285,7 @@ spec:
   onExhausted: fail
 ```
 
-`onExhausted` defaults to `fail`; set it to `complete` only when the last natural child artifact is a valid successful result. A Loop consumes escalation from an authorized descendant according to the rules in [Loop execution](workflow-semantics.md#loop-execution). The complete runnable example is [`examples/workflows/goalkeeper.md`](../../examples/workflows/goalkeeper.md).
+`onExhausted` defaults to `fail`; set it to `complete` only when the last natural child artifact is a valid successful result. A Loop consumes escalation from eligible descendants according to the rules in [Loop execution](workflow-semantics.md#loop-execution). The complete runnable example is [`examples/workflows/goalkeeper.md`](../../examples/workflows/goalkeeper.md).
 
 ## Template surfaces
 

@@ -22,6 +22,7 @@ func TestParseResponse(t *testing.T) {
 		{name: "empty escalation", content: controlEscalate, outcome: outcomeEscalate},
 		{name: "failure detail", content: "bad result\n\n" + controlFail, outcome: outcomeFail, artifact: "bad result"},
 		{name: "non-REPL await", content: "Question?\n\n" + controlAwait, wantErr: "non-REPL"},
+		{name: "removed continue", content: "keep going\n\ncallee.control.v1.continue", wantErr: "malformed"},
 		{name: "missing repl control", content: "artifact", repl: true, wantErr: "missing"},
 		{name: "malformed reserved", content: "artifact\n\ncallee.control.v1.stop", wantErr: "malformed"},
 		{name: "missing separator", content: "artifact\n" + controlReturn, repl: true, wantErr: "separated"},
@@ -60,19 +61,20 @@ func TestControlInstructionsScopeEscalationToLoopDescendants(t *testing.T) {
 	for _, test := range []struct {
 		name          string
 		repl          bool
+		withinLoop    bool
 		canEscalate   bool
 		wantEscalate  bool
 		wantMandatory []string
 	}{
 		{name: "root one shot", wantMandatory: []string{"Return the requested artifact normally.", controlFail}},
-		{name: "loop one shot", canEscalate: true, wantEscalate: true, wantMandatory: []string{"Return the requested artifact normally.", controlFail}},
+		{name: "loop one shot", withinLoop: true, canEscalate: true, wantEscalate: true, wantMandatory: []string{"Return the requested artifact normally.", "recoverable findings", "unrecoverable condition", controlFail}},
 		{name: "root repl", repl: true, wantMandatory: []string{controlAwait, controlReturn, controlFail}},
-		{name: "loop repl", repl: true, canEscalate: true, wantEscalate: true, wantMandatory: []string{controlAwait, controlReturn, controlFail}},
+		{name: "loop repl", repl: true, withinLoop: true, canEscalate: true, wantEscalate: true, wantMandatory: []string{controlAwait, controlReturn, "recoverable findings", "unrecoverable condition", controlFail}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := controlInstructions(test.repl, test.canEscalate)
+			got := controlInstructions(test.repl, test.withinLoop, test.canEscalate)
 			if strings.Contains(got, controlEscalate) != test.wantEscalate {
 				t.Errorf("controlInstructions() escalation presence = %t, want %t:\n%s", strings.Contains(got, controlEscalate), test.wantEscalate, got)
 			}

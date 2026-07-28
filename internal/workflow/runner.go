@@ -300,7 +300,7 @@ func (r *runState) role(
 		}()
 	}
 
-	turnInput := body + controlInstructions(node.Resource.REPL(), node.CanEscalate)
+	turnInput := body + controlInstructions(node.Resource.REPL(), node.WithinLoop, node.CanEscalate)
 	turnCtx, cancelTurn := withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
 	roleStarted := time.Now()
 	waitStarted := r.operatorWaitDuration()

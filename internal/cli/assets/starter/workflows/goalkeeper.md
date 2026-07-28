@@ -26,7 +26,8 @@ spec:
 
         Validate the result. If it satisfies the goal, return your validation
         and escalate to finish the loop. Otherwise return actionable feedback
-        normally so the next iteration can improve it.
+        normally so the next iteration can improve it. Reserve
+        fail for unrecoverable validation conditions.
   maxIterations: 5
   onExhausted: fail
   output: |

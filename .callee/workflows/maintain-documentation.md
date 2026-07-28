@@ -74,8 +74,9 @@ spec:
 
         If the documentation satisfies the goal, return concise approval with
         the evidence and checks used, then escalate to finish the loop. If it
-        does not, return actionable findings normally so the next writing phase
-        can address them. Do not escalate on an incomplete or uncertain result.
+        does not, return actionable findings normally so the next
+        writing phase can address them. Reserve fail for unrecoverable review
+        conditions. Do not escalate on an incomplete or uncertain result.
   maxIterations: 5
   onExhausted: fail
   output: |

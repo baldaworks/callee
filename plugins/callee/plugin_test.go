@@ -29,6 +29,8 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"--param \"<effective-node-id>.<name>=<value>\"",
 		"real controlling PTY",
 		"Keep terminal interaction separate from stdout and stderr.",
+		"`Role`, `Script`, `Human`, `Sequential`, or `Loop`",
+		"Read Human prompts, Human responses",
 		"Do not send `quit`, `exit`, `/done`",
 		"artifact is written to stdout only after provider cleanup succeeds",
 		"does not define `Parallel`",
@@ -67,6 +69,10 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"callee agent run",
 		"apiVersion: callee.metalagman.dev/v1alpha1",
 		"kind: Role",
+		"kind: Script",
+		"kind: Human",
+		"responseKey: approval",
+		"A Human has no provider, permissions, parameters, or REPL setting.",
 		"spec.provider",
 		"{{ .Input }}",
 		"{{ .Params.focus }}",
@@ -89,6 +95,24 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 	}
 }
 
+func TestCreateAgentHumanExampleValidates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded := readmeFence(t, string(data), "## Author a Human", "## Author a workflow", "markdown")
+
+	resource, err := agent.DecodeMarkdown("humans/approver", "humans/approver.md", []byte(encoded))
+	if err != nil {
+		t.Fatalf("decode Create Agent Human example: %v", err)
+	}
+
+	if resource.Kind != agent.HumanKind {
+		t.Errorf("Create Agent Human example kind = %s, want %s", resource.Kind, agent.HumanKind)
+	}
+}
+
 func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "references", "workflows.md"))
 	if err != nil {
@@ -108,16 +132,20 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"do not also write `spec.body`",
 		"kind: Sequential",
 		"kind: Loop",
+		"`Role`, `Script`, `Human`, `Sequential`, and `Loop`",
 		"workflow child may reference any supported kind",
 		"unique across the entire resolved tree",
 		"`params` only when that child resolves directly to a `Role`",
 		"Never author the reserved `outputs` key",
+		"selected by `spec.responseKey`",
 		"{{ index .State.outputs \"validator\" }}",
 		"{{ with index .State.outputs \"validator\" }}",
 		"maxIterations: 5",
 		"onExhausted: fail",
 		"set it to `complete` only when",
 		"escalate to finish the loop",
+		"Reserve `fail` for an unrecoverable condition",
+		"direct Loop child completes that Loop immediately",
 		"nested `Loop` is an ordinary child",
 		"callee agent validate",
 		"callee agent view",
@@ -491,6 +519,8 @@ func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
 	text := string(data)
 	headings := []string{
 		"### Role",
+		"### Script",
+		"### Human",
 		"### Sequential",
 		"### Loop",
 		"## YAML representation and JSON Schema",
@@ -517,7 +547,9 @@ func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
 		endHeading   string
 		wantKind     agent.Kind
 	}{
-		{id: "roles/reviewer", startHeading: "### Role", endHeading: "### Sequential", wantKind: agent.RoleKind},
+		{id: "roles/reviewer", startHeading: "### Role", endHeading: "### ACP provider configuration", wantKind: agent.RoleKind},
+		{id: "scripts/validator", startHeading: "### Script", endHeading: "### Human", wantKind: agent.ScriptKind},
+		{id: "humans/approver", startHeading: "### Human", endHeading: "### Sequential", wantKind: agent.HumanKind},
 		{id: "workflows/pipeline", startHeading: "### Sequential", endHeading: "### Loop", wantKind: agent.SequentialKind},
 		{id: "workflows/goalkeeper", startHeading: "### Loop", endHeading: "### Children and composition", wantKind: agent.LoopKind},
 	}

@@ -131,29 +131,39 @@ func controlArtifact(prefix string) (string, error) {
 	}
 }
 
-func controlInstructions(repl, canEscalate bool) string {
+func controlInstructions(repl, withinLoop, canEscalate bool) string {
 	if repl {
+		returnInstruction := "- callee.control.v1.return — finish this role successfully; preceding artifact is required."
+		if withinLoop {
+			returnInstruction = "- callee.control.v1.return — finish this role successfully; use this for recoverable findings that the Loop should feed into later work; preceding artifact is required."
+		}
+
 		instructions := []string{
 			"Finish every assistant response with exactly one control record on its own final line, separated from preceding text by one empty line:",
 			"- callee.control.v1.await — ask the operator for another turn; preceding text is required.",
-			"- callee.control.v1.return — finish this role successfully; preceding artifact is required.",
+			returnInstruction,
 		}
+
 		if canEscalate {
 			instructions = append(instructions, "- callee.control.v1.escalate — return control to the nearest Loop; preceding artifact is optional.")
 		}
 
-		instructions = append(instructions, "- callee.control.v1.fail — fail the workflow; preceding diagnostic detail is optional.")
+		instructions = append(instructions, "- callee.control.v1.fail — fail the entire workflow for an unrecoverable condition; preceding diagnostic detail is optional.")
 
 		return "\n\n---\nCallee workflow control protocol:\n" + strings.Join(instructions, "\n")
 	}
 
 	instructions := []string{"Return the requested artifact normally."}
+	if withinLoop {
+		instructions = append(instructions, "Use a normal return for recoverable findings or feedback that the Loop should feed into later work.")
+	}
+
 	if canEscalate {
 		instructions = append(instructions, "To return control to the nearest Loop, finish with callee.control.v1.escalate on its own final line.")
 	}
 
 	instructions = append(instructions,
-		"To fail the workflow, finish with callee.control.v1.fail on its own final line.",
+		"To fail the entire workflow for an unrecoverable condition, finish with callee.control.v1.fail on its own final line.",
 		"Separate a preceding artifact or diagnostic from the record by one empty line.",
 	)
 

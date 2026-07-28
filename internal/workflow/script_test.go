@@ -105,6 +105,42 @@ Err={{ index (index .State.scripts "validator") "stderr" }}`)
 	}
 }
 
+func TestRunnerScriptContinueAllowsAnotherLoopIteration(t *testing.T) {
+	t.Parallel()
+
+	validator := scriptResource(t, "scripts/validator", `printf 'lint failed' >&2; exit 3`)
+	validator.Spec.OnNonZero = "continue"
+
+	root := resolvedRoot(t,
+		validator,
+		roleResource(t, "roles/reviewer", false, nil, `Input={{ .Input }}
+Exit={{ index (index .State.scripts "validator") "exitCode" }}`),
+		compositeResource(t, "workflows/review", agent.LoopKind, []agent.Child{
+			{Ref: "scripts/validator", Alias: "validator"},
+			{Ref: "roles/reviewer", Alias: "reviewer", CanEscalate: true},
+		}, 3, "{{ .Input }}", "{{ .State.outputs.reviewer }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/reviewer": {
+			{"retry"},
+			{"accepted\n\n" + controlEscalate},
+		},
+	}}
+
+	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(context.Background(), "check")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "accepted" {
+		t.Fatalf("Runner.Run() = %q, want accepted", got)
+	}
+
+	if prompts := process.prompts["roles/reviewer"]; len(prompts) != 2 {
+		t.Fatalf("reviewer prompts = %d, want 2", len(prompts))
+	}
+}
+
 func TestRunnerScriptFailStopsWorkflow(t *testing.T) {
 	t.Parallel()
 

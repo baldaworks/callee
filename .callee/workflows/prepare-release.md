@@ -106,10 +106,10 @@ spec:
         If the candidate is ready for the separate annotated-tag step, return
         concise approval with the version, exact commit SHA, reviewed diff, and
         local and remote check evidence, then escalate to finish the loop.
-        Otherwise return actionable findings normally so the next preparation
-        phase can correct them with a new ordinary commit and a new exact-SHA
-        gate. Do not escalate when evidence is missing, stale, incomplete, or
-        uncertain.
+        Otherwise return actionable findings normally so the next
+        preparation phase can correct them with a new ordinary commit and a new
+        exact-SHA gate. Reserve fail for unrecoverable review conditions. Do
+        not escalate when evidence is missing, stale, incomplete, or uncertain.
   maxIterations: 5
   onExhausted: fail
   output: |

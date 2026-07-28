@@ -90,6 +90,8 @@ Print the standalone JSON Schema for one kind:
 
 ```bash
 callee agent schema Role
+callee agent schema Script
+callee agent schema Human
 callee agent schema Sequential
 callee agent schema Loop
 ```
@@ -153,7 +155,7 @@ callee agent run workflows/review \
 
 The two parameter flags are repeatable. Missing values are prompted on the terminal. `--repl-timeout 45m` changes the maximum wait for every operator prompt in the run.
 
-Execution always requires a real controlling TTY. The terminal carries the root prompt, missing parameters, REPL turns, abort input, and ACP permission selection. Lifecycle and provider diagnostics go to stderr. The sole successful root artifact is written to stdout only after provider cleanup succeeds, so automation should determine success from the exit status rather than an empty stderr assumption.
+Execution always requires a real controlling TTY. The terminal carries the root prompt, missing parameters, Human-node prompts and responses, REPL turns, abort input, and ACP permission selection. Lifecycle and provider diagnostics go to stderr. The sole successful root artifact is written to stdout only after provider cleanup succeeds, so automation should determine success from the exit status rather than an empty stderr assumption.
 
 If one provider turn stays active for at least 10 seconds, Callee emits `agent turn heartbeat` on stderr with `turn_duration=<elapsed>`. This heartbeat is per provider turn only: it excludes pre-turn rendering and prepare work, REPL idle time between turns, and composite node execution.
 
@@ -238,6 +240,7 @@ callee bridge codex --debug
 | Duplicate resource ID | Remove or rename one matching ID across user/project roots and formats. |
 | Child was not found or graph cycle | Run `agent view` and inspect every referenced ID. |
 | Required parameter error | Use the exact key reported by `agent view`, including the effective alias. |
+| Human response is blank | Enter a nonblank response before the `--repl-timeout` expires. |
 | Unauthorized escalation | Inspect `agent view`; every edge from the nearest Loop to that Role occurrence must opt in with `canEscalate: true`. |
 | Provider executable was not found | Install the provider runtime or correct `spec.provider.cmd`. |
 | Doctor fails before starting providers | Fix schema, semantic, template, or graph errors in the discovered registry first. |

@@ -15,6 +15,11 @@ The omnidist profile builds CGO-disabled executables for macOS AMD64/ARM64, Linu
 
 ## Prepare the release commit
 
+Before selecting a version, fetch `origin/main` and the tags, then require a
+clean local `main` whose HEAD matches `origin/main`. Commit and push all intended
+product work separately before this phase. Do not stash, discard, or absorb a
+dirty worktree into the release-preparation commit.
+
 Choose `X.Y.Z`, then update every checked-in release-version surface consistently. Current version checks cover at least:
 
 - `internal/cli.Version` in [`internal/cli/root.go`](../../internal/cli/root.go);
