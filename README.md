@@ -134,6 +134,21 @@ npx --yes @baldaworks/callee@latest agent run roles/reviewer --message "Review t
 npx --yes @baldaworks/callee@latest agent run workflows/goalkeeper --message "Implement the requested feature"
 ```
 
+For a one-run runtime override, pass an explicit boolean to `agent run`:
+
+```bash
+callee agent run workflows/investigate --message "Ask for the target" --interactive=true
+callee agent run workflows/investigate --message "Return one artifact" --interactive=false
+```
+
+`--interactive=true` forces every `Role` visit in the selected tree, including
+nested, aliased, and repeated `Loop` visits, through the existing REPL protocol.
+`--interactive=false` forces every `Role` visit through the existing one-shot
+protocol. If the flag is omitted, each Role keeps its authored
+`spec.interactive` (or legacy `spec.repl`) behavior. The override is
+runtime-only: it does not rewrite resources or specs and does not change
+`Script`, `Human`, composite, escalation, session, TTY, or cleanup behavior.
+
 The remaining CLI examples use `callee` for readability and assume the global
 npm installation above.
 
@@ -546,6 +561,12 @@ generation also enables this field automatically for templates whose
 `metadata.mode` is `interactive`, or explicitly with
 `callee promptkit role create ... --interactive`.
 
+At execution time, `callee agent run --interactive=true|false` overrides the
+authored setting for every Role visit in that run. `true` selects the REPL
+protocol and `false` selects one-shot artifact responses; omitting the flag
+preserves each Role's authored setting. This is separate from PromptKit's
+author-time `promptkit role create ... --interactive` flag.
+
 Callee injects a versioned control protocol into every executed Role. Every
 REPL turn must end with exactly one final record:
 
@@ -628,7 +649,7 @@ component shapes. Callee exposes catalog `list`, `search`, and `show` commands
 plus its own `role create`; PromptKitty's standalone `assemble` and `setup`
 commands are not mounted.
 
-Generated Roles use the v1alpha1 envelope and Go templates. Unbound PromptKit parameters become `spec.params`; literal template examples in assembled PromptKit text are escaped safely. A template whose `metadata.mode` is `interactive` automatically generates `spec.interactive: true`, so its questions and confirmation gates run through the same provider session when the Role is executed. Use `--interactive` to force that behavior for an ordinary template.
+Generated Roles use the v1alpha1 envelope and Go templates. Unbound PromptKit parameters become `spec.params`; literal template examples in assembled PromptKit text are escaped safely. A template whose `metadata.mode` is `interactive` automatically generates `spec.interactive: true`, so its questions and confirmation gates run through the same provider session when the Role is executed. Use `callee promptkit role create ... --interactive` to force that authoring behavior for an ordinary template.
 
 Unless `--output` is supplied, `role create go-reviewer` writes
 `.callee/roles/go-reviewer.md`; it creates parent directories but refuses to

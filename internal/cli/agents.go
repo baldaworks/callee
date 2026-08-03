@@ -56,6 +56,7 @@ type agentRunOptions struct {
 	params      []string
 	paramFiles  []string
 	replTimeout time.Duration
+	interactive bool
 }
 
 type agentListOutput struct {
@@ -144,6 +145,8 @@ func agentRunCommand() *cobra.Command {
 	cmd.Flags().StringArrayVar(&opts.params, "param", nil, "qualified Role parameter as node.name=value; repeatable")
 	cmd.Flags().StringArrayVar(&opts.paramFiles, "param-file", nil, "qualified Role parameter as node.name=path; repeatable")
 	cmd.Flags().DurationVar(&opts.replTimeout, "repl-timeout", resource.DefaultREPLTimeout(), "maximum wait for each operator prompt")
+	cmd.Flags().BoolVar(&opts.interactive, "interactive", false, "override every Role's interactive mode for this run; use --interactive=true or --interactive=false")
+	cmd.Flags().Lookup("interactive").NoOptDefVal = ""
 
 	return cmd
 }
@@ -176,6 +179,11 @@ func agentSchemaCommand() *cobra.Command {
 func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (resultErr error) {
 	started := time.Now()
 	runMetrics := &workflow.RunMetrics{}
+
+	var interactiveOverride *bool
+	if cmd.Flags().Changed("interactive") {
+		interactiveOverride = &opts.interactive
+	}
 
 	var interactor *terminalInteractor
 
@@ -253,12 +261,13 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (res
 	factory := newWorkflowFactory(cmd.ErrOrStderr(), interactor, pauses)
 
 	artifact, err := (workflow.Runner{
-		Root:       root,
-		Factory:    factory,
-		Interactor: interactor,
-		Params:     values,
-		Pauses:     pauses,
-		Metrics:    runMetrics,
+		Root:                root,
+		Factory:             factory,
+		Interactor:          interactor,
+		Params:              values,
+		Pauses:              pauses,
+		Metrics:             runMetrics,
+		InteractiveOverride: interactiveOverride,
 	}).Run(cmd.Context(), prompt)
 	if err != nil {
 		return err

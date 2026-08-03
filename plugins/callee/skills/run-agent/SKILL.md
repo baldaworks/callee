@@ -41,6 +41,23 @@ callee agent run "<agent-id>" \
   --param "<effective-node-id>.<name>=<value>"
 ```
 
+To override authored Role policy for one run, pass an explicit boolean:
+
+```bash
+callee agent run "<agent-id>" --message "<task>" --interactive=true
+callee agent run "<agent-id>" --message "<task>" --interactive=false
+```
+
+`--interactive=true` forces every Role visit in the selected run, including
+nested, aliased, and repeated Loop visits, through the existing REPL protocol.
+`--interactive=false` forces every Role visit through the existing one-shot
+protocol. When omitted, each Role keeps its authored `spec.interactive` (or
+legacy `spec.repl`) setting. This override is runtime-only: it does not rewrite
+specs or resources and does not change Scripts, Humans, composites, escalation
+authority, provider sessions, TTY requirements, or cleanup. The runtime flag
+is separate from the author-time `promptkit role create ... --interactive`
+flag.
+
 Use `--param-file "<effective-node-id>.<name>=<path>"` for exact multiline values. Supply known parameters shown by `agent view`; let Callee collect the rest just in time through the PTY.
 
 Read Human prompts, Human responses, Role questions, and permission requests through the same terminal. A Role inside a workflow may enter REPL mode; its stderr lifecycle has one `entering repl` / `exiting repl` pair, with every `await` turn inside that pair. Do not send `quit`, `exit`, `/done`, or a synthetic completion marker; the Role selects control through Callee's injected protocol.

@@ -536,6 +536,36 @@ Task: {{ .Input }}
 	}
 }
 
+func TestAgentRunInteractiveFlagHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if exitCode := Run(context.Background(), []string{"agent", "run", "--help"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent run --help exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	for _, want := range []string{"--interactive", "--interactive=true", "--interactive=false", "every Role's interactive mode"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("agent run help = %q, want containing %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestAgentRunInteractiveFlagRequiresExplicitValue(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if exitCode := Run(context.Background(), []string{"agent", "run", "roles/worker", "--interactive"}, &stdout, &stderr); exitCode != exitError {
+		t.Fatalf("agent run bare --interactive exit = %d, want %d; stderr=%q", exitCode, exitError, stderr.String())
+	}
+
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+
+	if !strings.Contains(stderr.String(), "flag needs an argument: --interactive") {
+		t.Errorf("stderr = %q, want explicit-value diagnostic", stderr.String())
+	}
+}
+
 func TestAgentRunUsesExclusiveAgentRoot(t *testing.T) {
 	project := isolateAgentRoots(t)
 	defaultDir := filepath.Join(project, ".callee")

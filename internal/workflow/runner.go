@@ -27,12 +27,13 @@ type Interactor interface {
 
 // Runner executes one resolved root using shared ephemeral state.
 type Runner struct {
-	Root       *registry.ResolvedNode
-	Factory    runtime.ProcessFactory
-	Interactor Interactor
-	Params     map[string]string
-	Pauses     *PauseController
-	Metrics    *RunMetrics
+	Root                *registry.ResolvedNode
+	Factory             runtime.ProcessFactory
+	Interactor          Interactor
+	Params              map[string]string
+	Pauses              *PauseController
+	Metrics             *RunMetrics
+	InteractiveOverride *bool
 }
 
 // Run executes the root and returns its sole final artifact only after every
@@ -57,19 +58,28 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		return "", fmt.Errorf("workflow prompt must not be blank")
 	}
 
+	interactiveOverrideSet := r.InteractiveOverride != nil
+	interactiveOverride := false
+
+	if interactiveOverrideSet {
+		interactiveOverride = *r.InteractiveOverride
+	}
+
 	run := &runState{
 		prompt: prompt,
 		state: map[string]any{
 			"outputs": map[string]string{},
 			"scripts": map[string]any{},
 		},
-		factory:    r.Factory,
-		interactor: r.Interactor,
-		params:     copyStrings(r.Params),
-		processes:  make(map[string]runtime.ProviderProcess),
-		visits:     make(map[string]int),
-		pauses:     r.Pauses,
-		metrics:    metrics,
+		factory:                r.Factory,
+		interactor:             r.Interactor,
+		params:                 copyStrings(r.Params),
+		processes:              make(map[string]runtime.ProviderProcess),
+		visits:                 make(map[string]int),
+		pauses:                 r.Pauses,
+		metrics:                metrics,
+		interactiveOverrideSet: interactiveOverrideSet,
+		interactiveOverride:    interactiveOverride,
 	}
 
 	if err := validateRuntimeParams(r.Root, run.params); err != nil {
@@ -127,16 +137,18 @@ type processStartResult struct {
 }
 
 type runState struct {
-	prompt     string
-	state      map[string]any
-	factory    runtime.ProcessFactory
-	interactor Interactor
-	params     map[string]string
-	processes  map[string]runtime.ProviderProcess
-	started    []startedProcess
-	visits     map[string]int
-	pauses     *PauseController
-	metrics    *RunMetrics
+	prompt                 string
+	state                  map[string]any
+	factory                runtime.ProcessFactory
+	interactor             Interactor
+	params                 map[string]string
+	processes              map[string]runtime.ProviderProcess
+	started                []startedProcess
+	visits                 map[string]int
+	pauses                 *PauseController
+	metrics                *RunMetrics
+	interactiveOverrideSet bool
+	interactiveOverride    bool
 }
 
 func (r *runState) node(
@@ -289,7 +301,8 @@ func (r *runState) role(
 		return result, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
 	}
 
-	if node.Resource.REPL() {
+	interactive := r.roleInteractive(node)
+	if interactive {
 		logger := r.lifecycleLogger(ctx, node)
 		started := time.Now()
 
@@ -300,7 +313,7 @@ func (r *runState) role(
 		}()
 	}
 
-	turnInput := body + controlInstructions(node.Resource.REPL(), node.WithinLoop, node.CanEscalate)
+	turnInput := body + controlInstructions(interactive, node.WithinLoop, node.CanEscalate)
 	turnCtx, cancelTurn := withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
 	roleStarted := time.Now()
 	waitStarted := r.operatorWaitDuration()
@@ -313,7 +326,15 @@ func (r *runState) role(
 		r.metrics.add(result.roleMetrics.usage)
 	}()
 
-	return r.runRoleTurns(ctx, node, session, turnInput, turnCtx, cancelTurn, result)
+	return r.runRoleTurns(ctx, node, session, turnInput, turnCtx, cancelTurn, interactive, result)
+}
+
+func (r *runState) roleInteractive(node *registry.ResolvedNode) bool {
+	if r.interactiveOverrideSet {
+		return r.interactiveOverride
+	}
+
+	return node.Resource.REPL()
 }
 
 func (r *runState) runRoleTurns(
@@ -323,6 +344,7 @@ func (r *runState) runRoleTurns(
 	turnInput string,
 	turnCtx context.Context,
 	cancelTurn context.CancelFunc,
+	interactive bool,
 	result nodeResult,
 ) (nodeResult, error) {
 	for {
@@ -336,7 +358,7 @@ func (r *runState) runRoleTurns(
 			return result, fmt.Errorf("agent %q turn: %w", node.EffectiveID, err)
 		}
 
-		parsed, err := parseResponse(turnResult.Content, node.Resource.REPL())
+		parsed, err := parseResponse(turnResult.Content, interactive)
 		if err != nil {
 			return result, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
 		}

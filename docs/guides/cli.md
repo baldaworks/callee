@@ -139,6 +139,24 @@ callee agent run workflows/investigate \
   --message "Explain the architecture and main entry points"
 ```
 
+Override the authored interactive policy for the complete selected run with an
+explicit boolean:
+
+```bash
+callee agent run workflows/investigate --message "Ask for the target" --interactive=true
+callee agent run workflows/investigate --message "Return one artifact" --interactive=false
+```
+
+`--interactive=true` forces every `Role` visit, including direct, nested,
+aliased, and repeated `Loop` visits, through the existing REPL protocol.
+`--interactive=false` forces every Role visit through the existing one-shot
+protocol. Omitting the flag preserves each Role's authored
+`spec.interactive` (or legacy `spec.repl`) setting. The override exists only
+for this run: it does not rewrite specs or resources and does not change
+`Script`, `Human`, composite, escalation, provider-session, TTY, or cleanup
+behavior. A bare `--interactive` is invalid; use `--interactive=true` or
+`--interactive=false`.
+
 Omit `--message` to enter the root prompt on the controlling terminal. Supplying an explicitly blank `--message` is an error.
 
 Execution metrics are structured fields on stderr lifecycle events and never change artifact-only stdout. Every Role visit reports `role_*` provider-selection and token fields and, after its first provider turn starts, duration and wait fields. The final `agent run finished` event reports `agent_*` metrics for the complete command. See [Execution metrics](../reference/execution-metrics.md) for the complete field list, duration boundaries, operator-wait semantics, provider-selection fallback, token aggregation, and unsupported tool metrics.
@@ -153,7 +171,7 @@ callee agent run workflows/review \
   --param-file worker.context=./request.md
 ```
 
-The two parameter flags are repeatable. Missing values are prompted on the terminal. `--repl-timeout 45m` changes the maximum wait for every operator prompt in the run.
+The two parameter flags are repeatable. Missing values are prompted on the terminal. `--repl-timeout 45m` changes the maximum wait for every operator prompt in the run; the interactive override does not change TTY or timeout requirements.
 
 Execution always requires a real controlling TTY. The terminal carries the root prompt, missing parameters, Human-node prompts and responses, REPL turns, abort input, and ACP permission selection. Lifecycle and provider diagnostics go to stderr. The sole successful root artifact is written to stdout only after provider cleanup succeeds, so automation should determine success from the exit status rather than an empty stderr assumption.
 
@@ -190,7 +208,7 @@ without writing it.
 
 The parameter selected by `--prompt-param` comes from the Role's runtime input. `--bind` and `--bind-file` freeze author-time values. Other declared template parameters become runtime `spec.params`. A configurable persona must use `--persona`. Use `--protocol`, `--taxonomy`, `--format`, or `--no-format` to adjust assembly. Provider session fields are available through `--cmd`, `--model`, `--reasoning`, `--mode`, and repeatable `--extra-arg`.
 
-Templates marked with PromptKit `metadata.mode: interactive` automatically generate `spec.interactive: true`; `--interactive` forces the same behavior for other templates.
+Templates marked with PromptKit `metadata.mode: interactive` automatically generate `spec.interactive: true`; `callee promptkit role create ... --interactive` forces the same author-time behavior for other templates. This is separate from the runtime `callee agent run --interactive=true|false` override.
 
 After generation, validate the file and its resolved tree:
 

@@ -28,7 +28,7 @@ func TestAgentRunUsesControllingPTYWithSeparateStreams(t *testing.T) {
 			responses := []string{"implemented"}
 			wantEscalate := false
 
-			if mode == "repl" {
+			if mode == "repl" || mode == "forced-repl" {
 				responses = []string{
 					"Which target?\n\ncallee.control.v1.await",
 					"Final implementation\n\ncallee.control.v1.return",
@@ -46,7 +46,8 @@ func TestAgentRunUsesControllingPTYWithSeparateStreams(t *testing.T) {
 			agentID = "workflows/loop"
 		}
 
-		code := Run(context.Background(), []string{"agent", "run", agentID, "--message", "build"}, os.Stdout, os.Stderr)
+		args := ptyRunArgs(mode, agentID)
+		code := Run(context.Background(), args, os.Stdout, os.Stderr)
 		os.Exit(code)
 	}
 
@@ -58,6 +59,8 @@ func TestAgentRunUsesControllingPTYWithSeparateStreams(t *testing.T) {
 	}{
 		{name: "root Role", mode: "direct", want: "implemented"},
 		{name: "root REPL await", mode: "repl", terminalIn: "linux\n", want: "Final implementation"},
+		{name: "forced REPL await", mode: "forced-repl", terminalIn: "linux\n", want: "Final implementation"},
+		{name: "forced one-shot", mode: "forced-one-shot", want: "implemented"},
 		{name: "Loop child escalation", mode: "loop", want: "implemented"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -66,14 +69,28 @@ func TestAgentRunUsesControllingPTYWithSeparateStreams(t *testing.T) {
 	}
 }
 
+func ptyRunArgs(mode, agentID string) []string {
+	args := []string{"agent", "run", agentID, "--message", "build"}
+
+	switch mode {
+	case "forced-repl":
+		args = append(args, "--interactive=true")
+	case "forced-one-shot":
+		args = append(args, "--interactive=false")
+	}
+
+	return args
+}
+
 func runAgentPTYTest(t *testing.T, mode, terminalInput, want string) {
 	t.Helper()
 
 	project := t.TempDir()
-	repl := mode == "repl"
+	authoredREPL := mode == "repl" || mode == "forced-one-shot"
+	wantREPL := mode == "repl" || mode == "forced-repl"
 
 	replDeclaration := ""
-	if repl {
+	if authoredREPL {
 		replDeclaration = "  interactive: true\n"
 	}
 
@@ -166,8 +183,8 @@ spec:
 
 	for _, expected := range []string{"INF entering repl", "INF exiting repl"} {
 		contains := strings.Contains(diagnostics, expected)
-		if contains != repl {
-			t.Errorf("stderr contains %q = %t, want %t; stderr=%q", expected, contains, repl, stderr.String())
+		if contains != wantREPL {
+			t.Errorf("stderr contains %q = %t, want %t; stderr=%q", expected, contains, wantREPL, stderr.String())
 		}
 	}
 

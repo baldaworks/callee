@@ -552,6 +552,350 @@ func TestRunnerREPLRetainsVisitSession(t *testing.T) {
 	}
 }
 
+func TestRunnerInteractiveOverrideTrueUsesREPLProtocol(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t, roleResource(t, "roles/planner", false, nil, "Plan: {{ .Input }}"))
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/planner": {{"Which target?\n\n" + controlAwait, "Final plan\n\n" + controlReturn}},
+	}}
+	interactor := &scriptedInteractor{answers: []string{"linux"}}
+	interactiveOverride := true
+
+	got, err := (Runner{
+		Root:                root,
+		Factory:             &scriptedFactory{process: process},
+		Interactor:          interactor,
+		InteractiveOverride: &interactiveOverride,
+	}).Run(context.Background(), "make plan")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "Final plan" {
+		t.Errorf("Runner.Run() = %q, want Final plan", got)
+	}
+
+	if process.sessions != 1 {
+		t.Errorf("sessions = %d, want 1", process.sessions)
+	}
+
+	if len(interactor.displayed) != 1 || interactor.displayed[0] != "Which target?" {
+		t.Errorf("displayed = %v, want question", interactor.displayed)
+	}
+
+	prompts := process.prompts["roles/planner"]
+	if len(prompts) != 2 {
+		t.Fatalf("planner turns = %d, want 2", len(prompts))
+	}
+
+	for _, want := range []string{controlAwait, controlReturn} {
+		if !strings.Contains(prompts[0], want) {
+			t.Errorf("planner prompt does not contain %q:\n%s", want, prompts[0])
+		}
+	}
+
+	if !strings.Contains(prompts[1], "linux"+replReminder()) {
+		t.Errorf("planner continuation prompt = %q, want operator answer and REPL reminder", prompts[1])
+	}
+
+	if root.Resource.REPL() {
+		t.Error("authored Role became interactive in the resolved resource")
+	}
+}
+
+func TestRunnerInteractiveOverrideFalseUsesOneShotProtocol(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t, roleResource(t, "roles/planner", true, nil, "Plan: {{ .Input }}"))
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/planner": {{"Final plan"}},
+	}}
+	interactiveOverride := false
+
+	got, err := (Runner{
+		Root:                root,
+		Factory:             &scriptedFactory{process: process},
+		InteractiveOverride: &interactiveOverride,
+	}).Run(context.Background(), "make plan")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if got != "Final plan" {
+		t.Errorf("Runner.Run() = %q, want Final plan", got)
+	}
+
+	if process.sessions != 1 {
+		t.Errorf("sessions = %d, want 1", process.sessions)
+	}
+
+	prompt := process.prompts["roles/planner"]
+	if len(prompt) != 1 {
+		t.Fatalf("planner turns = %d, want 1", len(prompt))
+	}
+
+	if !strings.Contains(prompt[0], "Return the requested artifact normally.") {
+		t.Errorf("planner one-shot prompt = %q, want one-shot instructions", prompt[0])
+	}
+
+	for _, forbidden := range []string{controlAwait, controlReturn} {
+		if strings.Contains(prompt[0], forbidden) {
+			t.Errorf("planner one-shot prompt unexpectedly contains %q:\n%s", forbidden, prompt[0])
+		}
+	}
+
+	if !root.Resource.REPL() {
+		t.Error("authored Role lost its interactive policy in the resolved resource")
+	}
+}
+
+func TestRunnerInteractiveOverrideOmittedPreservesAuthoredPolicy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		repl      bool
+		responses []string
+		answers   []string
+		want      string
+	}{
+		{
+			name:      "authored one-shot",
+			responses: []string{"draft"},
+			want:      "draft",
+		},
+		{
+			name:      "authored REPL",
+			repl:      true,
+			responses: []string{"Question?\n\n" + controlAwait, "draft\n\n" + controlReturn},
+			answers:   []string{"answer"},
+			want:      "draft",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := resolvedRoot(t, roleResource(t, "roles/worker", test.repl, nil, "Work: {{ .Input }}"))
+			process := &scriptedProcess{visits: map[string][][]string{
+				"roles/worker": {test.responses},
+			}}
+			interactor := &scriptedInteractor{answers: test.answers}
+
+			got, err := (Runner{
+				Root:       root,
+				Factory:    &scriptedFactory{process: process},
+				Interactor: interactor,
+			}).Run(context.Background(), "work")
+			if err != nil {
+				t.Fatalf("Runner.Run() error: %v", err)
+			}
+
+			if got != test.want {
+				t.Errorf("Runner.Run() = %q, want %q", got, test.want)
+			}
+
+			prompt := process.prompts["roles/worker"][0]
+			if test.repl {
+				if !strings.Contains(prompt, controlAwait) || len(interactor.displayed) != 1 {
+					t.Errorf("authored REPL prompt/display = %q/%v, want await and one display", prompt, interactor.displayed)
+				}
+			} else {
+				if strings.Contains(prompt, controlAwait) || len(interactor.displayed) != 0 {
+					t.Errorf("authored one-shot prompt/display = %q/%v, want no REPL protocol or display", prompt, interactor.displayed)
+				}
+			}
+		})
+	}
+}
+
+func TestRunnerInteractiveOverrideReachesNestedAliasesAndLoopVisits(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		override bool
+	}{
+		{name: "force repl", override: true},
+		{name: "force one-shot", override: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authoredREPL := !test.override
+			nested := compositeResource(t, "workflows/nested", agent.SequentialKind, []agent.Child{
+				{Ref: "roles/nested", Alias: "nested_role"},
+			}, 0, "{{ .Input }}", "{{ .State.outputs.nested_role }}")
+			loop := compositeResource(t, "workflows/repeat", agent.LoopKind, []agent.Child{
+				{Ref: "roles/repeated", Alias: "repeated"},
+			}, 2, "{{ .Input }}", "{{ .State.outputs.repeated }}")
+			loop.Spec.OnExhausted = "complete"
+			root := resolvedRoot(t,
+				roleResource(t, "roles/direct", authoredREPL, nil, "Direct: {{ .Input }}"),
+				roleResource(t, "roles/nested", authoredREPL, nil, "Nested: {{ .Input }}"),
+				roleResource(t, "roles/repeated", authoredREPL, nil, "Repeated: {{ .Input }}"),
+				nested,
+				loop,
+				compositeResource(t, "workflows/root", agent.SequentialKind, []agent.Child{
+					{Ref: "roles/direct", Alias: "direct"},
+					{Ref: "workflows/nested", Alias: "nested"},
+					{Ref: "workflows/repeat", Alias: "repeat"},
+				}, 0, "{{ .Input }}", "direct={{ .State.outputs.direct }} nested={{ .State.outputs.nested }} repeat={{ .State.outputs.repeat }}"),
+			)
+
+			response := func(artifact string) string {
+				if test.override {
+					return artifact + "\n\n" + controlReturn
+				}
+
+				return artifact
+			}
+			process := &scriptedProcess{visits: map[string][][]string{
+				"roles/direct":   {{response("direct")}},
+				"roles/nested":   {{response("nested")}},
+				"roles/repeated": {{response("repeat-one")}, {response("repeat-two")}},
+			}}
+			interactiveOverride := test.override
+
+			got, err := (Runner{
+				Root:                root,
+				Factory:             &scriptedFactory{process: process},
+				InteractiveOverride: &interactiveOverride,
+			}).Run(context.Background(), "build")
+			if err != nil {
+				t.Fatalf("Runner.Run() error: %v", err)
+			}
+
+			if want := "direct=direct nested=nested repeat=repeat-two"; got != want {
+				t.Errorf("Runner.Run() = %q, want %q", got, want)
+			}
+
+			if process.sessions != 4 {
+				t.Errorf("sessions = %d, want 4 Role visits", process.sessions)
+			}
+
+			if got, want := strings.Join(process.effectiveIDs, ","), "direct,nested_role,repeated,repeated"; got != want {
+				t.Errorf("effective session IDs = %q, want %q", got, want)
+			}
+
+			for roleID, wantVisits := range map[string]int{
+				"roles/direct":   1,
+				"roles/nested":   1,
+				"roles/repeated": 2,
+			} {
+				prompts := process.prompts[roleID]
+				if len(prompts) != wantVisits {
+					t.Fatalf("%s turns = %d, want %d", roleID, len(prompts), wantVisits)
+				}
+
+				assertInteractivePromptMode(t, roleID, prompts, test.override)
+			}
+		})
+	}
+}
+
+func assertInteractivePromptMode(t *testing.T, roleID string, prompts []string, wantREPL bool) {
+	t.Helper()
+
+	for _, prompt := range prompts {
+		for _, control := range []string{controlAwait, controlReturn} {
+			if gotREPL := strings.Contains(prompt, control); gotREPL != wantREPL {
+				t.Errorf("%s prompt contains %q = %t, want %t:\n%s", roleID, control, gotREPL, wantREPL, prompt)
+			}
+		}
+	}
+}
+
+func TestRunnerInteractiveOverridePreservesLoopEscalationAuthority(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		override bool
+	}{
+		{name: "force repl", override: true},
+		{name: "force one-shot", override: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			loop := compositeResource(t, "workflows/loop", agent.LoopKind, []agent.Child{
+				{Ref: "roles/reviewer", Alias: "reviewer", CanEscalate: true},
+			}, 2, "{{ .Input }}", "{{ .State.outputs.reviewer }}")
+			root := resolvedRoot(t, roleResource(t, "roles/reviewer", !test.override, nil, "Review: {{ .Input }}"), loop)
+			process := &scriptedProcess{visits: map[string][][]string{
+				"roles/reviewer": {{"recoverable\n\n" + controlEscalate}},
+			}}
+			interactiveOverride := test.override
+
+			got, err := (Runner{
+				Root:                root,
+				Factory:             &scriptedFactory{process: process},
+				InteractiveOverride: &interactiveOverride,
+			}).Run(context.Background(), "review")
+			if err != nil {
+				t.Fatalf("Runner.Run() error: %v", err)
+			}
+
+			if got != "recoverable" {
+				t.Errorf("Runner.Run() = %q, want recoverable", got)
+			}
+
+			if len(process.prompts["roles/reviewer"]) != 1 {
+				t.Fatalf("reviewer turns = %d, want 1", len(process.prompts["roles/reviewer"]))
+			}
+
+			if !strings.Contains(process.prompts["roles/reviewer"][0], controlEscalate) {
+				t.Errorf("reviewer prompt does not preserve Loop escalation authority:\n%s", process.prompts["roles/reviewer"][0])
+			}
+		})
+	}
+}
+
+func TestRunnerInteractiveOverrideLeavesNonRoleNodesUnchanged(t *testing.T) {
+	t.Parallel()
+
+	root := resolvedRoot(t,
+		scriptResource(t, "scripts/check", "printf checked"),
+		humanResource(t, "humans/approval", "approval", "Approve: {{ .Input }}"),
+		roleResource(t, "roles/reviewer", true, nil, "Review: {{ .Input }}"),
+		compositeResource(t, "workflows/pipeline", agent.SequentialKind, []agent.Child{
+			{Ref: "scripts/check", Alias: "check"},
+			{Ref: "humans/approval", Alias: "approval"},
+			{Ref: "roles/reviewer", Alias: "reviewer"},
+		}, 0, "{{ .Input }}", "script={{ .State.outputs.check }} human={{ .State.outputs.approval }} role={{ .State.outputs.reviewer }}"),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{
+		"roles/reviewer": {{"done"}},
+	}}
+	interactor := &scriptedInteractor{answers: []string{"approved"}}
+	interactiveOverride := false
+
+	got, err := (Runner{
+		Root:                root,
+		Factory:             &scriptedFactory{process: process},
+		Interactor:          interactor,
+		InteractiveOverride: &interactiveOverride,
+	}).Run(context.Background(), "review")
+	if err != nil {
+		t.Fatalf("Runner.Run() error: %v", err)
+	}
+
+	if want := "script=status=passed exitCode=0 human=approved role=done"; got != want {
+		t.Errorf("Runner.Run() = %q, want %q", got, want)
+	}
+
+	if len(interactor.displayed) != 1 || interactor.displayed[0] != "Approve: status=passed exitCode=0" {
+		t.Errorf("human displays = %v, want approval prompt", interactor.displayed)
+	}
+
+	if prompt := process.prompts["roles/reviewer"][0]; !strings.Contains(prompt, "Review: approved") {
+		t.Errorf("reviewer prompt = %q, want prior Human artifact", prompt)
+	}
+
+	for _, forbidden := range []string{controlAwait, controlReturn} {
+		if strings.Contains(process.prompts["roles/reviewer"][0], forbidden) {
+			t.Errorf("forced one-shot Role prompt unexpectedly contains %q:\n%s", forbidden, process.prompts["roles/reviewer"][0])
+		}
+	}
+}
+
 func TestRunnerCollectsQualifiedParameterOnceAcrossLoopVisits(t *testing.T) {
 	t.Parallel()
 

@@ -437,6 +437,66 @@ func TestRunnerLogsREPLLifecycle(t *testing.T) {
 	}
 }
 
+func TestRunnerInteractiveOverrideSelectsLifecycleMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		authored bool
+		override bool
+		response string
+		wantLogs []string
+	}{
+		{
+			name:     "force repl over one-shot Role",
+			override: true,
+			response: "done\n\n" + controlReturn,
+			wantLogs: []string{"running agent", "entering repl", "exiting repl", "agent finished"},
+		},
+		{
+			name:     "force one-shot over REPL Role",
+			authored: true,
+			response: "done",
+			wantLogs: []string{"running agent", "agent finished"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := resolvedRoot(t, roleResource(t, "roles/planner", test.authored, nil, "{{ .Input }}"))
+			process := &scriptedProcess{visits: map[string][][]string{
+				"roles/planner": {{test.response}},
+			}}
+			interactiveOverride := test.override
+
+			var output bytes.Buffer
+
+			logger := zerolog.New(&output)
+			ctx := logger.WithContext(context.Background())
+
+			_, err := (Runner{
+				Root:                root,
+				Factory:             &scriptedFactory{process: process},
+				InteractiveOverride: &interactiveOverride,
+			}).Run(ctx, "task")
+			if err != nil {
+				t.Fatalf("Runner.Run() error: %v", err)
+			}
+
+			events := decodeLifecycleEvents(t, &output)
+			if len(events) != len(test.wantLogs) {
+				t.Fatalf("lifecycle events = %#v, want messages %v", events, test.wantLogs)
+			}
+
+			for index, want := range test.wantLogs {
+				if got := events[index]["message"]; got != want {
+					t.Errorf("event %d message = %#v, want %q; event=%#v", index, got, want, events[index])
+				}
+			}
+		})
+	}
+}
+
 func runREPLLifecycleTest(t *testing.T, test replLifecycleTest) {
 	t.Helper()
 
