@@ -104,6 +104,7 @@ func TestAgentSchemaCommand(t *testing.T) {
 		{kind: "Human", definition: "human"},
 		{kind: "Sequential", definition: "sequential"},
 		{kind: "Loop", definition: "loop"},
+		{kind: "Router", definition: "router"},
 	}
 
 	for _, test := range tests {
@@ -149,7 +150,7 @@ func TestAgentSchemaCommandReportsKindErrors(t *testing.T) {
 		{
 			name: "unsupported kind",
 			args: []string{"agent", "schema", "Parallel"},
-			want: `unsupported kind "Parallel"`,
+			want: `unsupported kind "Parallel" (want Role, Script, Human, Sequential, Loop, or Router)`,
 		},
 	}
 
@@ -170,6 +171,108 @@ func TestAgentSchemaCommandReportsKindErrors(t *testing.T) {
 				t.Fatalf("stderr = %q, want containing %q", stderr.String(), test.want)
 			}
 		})
+	}
+}
+
+func TestAgentListAndViewIncludeRouterEdges(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+
+	for _, id := range []string{"named", "fallback"} {
+		writeVersionedAgent(t, dir, "roles/"+id+".md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: `+id+`
+  provider: {type: codex}
+---
+		{{ .Input }}
+`)
+	}
+
+	writeVersionedAgent(t, dir, "workflows/router.yaml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: Routes work.
+  route: '{{ .Input }}'
+  children:
+    - ref: roles/named
+      alias: named
+      route: 'bug|urgent'
+    - ref: roles/fallback
+      alias: fallback
+      default: true
+  body: |
+    {{ .Input }}
+`)
+
+	writeVersionedAgent(t, dir, "workflows/outer.yaml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Sequential
+spec:
+  description: Wraps the Router.
+  children:
+    - ref: workflows/router
+      alias: router
+  body: |
+    {{ .Input }}
+`)
+
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(context.Background(), []string{"agent", "list", "--kind", "Router", "--json"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent list exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var catalog agentListOutput
+	if err := json.Unmarshal(stdout.Bytes(), &catalog); err != nil {
+		t.Fatalf("decode agent list: %v", err)
+	}
+
+	if len(catalog.Agents) != 1 || catalog.Agents[0].ResourceID != "workflows/router" || catalog.Agents[0].Kind != agent.RouterKind {
+		t.Fatalf("Router catalog = %+v", catalog.Agents)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	if exitCode := Run(context.Background(), []string{"agent", "view", "workflows/outer", "--json"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var view agentViewOutput
+
+	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+		t.Fatalf("decode agent view: %v", err)
+	}
+
+	if len(view.ResolvedTree.Children) != 1 || len(view.ResolvedTree.Children[0].Children) != 2 {
+		t.Fatalf("resolved Router tree = %+v", view.ResolvedTree)
+	}
+
+	routerChildren := view.ResolvedTree.Children[0].Children
+
+	if routerChildren[0].Route != "bug|urgent" || routerChildren[0].Default {
+		t.Errorf("named resolved edge = route %q default %t", routerChildren[0].Route, routerChildren[0].Default)
+	}
+
+	if routerChildren[1].Route != "" || !routerChildren[1].Default {
+		t.Errorf("default resolved edge = route %q default %t", routerChildren[1].Route, routerChildren[1].Default)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	if exitCode := Run(context.Background(), []string{"agent", "view", "workflows/outer"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent text view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	for _, want := range []string{
+		"router [Router] -> workflows/router",
+		`named [Role] -> roles/named canEscalate=false route="bug|urgent"`,
+		"fallback [Role] -> roles/fallback canEscalate=false default=true",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("agent view = %q, want containing %q", stdout.String(), want)
+		}
 	}
 }
 
@@ -536,6 +639,129 @@ Task: {{ .Input }}
 	}
 }
 
+func TestAgentRunRoutesNamedDefaultAndFailsClosed(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+
+	for _, id := range []string{"named", "fallback"} {
+		writeVersionedAgent(t, dir, "roles/"+id+".md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: `+id+`
+  provider: {type: codex}
+---
+		{{ .Input }}
+`)
+	}
+
+	writeVersionedAgent(t, dir, "workflows/router.yaml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: Routes work.
+  route: '{{ .Prompt }}'
+  children:
+    - ref: roles/named
+      alias: named
+      route: named
+    - ref: roles/fallback
+      alias: fallback
+      default: true
+  body: |
+    payload={{ .Input }}
+`)
+
+	writeVersionedAgent(t, dir, "workflows/closed-router.yaml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: Routes known work only.
+  route: '{{ .Prompt }}'
+  children:
+    - ref: roles/named
+      alias: named
+      route: named
+  body: |
+    payload={{ .Input }}
+`)
+
+	oldOpenTerminal := openTerminal
+	oldFactory := newWorkflowFactory
+
+	t.Cleanup(func() {
+		openTerminal = oldOpenTerminal
+		newWorkflowFactory = oldFactory
+	})
+
+	openTerminal = func() (io.ReadWriteCloser, error) {
+		return &splitTerminal{input: strings.NewReader("")}, nil
+	}
+
+	var (
+		process *cliTestProcess
+		starts  int
+	)
+
+	newWorkflowFactory = func(io.Writer, *terminalInteractor, *workflow.PauseController) runtime.ProcessFactory {
+		return cliTestFactory{process: process, starts: &starts}
+	}
+
+	for _, test := range []struct {
+		name            string
+		message         string
+		wantArtifact    string
+		wantEffectiveID string
+		wantDiagnostic  string
+	}{
+		{name: "named", message: "named", wantArtifact: "named-result", wantEffectiveID: "named", wantDiagnostic: "route=named"},
+		{name: "default", message: "unknown", wantArtifact: "default-result", wantEffectiveID: "fallback", wantDiagnostic: "default=true"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			process = &cliTestProcess{responses: map[string]string{
+				"named":    "named-result",
+				"fallback": "default-result",
+			}}
+			starts = 0
+
+			var stdout, stderr bytes.Buffer
+
+			exitCode := Run(context.Background(), []string{"agent", "run", "workflows/router", "--message", test.message}, &stdout, &stderr)
+			if exitCode != 0 {
+				t.Fatalf("agent run exit = %d, stderr = %q", exitCode, stderr.String())
+			}
+
+			if stdout.String() != test.wantArtifact {
+				t.Errorf("stdout = %q, want %q", stdout.String(), test.wantArtifact)
+			}
+
+			if starts != 1 || len(process.effectiveIDs) != 1 || process.effectiveIDs[0] != test.wantEffectiveID {
+				t.Errorf("provider starts/effective IDs = %d/%#v, want 1/%q", starts, process.effectiveIDs, test.wantEffectiveID)
+			}
+
+			if diagnostics := stripANSI(stderr.String()); !strings.Contains(diagnostics, "selected router child") || !strings.Contains(diagnostics, test.wantDiagnostic) {
+				t.Errorf("stderr = %q, want Router selection and %q", stderr.String(), test.wantDiagnostic)
+			}
+		})
+	}
+
+	process = &cliTestProcess{response: "unexpected"}
+	starts = 0
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"agent", "run", "workflows/closed-router", "--message", "unknown"}, &stdout, &stderr)
+	if exitCode != exitError {
+		t.Fatalf("closed Router exit = %d, want %d; stderr=%q", exitCode, exitError, stderr.String())
+	}
+
+	if stdout.Len() != 0 || starts != 0 {
+		t.Errorf("closed Router stdout/provider starts = %q/%d, want empty/0", stdout.String(), starts)
+	}
+
+	if !strings.Contains(stderr.String(), `route "unknown" did not match any child`) {
+		t.Errorf("stderr = %q, want fail-closed route diagnostic", stderr.String())
+	}
+}
+
 func TestAgentRunInteractiveFlagHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
@@ -723,20 +949,36 @@ func (t *splitTerminal) Read(p []byte) (int, error)  { return t.input.Read(p) }
 func (t *splitTerminal) Write(p []byte) (int, error) { return t.output.Write(p) }
 func (t *splitTerminal) Close() error                { return nil }
 
-type cliTestFactory struct{ process *cliTestProcess }
+type cliTestFactory struct {
+	process *cliTestProcess
+	starts  *int
+}
 
 func (f cliTestFactory) Start(context.Context, runtime.Provider) (runtime.ProviderProcess, error) {
+	if f.starts != nil {
+		*f.starts++
+	}
+
 	return f.process, nil
 }
 
 type cliTestProcess struct {
-	response string
-	usage    *runtime.TokenUsage
-	closed   bool
+	response     string
+	responses    map[string]string
+	usage        *runtime.TokenUsage
+	closed       bool
+	effectiveIDs []string
 }
 
-func (p *cliTestProcess) NewSession(context.Context, agent.Resource, string) (runtime.AgentSession, error) {
-	return cliTestSession{response: p.response, usage: p.usage}, nil
+func (p *cliTestProcess) NewSession(_ context.Context, _ agent.Resource, effectiveID string) (runtime.AgentSession, error) {
+	p.effectiveIDs = append(p.effectiveIDs, effectiveID)
+
+	response := p.response
+	if selected, ok := p.responses[effectiveID]; ok {
+		response = selected
+	}
+
+	return cliTestSession{response: response, usage: p.usage}, nil
 }
 
 func (p *cliTestProcess) Close() error {

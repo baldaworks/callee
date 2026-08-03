@@ -47,6 +47,8 @@ type ResolvedNode struct {
 	REPL                *bool              `json:"repl,omitempty"`
 	MaxIterations       *int               `json:"maxIterations,omitempty"`
 	OnExhausted         string             `json:"onExhausted,omitempty"`
+	Route               string             `json:"route,omitempty"`
+	Default             bool               `json:"default,omitempty"`
 	Children            []*ResolvedNode    `json:"children"`
 
 	Resource agent.Resource `json:"-"`
@@ -268,6 +270,8 @@ func (r *AgentRegistry) resolve(
 		Kind:        resource.Kind,
 		CanEscalate: canEscalate,
 		WithinLoop:  withinLoop,
+		Route:       edge.Route,
+		Default:     edge.Default,
 		Children:    make([]*ResolvedNode, 0, len(resource.Spec.Children)),
 		Resource:    resource,
 		Edge:        edge,

@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
+	"unicode"
 
+	"github.com/baldaworks/callee/internal/agent"
 	"github.com/baldaworks/callee/internal/registry"
 )
 
@@ -29,7 +32,7 @@ func writeTextGraph(output io.Writer, configured *registry.AgentRegistry) error 
 		}
 
 		for _, child := range item.Spec.Children {
-			annotation := fmt.Sprintf(" canEscalate=%t", child.CanEscalate)
+			annotation := edgeMetadata(child, " ", strconv.Quote)
 			if child.Alias != "" {
 				annotation = " alias=" + child.Alias + annotation
 			}
@@ -67,7 +70,7 @@ func writeMermaidGraph(output io.Writer, configured *registry.AgentRegistry) err
 				label = "ref"
 			}
 
-			label += fmt.Sprintf(", canEscalate=%t", child.CanEscalate)
+			label += edgeMetadata(child, ", ", mermaidQuote)
 
 			if _, err := fmt.Fprintf(output, "  %s -->|%s| %s\n", nodes[item.ID], label, nodes[child.Ref]); err != nil {
 				return err
@@ -94,7 +97,7 @@ func writeDOTGraph(output io.Writer, configured *registry.AgentRegistry) error {
 				label = "ref"
 			}
 
-			label += fmt.Sprintf(", canEscalate=%t", child.CanEscalate)
+			label += edgeMetadata(child, ", ", strconv.Quote)
 
 			if _, err := fmt.Fprintf(output, "  %s -> %s [label=%s];\n", strconv.Quote(item.ID), strconv.Quote(child.Ref), strconv.Quote(label)); err != nil {
 				return err
@@ -105,4 +108,35 @@ func writeDOTGraph(output io.Writer, configured *registry.AgentRegistry) error {
 	_, err := fmt.Fprintln(output, "}")
 
 	return err
+}
+
+func edgeMetadata(child agent.Child, separator string, quoteRoute func(string) string) string {
+	metadata := ""
+	if child.Default {
+		metadata += separator + "default=true"
+	} else if child.Route != "" {
+		metadata += separator + "route=" + quoteRoute(child.Route)
+	}
+
+	return metadata + separator + fmt.Sprintf("canEscalate=%t", child.CanEscalate)
+}
+
+func mermaidQuote(value string) string {
+	var encoded strings.Builder
+
+	encoded.WriteString("&quot;")
+
+	for _, character := range value {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) || strings.ContainsRune(" _-.", character) {
+			encoded.WriteRune(character)
+
+			continue
+		}
+
+		encoded.WriteString(fmt.Sprintf("&#%d;", character))
+	}
+
+	encoded.WriteString("&quot;")
+
+	return encoded.String()
 }

@@ -6,7 +6,8 @@
     { "$ref": "#/$defs/script" },
     { "$ref": "#/$defs/human" },
     { "$ref": "#/$defs/sequential" },
-    { "$ref": "#/$defs/loop" }
+    { "$ref": "#/$defs/loop" },
+    { "$ref": "#/$defs/router" }
   ],
   "$defs": {
     "base": {
@@ -82,6 +83,31 @@
           "additionalProperties": false
         }
       ]
+    },
+    "routerChild": {
+      "type": "object",
+      "required": ["ref"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 },
+        "alias": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "canEscalate": { "type": "boolean" },
+        "route": { "type": "string", "minLength": 1 },
+        "default": { "const": true },
+        "input": { "type": "string" },
+        "state": { "$ref": "#/$defs/state" },
+        "params": { "$ref": "#/$defs/params" }
+      },
+      "oneOf": [
+        {
+          "required": ["route"],
+          "not": { "required": ["default"] }
+        },
+        {
+          "required": ["default"],
+          "not": { "required": ["route"] }
+        }
+      ],
+      "additionalProperties": false
     },
     "role": {
       "type": "object",
@@ -192,6 +218,28 @@
             "output": { "type": "string" },
             "maxIterations": { "type": "integer", "minimum": 1 },
             "onExhausted": { "enum": ["fail", "complete"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "router": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "Router" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "route", "children", "body"],
+          "properties": {
+            "description": { "type": "string" },
+            "route": { "type": "string", "minLength": 1 },
+            "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/routerChild" } },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 },
+            "output": { "type": "string" }
           },
           "additionalProperties": false
         }

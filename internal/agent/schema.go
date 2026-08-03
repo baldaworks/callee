@@ -126,8 +126,10 @@ func schemaDefinitionName(kind Kind) (string, error) {
 		return "sequential", nil
 	case LoopKind:
 		return "loop", nil
+	case RouterKind:
+		return "router", nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Sequential, or Loop)", kind)
+		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Sequential, Loop, or Router)", kind)
 	}
 }
 

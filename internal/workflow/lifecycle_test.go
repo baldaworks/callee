@@ -20,6 +20,21 @@ type manualTurnHeartbeatTicker struct {
 func (t manualTurnHeartbeatTicker) Chan() <-chan time.Time { return t.ch }
 func (manualTurnHeartbeatTicker) Stop()                    {}
 
+type observedHeartbeatBuffer struct {
+	bytes.Buffer
+
+	heartbeats chan struct{}
+}
+
+func (b *observedHeartbeatBuffer) Write(data []byte) (int, error) {
+	written, err := b.Buffer.Write(data)
+	if bytes.Contains(data, []byte(`"message":"agent turn heartbeat"`)) {
+		b.heartbeats <- struct{}{}
+	}
+
+	return written, err
+}
+
 func withManualTurnHeartbeatHooks(t *testing.T, nowCh <-chan time.Time, tickerCh chan time.Time) {
 	t.Helper()
 
@@ -693,7 +708,7 @@ func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
 	tickerCh := make(chan time.Time)
 	withManualTurnHeartbeatHooks(t, nowCh, tickerCh)
 
-	var output bytes.Buffer
+	output := observedHeartbeatBuffer{heartbeats: make(chan struct{}, 2)}
 
 	logger := zerolog.New(&output)
 	ctx := logger.WithContext(context.Background())
@@ -710,7 +725,10 @@ func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
 	<-process.turnStarted
 
 	emitTurnHeartbeatTick(tickerCh, nowCh, now, now.Add(10*time.Second+2*time.Millisecond))
+	<-output.heartbeats
+
 	emitTurnHeartbeatTick(tickerCh, nowCh, now.Add(20*time.Second), now.Add(20*time.Second+800*time.Millisecond))
+	<-output.heartbeats
 
 	process.releaseTurns <- struct{}{}
 
@@ -718,7 +736,7 @@ func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
 		t.Fatalf("Runner.Run() error: %v", err)
 	}
 
-	events := decodeLifecycleEvents(t, &output)
+	events := decodeLifecycleEvents(t, &output.Buffer)
 
 	wantMessages := []string{"running agent", "agent turn heartbeat", "agent turn heartbeat", "agent finished"}
 

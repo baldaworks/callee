@@ -370,7 +370,7 @@ func agentListCommand() *cobra.Command {
 			return out.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, Sequential, or Loop")
+	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, Sequential, Loop, or Router")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the catalog as JSON")
 
 	return cmd
@@ -421,10 +421,10 @@ func parseKindFilter(value string) (resource.Kind, error) {
 	switch resource.Kind(value) {
 	case "":
 		return "", nil
-	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.SequentialKind, resource.LoopKind:
+	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.SequentialKind, resource.LoopKind, resource.RouterKind:
 		return resource.Kind(value), nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Sequential, or Loop)", value)
+		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Sequential, Loop, or Router)", value)
 	}
 }
 
@@ -462,6 +462,11 @@ func writeAgentView(output io.Writer, selected resource.Resource, resolved *regi
 
 func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent string) error {
 	policy := fmt.Sprintf(" canEscalate=%t", node.CanEscalate)
+	if node.Edge.Default {
+		policy += " default=true"
+	} else if node.Edge.Route != "" {
+		policy += fmt.Sprintf(" route=%q", node.Edge.Route)
+	}
 
 	switch node.Kind {
 	case resource.RoleKind:

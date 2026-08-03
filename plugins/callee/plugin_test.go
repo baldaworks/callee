@@ -29,7 +29,7 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"--param \"<effective-node-id>.<name>=<value>\"",
 		"real controlling PTY",
 		"Keep terminal interaction separate from stdout and stderr.",
-		"`Role`, `Script`, `Human`, `Sequential`, or `Loop`",
+		"`Role`, `Script`, `Human`, `Sequential`, `Loop`, or `Router`",
 		"Read Human prompts, Human responses",
 		"Do not send `quit`, `exit`, `/done`",
 		"artifact is written to stdout only after provider cleanup succeeds",
@@ -77,7 +77,7 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"{{ .Input }}",
 		"{{ .Params.focus }}",
 		"exactly one unconditional bare",
-		"For every `Sequential`, `Loop`, or nested-composite request",
+		"For every `Sequential`, `Loop`, `Router`, or nested-composite request",
 		"[references/workflows.md](references/workflows.md)",
 		"callee agent validate \"<written-agent-path>\"",
 		"actual generated `.md`, `.yaml`, or `.yml` path",
@@ -125,14 +125,16 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"[Place and represent files](#place-and-represent-files)",
 		"[Compose the resolved tree](#compose-the-resolved-tree)",
 		"[Author a Sequential workflow](#author-a-sequential-workflow)",
+		"[Author a Router workflow](#author-a-router-workflow)",
 		"[Author a Loop workflow](#author-a-loop-workflow)",
 		"[Finish the workflow](#finish-the-workflow)",
 		"below `.callee/`",
 		"`.md`, `.yaml`, or `.yml`",
 		"do not also write `spec.body`",
 		"kind: Sequential",
+		"kind: Router",
 		"kind: Loop",
-		"`Role`, `Script`, `Human`, `Sequential`, and `Loop`",
+		"`Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router`",
 		"workflow child may reference any supported kind",
 		"unique across the entire resolved tree",
 		"`params` only when that child resolves directly to a `Role`",
@@ -147,6 +149,9 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"Reserve `fail` for an unrecoverable condition",
 		"direct Loop child completes that Loop immediately",
 		"nested `Loop` is an ordinary child",
+		"A route-template error never selects default",
+		"does not retry or fail over to default",
+		"Do not use a provider to choose an undeclared child",
 		"callee agent validate",
 		"callee agent view",
 	} {
@@ -192,11 +197,11 @@ func TestCreateAgentWorkflowReferenceExamplesValidate(t *testing.T) {
 	}
 
 	sections := strings.Split(string(data), "```markdown\n")
-	if len(sections) != 3 {
-		t.Fatalf("workflow reference contains %d Markdown examples, want 2", len(sections)-1)
+	if len(sections) != 4 {
+		t.Fatalf("workflow reference contains %d Markdown examples, want 3", len(sections)-1)
 	}
 
-	wantKinds := []agent.Kind{agent.SequentialKind, agent.LoopKind}
+	wantKinds := []agent.Kind{agent.SequentialKind, agent.RouterKind, agent.LoopKind}
 
 	for index, section := range sections[1:] {
 		example, _, ok := strings.Cut(section, "\n```")
@@ -523,6 +528,7 @@ func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
 		"### Human",
 		"### Sequential",
 		"### Loop",
+		"### Router",
 		"## YAML representation and JSON Schema",
 	}
 
@@ -551,7 +557,8 @@ func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
 		{id: "scripts/validator", startHeading: "### Script", endHeading: "### Human", wantKind: agent.ScriptKind},
 		{id: "humans/approver", startHeading: "### Human", endHeading: "### Sequential", wantKind: agent.HumanKind},
 		{id: "workflows/pipeline", startHeading: "### Sequential", endHeading: "### Loop", wantKind: agent.SequentialKind},
-		{id: "workflows/goalkeeper", startHeading: "### Loop", endHeading: "### Children and composition", wantKind: agent.LoopKind},
+		{id: "workflows/goalkeeper", startHeading: "### Loop", endHeading: "### Router", wantKind: agent.LoopKind},
+		{id: "workflows/task-router", startHeading: "### Router", endHeading: "### Children and composition", wantKind: agent.RouterKind},
 	}
 
 	var markdownRole agent.Resource

@@ -109,6 +109,150 @@ spec:
 	}
 }
 
+func TestResolveRouterRetainsAllBranchesAndMetadata(t *testing.T) {
+	t.Parallel()
+
+	named := decodeAgent(t, "roles/named", roleAgent("named", map[string]string{"focus": "Named focus"}))
+	fallback := decodeAgent(t, "roles/fallback", roleAgent("fallback", map[string]string{"language": "Fallback language"}))
+	router := decodeAgent(t, "workflows/router", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: router
+  route: '{{ .Input }}'
+  children:
+    - route: work
+      ref: roles/named
+      alias: named
+      params:
+        focus: '{{ .State.focus }}'
+    - default: true
+      ref: roles/fallback
+      alias: fallback
+---
+{{ .Prompt }}
+`)
+
+	configured, err := NewAgentRegistry([]agent.Resource{named, fallback, router})
+	if err != nil {
+		t.Fatalf("NewAgentRegistry() error: %v", err)
+	}
+
+	root, err := configured.Resolve("workflows/router")
+	if err != nil {
+		t.Fatalf("Resolve() error: %v", err)
+	}
+
+	if len(root.Children) != 2 {
+		t.Fatalf("len(root.Children) = %d, want 2", len(root.Children))
+	}
+
+	if got, want := root.Children[0].Edge.Route, "work"; got != want || root.Children[0].Edge.Default {
+		t.Errorf("named edge = %+v, want route %q", root.Children[0].Edge, want)
+	}
+
+	if !root.Children[1].Edge.Default || root.Children[1].Edge.Route != "" {
+		t.Errorf("default edge = %+v, want default without named route", root.Children[1].Edge)
+	}
+
+	required := RequiredParams(root)
+	if len(required) != 1 || required[0].Key != "fallback.language" {
+		t.Errorf("RequiredParams() = %+v, want fallback.language", required)
+	}
+}
+
+func TestResolveRouterPreservesEscalationAcrossNamedAndDefaultEdges(t *testing.T) {
+	t.Parallel()
+
+	worker := decodeAgent(t, "roles/worker", roleAgent("worker", nil))
+	router := decodeAgent(t, "workflows/router", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: router
+  route: '{{ .Input }}'
+  children:
+    - route: work
+      ref: roles/worker
+      alias: named_worker
+      canEscalate: true
+    - default: true
+      ref: roles/worker
+      alias: fallback_worker
+      canEscalate: true
+---
+{{ .Prompt }}
+`)
+	loop := decodeAgent(t, "workflows/loop", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Loop
+spec:
+  description: loop
+  children:
+    - ref: workflows/router
+      alias: router
+      canEscalate: true
+  maxIterations: 2
+---
+{{ .Input }}
+`)
+
+	configured, err := NewAgentRegistry([]agent.Resource{worker, router, loop})
+	if err != nil {
+		t.Fatalf("NewAgentRegistry() error: %v", err)
+	}
+
+	root, err := configured.Resolve("workflows/loop")
+	if err != nil {
+		t.Fatalf("Resolve() error: %v", err)
+	}
+
+	for _, child := range root.Children[0].Children {
+		if !child.CanEscalate || !child.WithinLoop {
+			t.Errorf("child %q escalation = %t withinLoop = %t, want true/true", child.EffectiveID, child.CanEscalate, child.WithinLoop)
+		}
+	}
+}
+
+func TestResolveRouterRejectsCycleAndEffectiveIDCollision(t *testing.T) {
+	t.Parallel()
+
+	worker := decodeAgent(t, "roles/worker", roleAgent("worker", nil))
+	tests := []struct {
+		name      string
+		resources []agent.Resource
+		want      string
+	}{
+		{
+			name: "cycle",
+			resources: []agent.Resource{
+				decodeAgent(t, "workflows/a", routerAgent("a", "    - route: next\n      ref: workflows/b\n")),
+				decodeAgent(t, "workflows/b", routerAgent("b", "    - default: true\n      ref: workflows/a\n")),
+			},
+			want: "cycle",
+		},
+		{
+			name: "collision",
+			resources: []agent.Resource{
+				worker,
+				decodeAgent(t, "workflows/router", routerAgent("router", "    - route: first\n      ref: roles/worker\n    - route: second\n      ref: roles/worker\n")),
+			},
+			want: "duplicate effective ID",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewAgentRegistry(test.resources)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("NewAgentRegistry() error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestResolveComputesEdgeLevelEscalationCapability(t *testing.T) {
 	t.Parallel()
 
@@ -446,6 +590,10 @@ func sequentialAgent(description string, children []string) string {
 	}
 
 	return "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Sequential\nspec:\n  description: " + description + "\n  children:\n" + declarations.String() + "---\n{{ .Input }}\n"
+}
+
+func routerAgent(description, children string) string {
+	return "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Router\nspec:\n  description: " + description + "\n  route: '{{ .Input }}'\n  children:\n" + children + "---\n{{ .Prompt }}\n"
 }
 
 func yamlRoleAgent(description string) string {

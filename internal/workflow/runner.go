@@ -96,7 +96,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		}
 	}()
 
-	result, err := run.node(ctx, r.Root, prompt)
+	result, err := run.runADK(ctx, r.Root, prompt)
 	if err != nil {
 		return "", err
 	}
@@ -151,10 +151,11 @@ type runState struct {
 	interactiveOverride    bool
 }
 
-func (r *runState) node(
+func (r *runState) visit(
 	ctx context.Context,
 	node *registry.ResolvedNode,
 	input string,
+	execute func() (nodeResult, error),
 ) (result nodeResult, resultErr error) {
 	r.visits[node.EffectiveID]++
 	if node.Kind == agent.RoleKind {
@@ -174,20 +175,7 @@ func (r *runState) node(
 		return result, err
 	}
 
-	switch node.Kind {
-	case agent.RoleKind:
-		return r.role(ctx, node, input)
-	case agent.ScriptKind:
-		return r.script(ctx, node, input)
-	case agent.HumanKind:
-		return r.human(ctx, node, input)
-	case agent.SequentialKind:
-		return r.sequential(ctx, node, input)
-	case agent.LoopKind:
-		return r.loop(ctx, node, input)
-	default:
-		return result, fmt.Errorf("agent %q has unsupported kind %q", node.ResourceID, node.Kind)
-	}
+	return execute()
 }
 
 func (r *runState) lifecycleLogger(ctx context.Context, node *registry.ResolvedNode) zerolog.Logger {
@@ -440,120 +428,6 @@ func (r *runState) newSession(
 	}
 
 	return session, nil
-}
-
-func (r *runState) sequential(
-	ctx context.Context,
-	node *registry.ResolvedNode,
-	input string,
-) (nodeResult, error) {
-	localInput, err := r.compositeInput(node, input)
-	if err != nil {
-		return nodeResult{}, err
-	}
-
-	previous := localInput
-	result := nodeResult{
-		outcome:          outcomeReturn,
-		sourceID:         node.EffectiveID,
-		sourceResourceID: node.ResourceID,
-		sourcePath:       strings.Join(node.Path, " -> "),
-	}
-	stickyEscalation := false
-
-	for index, child := range node.Children {
-		childInput, err := r.childInput(node, child, index, localInput, previous)
-		if err != nil {
-			return nodeResult{}, err
-		}
-
-		childResult, err := r.node(ctx, child, childInput)
-		if err != nil {
-			return nodeResult{}, err
-		}
-
-		if childResult.outcome == outcomeFail {
-			return childResult, nil
-		}
-
-		if childResult.outcome == outcomeEscalate {
-			stickyEscalation = true
-			result.sourceID = childResult.sourceID
-			result.sourceResourceID = childResult.sourceResourceID
-			result.sourcePath = childResult.sourcePath
-		}
-
-		previous = childResult.artifact
-		result.artifact = childResult.artifact
-	}
-
-	if stickyEscalation {
-		result.outcome = outcomeEscalate
-		if strings.TrimSpace(result.artifact) != "" {
-			r.promote(node.EffectiveID, result.artifact)
-		}
-
-		return result, nil
-	}
-
-	return r.finishComposite(node, localInput, result.artifact)
-}
-
-func (r *runState) loop(
-	ctx context.Context,
-	node *registry.ResolvedNode,
-	input string,
-) (nodeResult, error) {
-	localInput, err := r.compositeInput(node, input)
-	if err != nil {
-		return nodeResult{}, err
-	}
-
-	var (
-		previousIteration = localInput
-		naturalOutput     string
-	)
-
-	for iteration := 0; iteration < *node.Resource.Spec.MaxIterations; iteration++ {
-		previous := previousIteration
-
-		for index, child := range node.Children {
-			childInput, err := r.childInput(node, child, index, localInput, previous)
-			if err != nil {
-				return nodeResult{}, err
-			}
-
-			childResult, err := r.node(ctx, child, childInput)
-			if err != nil {
-				return nodeResult{}, err
-			}
-
-			if childResult.outcome == outcomeFail {
-				return childResult, nil
-			}
-
-			previous = childResult.artifact
-			naturalOutput = childResult.artifact
-
-			if childResult.outcome == outcomeEscalate {
-				return r.finishComposite(node, localInput, naturalOutput)
-			}
-		}
-
-		previousIteration = naturalOutput
-	}
-
-	if node.Resource.ExhaustionPolicy() == "fail" {
-		return nodeResult{
-			outcome:          outcomeFail,
-			artifact:         "maximum iterations exhausted",
-			sourceID:         node.EffectiveID,
-			sourceResourceID: node.ResourceID,
-			sourcePath:       strings.Join(node.Path, " -> "),
-		}, nil
-	}
-
-	return r.finishComposite(node, localInput, naturalOutput)
 }
 
 func (r *runState) compositeInput(node *registry.ResolvedNode, input string) (string, error) {

@@ -1,6 +1,6 @@
 # Agent resource format
 
-Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|Sequential|Loop>` to print a standalone schema document for one kind.
+Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|Sequential|Loop|Router>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 
@@ -29,7 +29,7 @@ kind: Role
 spec: {}
 ```
 
-The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `Sequential`, and `Loop`. Unknown fields are rejected at every schema-defined object boundary.
+The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router`. Unknown fields are rejected at every schema-defined object boundary.
 
 ## Markdown and YAML representations
 
@@ -73,25 +73,26 @@ All kinds require a nonblank `description` and nonblank `body`. Every kind may d
 
 The supported fields differ by kind:
 
-| Field | Role | Script | Human | Sequential | Loop |
-| --- | --- | --- | --- | --- | --- |
-| `description` | Required | Required | Required | Required | Required |
-| `body` | Required | Required | Required | Required | Required |
-| `state` | Optional | Optional | Optional | Optional | Optional |
-| `provider` | Required | Not allowed | Not allowed | Not allowed | Not allowed |
-| `permissions` | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
-| `interactive` | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
-| `params` | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
-| `responseKey` | Not allowed | Not allowed | Required, nonblank | Not allowed | Not allowed |
-| `shell` | Not allowed | Optional: `sh` or `bash` | Not allowed | Not allowed | Not allowed |
-| `cwd` | Not allowed | Optional | Not allowed | Not allowed | Not allowed |
-| `env` | Not allowed | Optional string map | Not allowed | Not allowed | Not allowed |
-| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Not allowed | Not allowed |
-| `onNonZero` | Not allowed | Optional: `fail` or `continue` | Not allowed | Not allowed | Not allowed |
-| `children` | Not allowed | Not allowed | Not allowed | Required, nonempty | Required, nonempty |
-| `output` | Not allowed | Not allowed | Not allowed | Optional | Optional |
-| `maxIterations` | Not allowed | Not allowed | Not allowed | Not allowed | Required, integer at least 1 |
-| `onExhausted` | Not allowed | Not allowed | Not allowed | Not allowed | Optional: `fail` or `complete` |
+| Field | Role | Script | Human | Sequential | Loop | Router |
+| --- | --- | --- | --- | --- | --- | --- |
+| `description` | Required | Required | Required | Required | Required | Required |
+| `body` | Required | Required | Required | Required | Required | Required |
+| `state` | Optional | Optional | Optional | Optional | Optional | Optional |
+| `provider` | Required | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `permissions` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `interactive` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `params` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `responseKey` | Not allowed | Not allowed | Required, nonblank | Not allowed | Not allowed | Not allowed |
+| `shell` | Not allowed | Optional: `sh` or `bash` | Not allowed | Not allowed | Not allowed | Not allowed |
+| `cwd` | Not allowed | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
+| `env` | Not allowed | Optional string map | Not allowed | Not allowed | Not allowed | Not allowed |
+| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Not allowed | Not allowed | Not allowed |
+| `onNonZero` | Not allowed | Optional: `fail` or `continue` | Not allowed | Not allowed | Not allowed | Not allowed |
+| `children` | Not allowed | Not allowed | Not allowed | Required, nonempty | Required, nonempty | Required, nonempty mappings |
+| `route` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required, nonblank |
+| `output` | Not allowed | Not allowed | Not allowed | Optional | Optional | Optional |
+| `maxIterations` | Not allowed | Not allowed | Not allowed | Not allowed | Required, integer at least 1 | Not allowed |
+| `onExhausted` | Not allowed | Not allowed | Not allowed | Not allowed | Optional: `fail` or `complete` | Not allowed |
 
 ## Role
 
@@ -175,7 +176,7 @@ At runtime, Callee renders `body`, displays the rendered text on the controlling
 
 ## Composite children
 
-`Sequential` and `Loop` require at least one child. A child may be a scalar reference:
+`Sequential`, `Loop`, and `Router` require at least one child. Sequential and Loop children may be scalar references:
 
 ```yaml
 children:
@@ -208,6 +209,10 @@ children:
 | `input` | Optional template that replaces natural input for this occurrence. |
 | `state` | Optional shallow state modifier applied when this child node is visited. |
 | `params` | Optional Role parameter bindings; valid only when `ref` resolves directly to a Role. |
+| `route` | Router-only nonblank, whitespace-canonical named route. Exactly one of `route` or `default: true` is required. |
+| `default` | Router-only no-match edge. At most one child may set `default: true`. |
+
+Router children must use mapping form. Named routes are unique and case-sensitive. The string `default` remains a normal legal named route; fallback is represented only by `default: true`.
 
 Every effective ID must be unique across the complete resolved root tree. An alias changes runtime parameter qualification, state output lookup, and lifecycle identity for that occurrence; it does not change the source resource ID.
 
@@ -286,6 +291,33 @@ spec:
 ```
 
 `onExhausted` defaults to `fail`; set it to `complete` only when the last natural child artifact is a valid successful result. A Loop consumes escalation from eligible descendants according to the rules in [Loop execution](workflow-semantics.md#loop-execution). The complete runnable example is [`examples/workflows/goalkeeper.md`](../../examples/workflows/goalkeeper.md).
+
+## Router
+
+A `Router` requires an independent route template and mapping-form children:
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: Routes one classified task.
+  route: '{{ .Input }}'
+  children:
+    - ref: roles/implementer
+      alias: routed_implementer
+      route: implement
+    - ref: roles/reviewer
+      alias: routed_reviewer
+      route: review
+    - ref: roles/explorer
+      alias: routed_generalist
+      default: true
+---
+{{ .Prompt }}
+```
+
+`spec.route` renders the route key, while the Markdown body renders the selected child's natural payload. Surrounding route whitespace is trimmed before exact, case-sensitive matching. Default handles only blank or unknown keys. Without default, no-match fails before child activity. Route-template errors bypass default, and a selected child's failure is never retried through default. Router has no provider-owned routing, fan-out, multiple defaults, or arbitrary graph fields. See [Router execution](workflow-semantics.md#router-execution) and the runnable [`routed-task`](../../examples/workflows/routed-task.md) composition.
 
 ## Template surfaces
 

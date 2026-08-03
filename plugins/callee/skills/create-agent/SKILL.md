@@ -1,6 +1,6 @@
 ---
 name: create-agent
-description: Create project-defined Callee Role, Script, Human, Sequential, and Loop agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
+description: Create project-defined Callee Role, Script, Human, Sequential, Loop, and Router agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
 ---
 
 # Create a Callee agent
@@ -22,6 +22,7 @@ Choose exactly one supported kind:
 - `Human`: one operator-backed interactive leaf.
 - `Sequential`: ordered child agents that each run once.
 - `Loop`: ordered child agents repeated until an authorized Role escalates or the iteration limit is exhausted.
+- `Router`: exactly one named or default child selected by a deterministic route template.
 
 Do not create `Parallel`. Write below `.callee/`. Markdown is the default; use a complete `.yaml` or `.yml` object only when the user explicitly requests YAML. Directories such as `roles/` and `workflows/` are optional ID namespaces, not kind selectors. The agent ID is the relative path without its final supported extension.
 
@@ -105,7 +106,7 @@ Use a nonblank `responseKey` other than the reserved `outputs` and `scripts` key
 
 ## Author a workflow
 
-For every `Sequential`, `Loop`, or nested-composite request, read [references/workflows.md](references/workflows.md) completely before writing. Follow its placement, representation, child-wiring, state, parameter, loop-control, and output rules.
+For every `Sequential`, `Loop`, `Router`, or nested-composite request, read [references/workflows.md](references/workflows.md) completely before writing. Follow its placement, representation, child-wiring, state, parameter, routing, loop-control, and output rules.
 
 Resolve every referenced child with `callee agent view "<child-id>" --json`. If the request also needs new child Roles or workflows, create and validate those first. Then author the root workflow from the reference and validate the complete resolved tree.
 

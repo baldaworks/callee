@@ -168,6 +168,57 @@ func TestWriteGraphFormats(t *testing.T) {
 	}
 }
 
+func TestWriteGraphFormatsLabelRouterEdges(t *testing.T) {
+	t.Parallel()
+
+	named := doctorRole("roles/named", "")
+	fallback := doctorRole("roles/fallback", "")
+	router := agent.Resource{
+		APIVersion: agent.APIVersion,
+		Kind:       agent.RouterKind,
+		ID:         "workflows/router",
+		Spec: agent.Spec{
+			Description: "router",
+			Route:       "{{ .Input }}",
+			Children: []agent.Child{
+				{Ref: "roles/named", Alias: "named", Route: `bug|"urgent"`},
+				{Ref: "roles/fallback", Alias: "fallback", Default: true},
+			},
+			Body: "{{ .Input }}",
+		},
+	}
+
+	configured, err := registry.NewAgentRegistry([]agent.Resource{named, fallback, router})
+	if err != nil {
+		t.Fatalf("registry.NewAgentRegistry() error: %v", err)
+	}
+
+	for _, test := range []struct {
+		format string
+		wants  []string
+	}{
+		{format: "text", wants: []string{`alias=named route="bug|\"urgent\"" canEscalate=false`, "alias=fallback default=true canEscalate=false"}},
+		{format: "mermaid", wants: []string{`named, route=&quot;bug&#124;&#34;urgent&#34;&quot;, canEscalate=false`, "fallback, default=true, canEscalate=false"}},
+		{format: "dot", wants: []string{`named, route=\"bug|\\\"urgent\\\"\", canEscalate=false`, "fallback, default=true, canEscalate=false"}},
+	} {
+		t.Run(test.format, func(t *testing.T) {
+			t.Parallel()
+
+			var output bytes.Buffer
+
+			if err := WriteGraph(&output, configured, test.format); err != nil {
+				t.Fatalf("WriteGraph() error: %v", err)
+			}
+
+			for _, want := range test.wants {
+				if !strings.Contains(output.String(), want) {
+					t.Errorf("WriteGraph() = %q, want containing %q", output.String(), want)
+				}
+			}
+		})
+	}
+}
+
 type doctorFactory struct {
 	process *doctorProcess
 	starts  int

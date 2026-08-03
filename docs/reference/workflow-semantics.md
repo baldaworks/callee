@@ -82,6 +82,23 @@ Authorized escalation is sticky beneath a Sequential. When a child escalates, Se
 
 Without sticky escalation, the natural output is the last child's artifact. An optional `spec.output` renders a replacement from the composite local `.Input`, natural `.Output`, root `.Prompt`, and final `.State`.
 
+## Router execution
+
+A Router applies normal node-entry state first, then renders `spec.route` from the immutable `.Prompt`, incoming `.Input`, and current shared `.State`. It trims surrounding whitespace and compares the resulting key case-sensitively with the authored `children[].route` values.
+
+- One exact named route selects that child even when a default exists.
+- If no named route matches, including a blank key, the optional `default: true` child is selected.
+- Without default, blank or unknown keys fail before the body, child input, child state, Human prompts, Script execution, or provider startup.
+- A route-template error fails immediately and never selects default.
+
+After selection, Router independently renders `spec.body` as the branch payload. That payload is the selected child's natural input. An authored child `input` overrides it using the same composite template semantics: `.Input` is the Router payload, `.Prompt` is the root prompt, and `.State` is current shared state. Route text never implicitly becomes payload.
+
+Only the selected subtree is visited. Unselected nodes do not apply state, resolve runtime parameters, prompt, start providers, emit visit lifecycle events, or promote output. A selected-child failure stops the Router and never retries or fails over to default.
+
+On a normal return, the selected artifact is Router's natural output; optional `spec.output` may transform it and the nonblank result is promoted under the Router effective ID. Failure propagates unchanged. Authorized escalation preserves the selected descendant's source and artifact and participates in the same nearest-Loop edge authorization rules as other composites. Named/default selection is reported in lifecycle diagnostics with bounded route data.
+
+Router execution is internally scheduled through an ephemeral ADK 2 graph with one `StringRoute` or `Default` edge. This is not a public graph API: Router does not expose fan-out, Join, arbitrary edges, persistence, resume, provider-owned route choice, or multiple selected branches.
+
 ## Escalation authorization
 
 Escalation is an edge-level capability of a resolved Role occurrence. It is not enabled merely because a Role is somewhere below a Loop.
@@ -129,7 +146,7 @@ If no escalation occurs before the bound:
 
 ## Artifact promotion
 
-Every successful nonblank Role, Script, or Human artifact is written to `State.outputs[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation also promotes its final artifact before returning the escalation.
+Every successful nonblank Role, Script, or Human artifact is written to `State.outputs[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation and a Router that propagates selected-child escalation also promote their final artifacts before returning the escalation.
 
 Failed outcomes are not promoted. Repeated successful visits to the same effective ID replace the previous value.
 
@@ -191,6 +208,6 @@ The active provider-turn timeout pauses only while `ask` waits for the operator.
 
 ## Failure and cleanup
 
-The root fails when validation or graph resolution fails, a node or provider returns an error, a Role attempts unauthorized escalation, a Role emits `fail`, a Loop exhausts under `fail`, an unconsumed escalation reaches the root, or the root artifact is blank.
+The root fails when validation or graph resolution fails, a node or provider returns an error, a Router has no matching/default child, a Role attempts unauthorized escalation, a Role emits `fail`, a Loop exhausts under `fail`, an unconsumed escalation reaches the root, or the root artifact is blank.
 
 Started provider processes close in reverse start order under a 10-second cleanup context. Cleanup failure is joined with any existing error. It also clears a successful artifact, preserving the contract that stdout receives a root artifact only after all provider cleanup succeeds.

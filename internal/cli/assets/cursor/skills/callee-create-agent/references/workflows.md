@@ -1,12 +1,13 @@
 # Author Callee workflows
 
-Read this reference before creating any `Sequential`, `Loop`, or nested workflow.
+Read this reference before creating any `Sequential`, `Loop`, `Router`, or nested workflow.
 
 ## Contents
 
 - [Place and represent files](#place-and-represent-files)
 - [Compose the resolved tree](#compose-the-resolved-tree)
 - [Author a Sequential workflow](#author-a-sequential-workflow)
+- [Author a Router workflow](#author-a-router-workflow)
 - [Author a Loop workflow](#author-a-loop-workflow)
 - [Finish the workflow](#finish-the-workflow)
 
@@ -27,9 +28,9 @@ complete resource object and must include `spec.body` explicitly.
 
 ## Compose the resolved tree
 
-Use only `Role`, `Script`, `Human`, `Sequential`, and `Loop`. A workflow child may reference
+Use only `Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router`. A workflow child may reference
 any supported kind, so workflows may nest other workflows. Do not author
-`Parallel`.
+`Parallel`, fan-out, Join, or arbitrary graph edges.
 
 Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
 `state`, and `params` fields.
@@ -51,6 +52,9 @@ Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
 - Permission policy belongs to each referenced Role's `spec.permissions`, not
   to the child edge or composite. Inspect the resolved authored and effective
   policy before running; omission defaults to `ask`.
+- A Router child must use mapping form and add exactly one unique named
+  `route` or the sole `default: true` edge. Do not use `default` as a
+  reserved route string; `route: default` remains an ordinary named route.
 
 Every successful nonblank node artifact is stored at
 `.State.outputs[effectiveID]`. Repeated visits overwrite that key with the
@@ -118,6 +122,45 @@ be bound with:
 
 A nested `Sequential` is itself an ordinary child and receives its
 parent-rendered input in the same way.
+
+## Author a Router workflow
+
+A `Router` deterministically selects exactly one child. Render the route key
+with `spec.route` and render the selected child's payload independently with
+the Markdown body. Use an optional `default: true` child only for blank or
+unknown keys.
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: Routes one classified task to exactly one handler.
+  route: '{{ .Input }}'
+  children:
+    - ref: roles/implementer
+      alias: routed_implementer
+      route: implement
+    - ref: roles/reviewer
+      alias: routed_reviewer
+      route: review
+    - ref: roles/explorer
+      alias: routed_generalist
+      default: true
+---
+{{ .Prompt }}
+```
+
+Trimmed route keys match named routes case-sensitively. Without default, a
+blank or unknown key fails before child activity. A route-template error never
+selects default. Once a child is selected, its failure does not retry or fail
+over to default. Without child `input`, the selected child receives the
+rendered Router body; an explicit child `input` overrides that payload.
+Unselected children do not run, mutate state, prompt, or promote output.
+
+Router output and `canEscalate` use the same composite and nearest-Loop rules
+as other workflows. Do not use a provider to choose an undeclared child, add
+multiple defaults, select multiple branches, or expose ADK graph primitives.
 
 ## Author a Loop workflow
 

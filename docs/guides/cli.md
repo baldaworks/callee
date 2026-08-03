@@ -62,6 +62,7 @@ List all discovered resources or filter by exact kind:
 ```bash
 callee agent list
 callee agent list --kind Role
+callee agent list --kind Router
 callee agent list --json
 ```
 
@@ -74,7 +75,7 @@ callee agent view workflows/investigate
 callee agent view workflows/investigate --json
 ```
 
-Text output includes `canEscalate=true|false` on every resolved node. The JSON form exposes the same effective value as `resolvedTree.canEscalate` recursively. This is the computed occurrence capability: a Role is `true` only when every edge from its nearest enclosing Loop opts in. It can therefore differ between aliases of the same resource. Nested Loops start independent authorization boundaries.
+Text output includes `canEscalate=true|false` on every resolved node. Router child occurrences additionally show either a quoted `route` or `default=true`; the JSON form exposes these as recursive `resolvedTree.route` and `resolvedTree.default` fields. The JSON form also exposes the effective escalation value as `resolvedTree.canEscalate`. This is the computed occurrence capability: a Role is `true` only when every edge from its nearest enclosing Loop opts in. It can therefore differ between aliases of the same resource. Nested Loops start independent authorization boundaries.
 
 Because list and view load the complete registry, any invalid resource, duplicate ID, unresolved reference, cycle, or resolved effective-ID collision prevents the command from succeeding.
 
@@ -94,6 +95,7 @@ callee agent schema Script
 callee agent schema Human
 callee agent schema Sequential
 callee agent schema Loop
+callee agent schema Router
 ```
 
 Success prints `<path>: ok`. Use `agent view` for a selected resolved tree or `doctor --graph` for the complete static registry graph:
@@ -177,7 +179,7 @@ Execution always requires a real controlling TTY. The terminal carries the root 
 
 If one provider turn stays active for at least 10 seconds, Callee emits `agent turn heartbeat` on stderr with `turn_duration=<elapsed>`. This heartbeat is per provider turn only: it excludes pre-turn rendering and prepare work, REPL idle time between turns, and composite node execution.
 
-See [ACP permission requests](acp-permissions.md) for the permission-selection contract, [Workflow semantics](../reference/workflow-semantics.md) for exact input, output, Loop, REPL, and failure behavior, and [Execution metrics](../reference/execution-metrics.md) for emitted run and Role measurements.
+See [ACP permission requests](acp-permissions.md) for the permission-selection contract, [Workflow semantics](../reference/workflow-semantics.md) for exact input, output, Loop, Router, REPL, and failure behavior, and [Execution metrics](../reference/execution-metrics.md) for emitted run and Role measurements.
 
 ## Generate Roles with PromptKit
 

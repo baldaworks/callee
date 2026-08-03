@@ -25,6 +25,8 @@ const (
 	SequentialKind Kind = "Sequential"
 	// LoopKind identifies a bounded repeated composite agent.
 	LoopKind Kind = "Loop"
+	// RouterKind identifies a deterministic routed composite agent.
+	RouterKind Kind = "Router"
 )
 
 const (
@@ -71,6 +73,8 @@ type Child struct {
 	Ref         string            `json:"ref"                   yaml:"ref"`
 	Alias       string            `json:"alias,omitempty"       yaml:"alias,omitempty"`
 	CanEscalate bool              `json:"canEscalate,omitempty" yaml:"canEscalate,omitempty"`
+	Route       string            `json:"route,omitempty"       yaml:"route,omitempty"`
+	Default     bool              `json:"default,omitempty"     yaml:"default,omitempty"`
 	Input       string            `json:"input,omitempty"       yaml:"input,omitempty"`
 	State       map[string]any    `json:"state,omitempty"       yaml:"state,omitempty"`
 	Params      map[string]string `json:"params,omitempty"      yaml:"params,omitempty"`
@@ -92,6 +96,7 @@ type Spec struct {
 	OnNonZero     string            `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
 	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
 	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
+	Route         string            `json:"route,omitempty"         yaml:"route,omitempty"`
 	Body          string            `json:"body"                    yaml:"body,omitempty"`
 	Output        string            `json:"output,omitempty"        yaml:"output,omitempty"`
 	MaxIterations *int              `json:"maxIterations,omitempty" yaml:"maxIterations,omitempty"`
@@ -255,6 +260,9 @@ func (r Resource) validateInteractiveCompat() error {
 }
 
 func (r Resource) validateChildren() error {
+	namedRoutes := make(map[string]int)
+	defaultIndex := -1
+
 	for index, child := range r.Spec.Children {
 		if strings.TrimSpace(child.Ref) == "" {
 			return fmt.Errorf("agent %q: spec.children[%d].ref must not be blank", r.ID, index)
@@ -283,6 +291,42 @@ func (r Resource) validateChildren() error {
 				return err
 			}
 		}
+
+		if err := r.validateChildRouting(index, child, namedRoutes, &defaultIndex); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r Resource) validateChildRouting(index int, child Child, namedRoutes map[string]int, defaultIndex *int) error {
+	if r.Kind != RouterKind {
+		if child.Route != "" || child.Default {
+			return fmt.Errorf("agent %q: spec.children[%d].route and default are valid only for Router", r.ID, index)
+		}
+
+		return nil
+	}
+
+	route := strings.TrimSpace(child.Route)
+	switch {
+	case route == "" && !child.Default:
+		return fmt.Errorf("agent %q: spec.children[%d] must declare exactly one of route or default=true", r.ID, index)
+	case route != "" && child.Default:
+		return fmt.Errorf("agent %q: spec.children[%d] must not declare both route and default=true", r.ID, index)
+	case child.Route != route:
+		return fmt.Errorf("agent %q: spec.children[%d].route %q must not have leading or trailing whitespace", r.ID, index, child.Route)
+	case child.Default && *defaultIndex >= 0:
+		return fmt.Errorf("agent %q: spec.children[%d].default duplicates spec.children[%d].default", r.ID, index, *defaultIndex)
+	case child.Default:
+		*defaultIndex = index
+	default:
+		if previous, exists := namedRoutes[route]; exists {
+			return fmt.Errorf("agent %q: spec.children[%d].route %q duplicates spec.children[%d].route", r.ID, index, route, previous)
+		}
+
+		namedRoutes[route] = index
 	}
 
 	return nil
@@ -296,13 +340,23 @@ func (r Resource) validateKind() error {
 		return r.validateScript()
 	case HumanKind:
 		return r.validateHuman()
-	case SequentialKind, LoopKind:
+	case SequentialKind, LoopKind, RouterKind:
 		if _, err := ParseTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
 			return err
 		}
 
 		if r.Spec.Output != "" {
 			if _, err := ParseOutputTemplate(r.ID+" spec.output", r.Spec.Output); err != nil {
+				return err
+			}
+		}
+
+		if r.Kind == RouterKind {
+			if strings.TrimSpace(r.Spec.Route) == "" {
+				return fmt.Errorf("agent %q: Router requires nonblank spec.route", r.ID)
+			}
+
+			if _, err := ParseTemplate(r.ID+" spec.route", r.Spec.Route); err != nil {
 				return err
 			}
 		}
@@ -495,6 +549,7 @@ func (s Spec) canonicalMarshaledSpec() (specMarshalAlias, error) {
 		OnNonZero:     s.OnNonZero,
 		State:         s.State,
 		Children:      s.Children,
+		Route:         s.Route,
 		Body:          s.Body,
 		Output:        s.Output,
 		MaxIterations: s.MaxIterations,
@@ -516,6 +571,7 @@ type specMarshalAlias struct {
 	OnNonZero     string            `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
 	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
 	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
+	Route         string            `json:"route,omitempty"         yaml:"route,omitempty"`
 	Body          string            `json:"body"                    yaml:"body,omitempty"`
 	Output        string            `json:"output,omitempty"        yaml:"output,omitempty"`
 	MaxIterations *int              `json:"maxIterations,omitempty" yaml:"maxIterations,omitempty"`
@@ -547,6 +603,8 @@ func (c *Child) UnmarshalYAML(node *yaml.Node) error {
 		"ref":         true,
 		"alias":       true,
 		"canEscalate": true,
+		"route":       true,
+		"default":     true,
 		"input":       true,
 		"state":       true,
 		"params":      true,

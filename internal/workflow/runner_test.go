@@ -1045,6 +1045,7 @@ type scriptedProcess struct {
 	prepareErr                error
 	turnErr                   error
 	closeErr                  error
+	closes                    int
 }
 
 func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource, effectiveID string) (runtime.AgentSession, error) {
@@ -1081,6 +1082,7 @@ func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource, eff
 }
 
 func (p *scriptedProcess) Close() error {
+	p.closes++
 	if p.processContext != nil {
 		p.processContextErrAtClose = p.processContext.Err()
 	}

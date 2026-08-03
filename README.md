@@ -9,7 +9,7 @@
 
 ## Markdown-defined agents and deterministic workflows
 
-Callee lets a repository define `Role`, `Script`, `Human`, `Sequential`, and `Loop` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
+Callee lets a repository define `Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
 
 Callee remains CLI-only. It uses [Norma Runtime](https://github.com/normahq/runtime) for ACP provider processes and Go ADK-aligned escalation semantics. It has no server, durable thread store, or handle binding.
 
@@ -25,8 +25,8 @@ Callee installs two complementary skills in your coding host:
 
 | Skill | What it does | Result |
 | --- | --- | --- |
-| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `Sequential`, or `Loop` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by the emitted run-wide and per-Role execution metrics. |
-| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `Sequential`, or `Loop` in Markdown or YAML. For a `Role`, it uses an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
+| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `Sequential`, `Loop`, or `Router` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by the emitted run-wide and per-Role execution metrics. |
+| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `Sequential`, `Loop`, or `Router` in Markdown or YAML. For a `Role`, it uses an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
 
 These skills are host integrations: they teach Codex, Claude Code, Grok Build,
 Copilot CLI, OpenCode, or Cursor how to create and run Callee agents. Runtime
@@ -165,7 +165,7 @@ callee --version
 Ensure the Go installation directory (normally `$GOBIN` or `$GOPATH/bin`) is
 on `PATH`.
 
-`agent run` always requires a real controlling TTY. Initial input, missing parameters, Human responses, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Script`, `Human`, `Sequential`, and `Loop` visit, long-running provider-turn heartbeats, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Measured lifecycle durations are rounded to the nearest second and use standard Go strings with units, such as `43s`.
+`agent run` always requires a real controlling TTY. Initial input, missing parameters, Human responses, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router` visit, long-running provider-turn heartbeats, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Measured lifecycle durations are rounded to the nearest second and use standard Go strings with units, such as `43s`.
 
 `agent run` emits run-wide metrics on its final `agent run finished` event and
 per-Role metrics on each Role's `agent finished` event. The successful root
@@ -477,15 +477,40 @@ spec:
 
 A `Loop` repeats its ordered children up to `maxIterations`. A normal Role return is a recoverable result: the Loop continues through its remaining children and later iterations. An authorized escalation returned by a direct child completes the Loop immediately and skips later Loop children; a nested `Sequential` first finishes its own remaining children before propagating sticky escalation. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. Reserve `fail` for unrecoverable conditions because it aborts the entire workflow. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
 
+### Router
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: Routes one classified task to exactly one handler.
+  route: '{{ .Input }}'
+  children:
+    - ref: roles/implementer
+      alias: routed_implementer
+      route: implement
+    - ref: roles/reviewer
+      alias: routed_reviewer
+      route: review
+    - ref: roles/explorer
+      alias: routed_generalist
+      default: true
+---
+{{ .Prompt }}
+```
+
+A `Router` renders `spec.route` to choose exactly one child, then renders its Markdown body independently as that child's payload. The trimmed route key matches named `children[].route` values case-sensitively. An optional `default: true` child handles only blank or unknown keys; without it, no-match fails before any child starts. A route-template error never selects default, and failure after a child is selected never retries or fails over. Router edges use mapping form and declare exactly one of `route` or `default: true`. See the runnable [`classifier`](examples/roles/classifier.md), [`task-router`](examples/workflows/task-router.md), and composed [`routed-task`](examples/workflows/routed-task.md) examples.
+
 ### Children and composition
 
-Children may reference any supported kind, including another `Loop`. A child mapping supports `ref`, optional globally unique `alias`, `canEscalate`, `input`, shallow `state`, and Role-only `params`. Aliases match `^[a-z][a-z0-9_]*$` and replace the occurrence's effective ID. `canEscalate` is occurrence-specific, so two aliases of the same Role may have different authority.
+Children may reference any supported kind, including another composite. A child mapping supports `ref`, optional globally unique `alias`, `canEscalate`, `input`, shallow `state`, and Role-only `params`. Router children additionally require exactly one unique named `route` or the sole `default: true` edge. Aliases match `^[a-z][a-z0-9_]*$` and replace the occurrence's effective ID. `canEscalate` is occurrence-specific, so two aliases of the same Role may have different authority.
 
 ## YAML representation and JSON Schema
 
 Markdown is the canonical authoring format: its physical body becomes `spec.body` and `spec.body` must not also appear in frontmatter. A `.yaml` or `.yml` file represents the same complete resource object and must author `spec.body` inline.
 
-Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Human|Sequential|Loop>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
+Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Human|Sequential|Loop|Router>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json
@@ -679,7 +704,7 @@ Callee was built during OpenAI Build Week using Codex and GPT-5.6 as the primary
 
 Codex and GPT-5.6 were used to:
 
-- design the `Role`, `Script`, `Human`, `Sequential`, and `Loop` agent model;
+- design the `Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router` agent model;
 - implement CLI commands, runtime behavior, and validation flows;
 - build graph inspection, doctor checks, and setup integrations;
 - create starter agents, examples, and user-facing documentation;

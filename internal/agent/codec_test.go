@@ -35,6 +35,11 @@ func TestDecodeMarkdownKinds(t *testing.T) {
 			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Loop\nspec:\n  description: goalkeeper\n  children: [roles/worker, roles/validator]\n  maxIterations: 5\n---\n{{ .Input }}\n",
 			kind: LoopKind,
 		},
+		{
+			name: "router",
+			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Router\nspec:\n  description: dispatcher\n  route: '{{ .Input }}'\n  children:\n    - route: default\n      ref: roles/worker\n    - default: true\n      ref: roles/fallback\n---\n{{ .Prompt }}\n",
+			kind: RouterKind,
+		},
 	}
 
 	for _, test := range tests {
@@ -80,6 +85,23 @@ func TestDecodeYAMLKinds(t *testing.T) {
 			name: "loop",
 			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Loop\nspec:\n  description: goalkeeper\n  children: [roles/worker, roles/validator]\n  body: |\n    {{ .Input }}\n  maxIterations: 5\n",
 			kind: LoopKind,
+		},
+		{
+			name: "router",
+			data: `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: dispatcher
+  route: '{{ .Input }}'
+  children:
+    - route: default
+      ref: roles/worker
+    - default: true
+      ref: roles/fallback
+  body: |
+    {{ .Prompt }}
+`,
+			kind: RouterKind,
 		},
 	}
 
@@ -131,6 +153,74 @@ spec:
 
 	if resource.Spec.Children[1].CanEscalate {
 		t.Error("scalar child CanEscalate = true, want default false")
+	}
+}
+
+func TestDecodeRouterEdges(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: dispatcher
+  route: '{{ .Input }}'
+  children:
+    - route: default
+      ref: roles/default-key
+    - default: true
+      ref: roles/fallback
+---
+{{ .Prompt }}
+`)
+
+	resource, err := DecodeMarkdown("workflows/router", "router.md", data)
+	if err != nil {
+		t.Fatalf("DecodeMarkdown() error: %v", err)
+	}
+
+	if got, want := resource.Spec.Children[0].Route, "default"; got != want {
+		t.Errorf("named child route = %q, want %q", got, want)
+	}
+
+	if resource.Spec.Children[0].Default {
+		t.Error("named child Default = true, want false")
+	}
+
+	if !resource.Spec.Children[1].Default || resource.Spec.Children[1].Route != "" {
+		t.Errorf("fallback child = %+v, want default without named route", resource.Spec.Children[1])
+	}
+}
+
+func TestDecodeRouterRejectsInvalidEdges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		children string
+		want     string
+	}{
+		{name: "scalar child", children: "    - roles/worker\n", want: "validate schema"},
+		{name: "missing selector", children: "    - ref: roles/worker\n", want: "validate schema"},
+		{name: "blank route", children: "    - ref: roles/worker\n      route: ''\n", want: "validate schema"},
+		{name: "route and default", children: "    - ref: roles/worker\n      route: work\n      default: true\n", want: "validate schema"},
+		{name: "false default", children: "    - ref: roles/worker\n      default: false\n", want: "validate schema"},
+		{name: "duplicate route", children: "    - ref: roles/first\n      route: work\n    - ref: roles/second\n      route: work\n", want: "duplicates"},
+		{name: "multiple defaults", children: "    - ref: roles/first\n      default: true\n    - ref: roles/second\n      default: true\n", want: "duplicates"},
+		{name: "noncanonical route", children: "    - ref: roles/worker\n      route: ' work '\n", want: "leading or trailing whitespace"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Router\nspec:\n  description: dispatcher\n  route: '{{ .Input }}'\n  children:\n" + test.children + "  body: '{{ .Prompt }}'\n"
+
+			_, err := DecodeYAML("workflows/router", "router.yaml", []byte(data))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("DecodeYAML() error = %v, want containing %q", err, test.want)
+			}
+		})
 	}
 }
 
@@ -445,6 +535,46 @@ func TestMarkdownRoundTripPreservesBody(t *testing.T) {
 	}
 }
 
+func TestRouterMarkdownRoundTripPreservesEdges(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(`---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: dispatcher
+  route: '{{ .State.route }}'
+  children:
+    - route: work
+      ref: roles/worker
+      alias: worker
+    - default: true
+      ref: roles/fallback
+      alias: fallback
+---
+{{ .Prompt }}
+`)
+
+	resource, err := DecodeMarkdown("workflows/router", "router.md", input)
+	if err != nil {
+		t.Fatalf("DecodeMarkdown() error: %v", err)
+	}
+
+	encoded, err := EncodeMarkdown(resource)
+	if err != nil {
+		t.Fatalf("EncodeMarkdown() error: %v", err)
+	}
+
+	roundTrip, err := DecodeMarkdown(resource.ID, resource.Source, encoded)
+	if err != nil {
+		t.Fatalf("DecodeMarkdown(round trip) error: %v", err)
+	}
+
+	if !reflect.DeepEqual(roundTrip, resource) {
+		t.Errorf("round trip resource = %#v, want %#v", roundTrip, resource)
+	}
+}
+
 func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 	t.Parallel()
 
@@ -471,7 +601,7 @@ func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 		{
 			name: "unsupported kind",
 			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Parallel\nspec: {}\n---\n{{ .Input }}",
-			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Human, Sequential, Loop`,
+			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Human, Sequential, Loop, Router`,
 		},
 		{
 			name: "wrong field case",

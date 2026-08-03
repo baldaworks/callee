@@ -6,7 +6,7 @@ Callee turns repository-owned agent resources into a statically validated execut
 
 | Concept | Meaning |
 | --- | --- |
-| Resource | One versioned Markdown or YAML definition with a `Role`, `Script`, `Human`, `Sequential`, or `Loop` kind. |
+| Resource | One versioned Markdown or YAML definition with a `Role`, `Script`, `Human`, `Sequential`, `Loop`, or `Router` kind. |
 | Resource ID | The path below a discovery root with the final supported extension removed, such as `roles/reviewer`. |
 | Resolved node | One occurrence of a resource in a selected root tree. An edge alias, when present, becomes its effective ID. |
 | Role | A provider-backed leaf that renders a prompt and performs one or more turns in one fresh ACP session. |
@@ -14,6 +14,7 @@ Callee turns repository-owned agent resources into a statically validated execut
 | Human | An operator-backed leaf that displays a rendered prompt and records one nonblank response in workflow state. |
 | Sequential | A composite that visits children once in source order. |
 | Loop | A bounded composite that repeatedly visits ordered children until an authorized descendant escalates or the Loop exhausts. |
+| Router | A deterministic composite that dispatches exactly one named or default child from an authored route template. |
 | Root-run state | One ephemeral JSON-compatible object shared by every node visit in a run. |
 | Provider process | A reusable ACP transport process identified by provider type and resolved command. |
 | Role visit | One execution of a resolved Role node, with a fresh provider session even when its provider process is reused. |
@@ -46,7 +47,7 @@ Discovery loads the user and project roots together. Registry construction rejec
 
 Escalation authority belongs to child edges, not resource definitions. A Role may escalate to its nearest enclosing Loop only when every edge from that Loop to the Role occurrence sets `canEscalate: true`; omitted values are `false`. Entering a nested Loop starts a new authorization boundary, so its descendants do not inherit authority from the outer Loop. The resolved effective capability is visible in `agent view`, while doctor graphs show the authored value on every edge. See [Escalation authorization](../reference/workflow-semantics.md#escalation-authorization) for the runtime consequences.
 
-At runtime, the runner creates state with engine-owned `outputs` and `scripts` maps. Each node may render a state modifier against a pre-node snapshot. A Role renders its body and calls its provider session. A Script renders and executes a local validator step, then records its structured result under `State.scripts`. A Human displays its rendered body on the controlling terminal and records the response under its configured state key. Composites render their body to produce local input, visit children, and optionally render `spec.output` to transform the natural child result. See [Workflow semantics](../reference/workflow-semantics.md) for the precise data flow.
+At runtime, the runner creates state with engine-owned `outputs` and `scripts` maps. Each node may render a state modifier against a pre-node snapshot. A Role renders its body and calls its provider session. A Script renders and executes a local validator step, then records its structured result under `State.scripts`. A Human displays its rendered body on the controlling terminal and records the response under its configured state key. Sequential and Loop composites activate children serially. Router uses the internal ADK 2 graph scheduler to activate exactly one `StringRoute` or `Default` edge; its route key and child payload are rendered separately. Every composite may render `spec.output` to transform the natural child result. See [Workflow semantics](../reference/workflow-semantics.md) for the precise data flow.
 
 ## Process and session ownership
 
@@ -89,4 +90,4 @@ The Role's `spec.provider.type` independently selects an ACP backend. For exampl
 
 ## Deliberate limits
 
-Callee does not provide a server, a thread or state store, cross-process continuation, provider handle binding, `Parallel` workflows, or a Gemini provider. ACP process logic is delegated to Norma Runtime rather than reimplemented in the project. These limits are current product decisions, not undocumented extension points.
+Callee does not provide a server, a thread or state store, cross-process continuation, provider handle binding, `Parallel` or fan-out workflows, arbitrary graph edges, or a Gemini provider. Router selection is deterministic and single-branch. ACP process logic is delegated to Norma Runtime rather than reimplemented in the project. These limits are current product decisions, not undocumented extension points.
