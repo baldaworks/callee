@@ -478,7 +478,7 @@ func discoverAgentRoot(root agentRoot) ([]discoveredAgent, []error) {
 			return nil
 		}
 
-		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !agent.SupportsFile(entry.Name()) {
+		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !agent.SupportsResourceFile(entry.Name()) {
 			return nil
 		}
 

@@ -436,6 +436,27 @@ func TestSupportsFileRequiresLowercaseSupportedExtension(t *testing.T) {
 	}
 }
 
+func TestSupportsResourceFileSkipsREADMEOnly(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]bool{
+		"README.md":        false,
+		"readme.md":        false,
+		"nested/README.md": false,
+		"agent.md":         true,
+		"notes.md":         true,
+		"README.yaml":      true,
+		"agent.yaml":       true,
+		"agent.json":       false,
+	}
+
+	for path, want := range tests {
+		if got := SupportsResourceFile(path); got != want {
+			t.Errorf("SupportsResourceFile(%q) = %t, want %t", path, got, want)
+		}
+	}
+}
+
 func TestDecodeYAMLRejectsInvalidDocuments(t *testing.T) {
 	t.Parallel()
 

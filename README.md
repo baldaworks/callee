@@ -253,9 +253,11 @@ resources, including `agent import`.
 `callee agent import <repo> [--ref <git-ref>] [--path <remote-dir>] [--prefix <namespace>] [--force]` clones a remote git repository into a temporary checkout, discovers resources recursively under `--path` (default `.callee`), and stages the resulting local tree before writing anything. When `<repo>` is in `owner/repo` form, Callee treats it as GitHub shorthand and expands it to `https://github.com/owner/repo.git` before cloning. `--prefix` rewrites imported IDs and imported internal child refs into a namespace. Existing destination files are preserved unless `--force` is supplied, and `git` must be available on `PATH`.
 
 Lowercase `.md`, `.yaml`, and `.yml` regular files are supported; symlinked
-files are skipped. Directories such as `roles/` and `workflows/` are optional
-ID namespaces; `kind` alone determines behavior. The final extension is
-removed from the ID, so `.callee/roles/reviewer.md` and
+files are skipped. `README.md` is treated as catalog documentation and is
+skipped during recursive discovery and remote import. Directories such as
+`roles/` and `workflows/` are optional ID namespaces; `kind` alone determines
+behavior. The final extension is removed from the ID, so
+`.callee/roles/reviewer.md` and
 `.callee/roles/reviewer.yaml` both have ID `roles/reviewer` and conflict if
 both exist. IDs must be unique across both roots and all formats. Project
 agents do not shadow user agents; any duplicate makes discovery fail.

@@ -482,6 +482,23 @@ func TestLoadAgentsIgnoresUnsupportedExtensions(t *testing.T) {
 	}
 }
 
+func TestLoadAgentsIgnoresREADMEAndDiscoversNestedResources(t *testing.T) {
+	t.Parallel()
+
+	project := t.TempDir()
+	writeAgent(t, project, "README.md", "This is catalog documentation, not a Callee resource.\n")
+	writeAgent(t, project, "codex/sol-luna/roles/planner.md", roleAgent("Sol planner", nil))
+
+	configured, err := LoadAgents(AgentLoadOptions{UserDir: filepath.Join(t.TempDir(), "missing"), ProjectDir: project})
+	if err != nil {
+		t.Fatalf("LoadAgents() error: %v", err)
+	}
+
+	if got, want := strings.Join(configured.IDs(), ","), "codex/sol-luna/roles/planner"; got != want {
+		t.Errorf("registry.IDs() = %q, want %q", got, want)
+	}
+}
+
 func TestLoadAgentsAggregatesStaticDiagnostics(t *testing.T) {
 	t.Parallel()
 

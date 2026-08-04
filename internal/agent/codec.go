@@ -24,6 +24,16 @@ func SupportsFile(path string) bool {
 	}
 }
 
+// SupportsResourceFile reports whether path is a discoverable Callee resource
+// file. Conventional README files are catalog documentation, not resources.
+func SupportsResourceFile(path string) bool {
+	if strings.EqualFold(filepath.Base(path), "README.md") {
+		return false
+	}
+
+	return SupportsFile(path)
+}
+
 // Decode decodes one agent file according to its lowercase extension.
 func Decode(id, source string, data []byte) (Resource, error) {
 	switch filepath.Ext(source) {

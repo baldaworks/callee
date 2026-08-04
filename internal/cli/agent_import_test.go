@@ -102,6 +102,52 @@ spec:
 	}
 }
 
+func TestAgentImportCommandIgnoresREADMEInSelectedPack(t *testing.T) {
+	project := isolateAgentRoots(t)
+	repo := writeImportRepository(t, map[string]string{
+		"examples/codex/sol-luna/README.md": "This documentation is not a Callee resource.\n",
+		"examples/codex/sol-luna/roles/sol-planner.md": `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Imported Sol planner.
+  provider:
+    type: codex
+---
+{{ .Input }}
+`,
+	})
+	stubCloneAgentImportRepository(t, repo, nil)
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{
+		"agent", "import", "https://example.invalid/repo.git",
+		"--path", "examples/codex/sol-luna",
+		"--prefix", "codex/sol-luna",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent import exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	wantPath := filepath.Join(defaultProjectAgentDir, "codex", "sol-luna", "roles", "sol-planner.md")
+	if got := stdout.String(); !strings.Contains(got, wantPath) || strings.Contains(got, "README.md") {
+		t.Fatalf("stdout = %q, want imported Role path without README", got)
+	}
+
+	configured, err := registry.LoadAgents(registry.AgentLoadOptions{
+		UserDir:    filepath.Join(project, "missing-user"),
+		ProjectDir: filepath.Join(project, defaultProjectAgentDir),
+	})
+	if err != nil {
+		t.Fatalf("LoadAgents() error: %v", err)
+	}
+
+	if _, err := configured.GetAgent("codex/sol-luna/roles/sol-planner"); err != nil {
+		t.Fatalf("GetAgent() error: %v", err)
+	}
+}
+
 func TestAgentImportCommandExpandsGitHubRepositoryShorthand(t *testing.T) {
 	isolateAgentRoots(t)
 	repo := writeImportRepository(t, map[string]string{

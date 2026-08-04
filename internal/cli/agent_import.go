@@ -242,7 +242,7 @@ func discoverImportedAgentFiles(root string) ([]importedAgentFile, error) {
 			return nil
 		}
 
-		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !resource.SupportsFile(entry.Name()) {
+		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !resource.SupportsResourceFile(entry.Name()) {
 			return nil
 		}
 
