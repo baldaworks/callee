@@ -482,11 +482,15 @@ func TestLoadAgentsIgnoresUnsupportedExtensions(t *testing.T) {
 	}
 }
 
-func TestLoadAgentsIgnoresREADMEAndDiscoversNestedResources(t *testing.T) {
+func TestLoadAgentsSkipsNonResourceDocumentsAndDiscoversNestedResources(t *testing.T) {
 	t.Parallel()
 
 	project := t.TempDir()
 	writeAgent(t, project, "README.md", "This is catalog documentation, not a Callee resource.\n")
+	writeAgent(t, project, "guide.md", "---\ntitle: Catalog guide\n---\nText\n")
+	writeAgent(t, project, "legacy.md", "---\napiVersion: example.dev/v1\n---\nText\n")
+	writeAgent(t, project, "guide.yaml", "title: Catalog guide\n")
+	writeAgent(t, project, "legacy.yml", "apiVersion: example.dev/v1\n")
 	writeAgent(t, project, "codex/sol-luna/roles/planner.md", roleAgent("Sol planner", nil))
 
 	configured, err := LoadAgents(AgentLoadOptions{UserDir: filepath.Join(t.TempDir(), "missing"), ProjectDir: project})
@@ -503,8 +507,8 @@ func TestLoadAgentsAggregatesStaticDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	project := t.TempDir()
-	writeAgent(t, project, "roles/a.md", "---\nkind: Role\nspec: {}\n---\n{{ .Input }}\n")
-	writeAgent(t, project, "roles/b.md", "---\napiVersion: unsupported/v1\nkind: Role\nspec: {}\n---\n{{ .Input }}\n")
+	writeAgent(t, project, "roles/a.md", "---\ntitle: [\n---\nText\n")
+	writeAgent(t, project, "roles/b.md", "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Unknown\nspec: {}\n---\n{{ .Input }}\n")
 
 	_, err := LoadAgents(AgentLoadOptions{UserDir: filepath.Join(t.TempDir(), "missing"), ProjectDir: project})
 	if err == nil {

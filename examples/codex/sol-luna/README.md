@@ -38,7 +38,10 @@ callee agent import baldaworks/callee \
 resources in the `codex/sol-luna` namespace, so the Sol Role is available as
 `codex/sol-luna/roles/sol-planner` and the Luna Max Role as
 `codex/sol-luna/roles/luna-max-implementer`. The pack's `README.md` is
-documentation and is skipped during catalog discovery and import.
+documentation without Callee frontmatter, so catalog discovery and import
+skip it. They likewise skip structurally valid documents with no current
+`apiVersion`, while malformed documents and current-version resources remain
+strict errors.
 
 After importing, inspect the catalog or run the read-only planner:
 

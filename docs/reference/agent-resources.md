@@ -13,7 +13,7 @@ Pass `callee --agent-root <dir> ...` to switch into exclusive discovery mode.
 When set, Callee ignores both default roots and discovers resources only under
 `<dir>`. The resource ID remains relative to that directory.
 
-Only lowercase `.md`, `.yaml`, and `.yml` extensions are supported. Symlinked files and unsupported extensions are skipped. A file named `README.md` is catalog documentation and is skipped during recursive discovery and remote import. The resource ID is the slash-separated relative path with its final supported extension removed. For example, `.callee/workflows/review.yml` has ID `workflows/review`.
+Only lowercase `.md`, `.yaml`, and `.yml` extensions are supported. Symlinked files and unsupported extensions are skipped. Recursive discovery and remote import also skip Markdown files without YAML frontmatter and structurally valid Markdown, YAML, or YML documents whose `apiVersion` is absent or is not `callee.metalagman.dev/v1alpha1`; `README.md` is a common example. Malformed frontmatter/YAML and documents that declare the current API remain errors. Direct `callee agent validate <file>` remains strict even for a file discovery would skip. The resource ID is the slash-separated relative path with its final supported extension removed. For example, `.callee/workflows/review.yml` has ID `workflows/review`.
 
 IDs must be unique across both roots and all supported formats. Project resources do not shadow user resources. A duplicate such as `roles/reviewer.md` and `roles/reviewer.yaml` makes registry loading fail.
 

@@ -102,10 +102,14 @@ spec:
 	}
 }
 
-func TestAgentImportCommandIgnoresREADMEInSelectedPack(t *testing.T) {
+func TestAgentImportCommandSkipsNonResourceDocumentsInSelectedPack(t *testing.T) {
 	project := isolateAgentRoots(t)
 	repo := writeImportRepository(t, map[string]string{
-		"examples/codex/sol-luna/README.md": "This documentation is not a Callee resource.\n",
+		"examples/codex/sol-luna/README.md":  "This documentation is not a Callee resource.\n",
+		"examples/codex/sol-luna/guide.md":   "---\ntitle: Catalog guide\n---\nText\n",
+		"examples/codex/sol-luna/legacy.md":  "---\napiVersion: example.dev/v1\n---\nText\n",
+		"examples/codex/sol-luna/guide.yaml": "title: Catalog guide\n",
+		"examples/codex/sol-luna/legacy.yml": "apiVersion: example.dev/v1\n",
 		"examples/codex/sol-luna/roles/sol-planner.md": `---
 apiVersion: callee.metalagman.dev/v1alpha1
 kind: Role
@@ -131,8 +135,14 @@ spec:
 	}
 
 	wantPath := filepath.Join(defaultProjectAgentDir, "codex", "sol-luna", "roles", "sol-planner.md")
-	if got := stdout.String(); !strings.Contains(got, wantPath) || strings.Contains(got, "README.md") {
-		t.Fatalf("stdout = %q, want imported Role path without README", got)
+	if got := stdout.String(); !strings.Contains(got, wantPath) {
+		t.Fatalf("stdout = %q, want imported Role path", got)
+	}
+
+	for _, skipped := range []string{"README.md", "guide.md", "legacy.md", "guide.yaml", "legacy.yml"} {
+		if strings.Contains(stdout.String(), skipped) {
+			t.Fatalf("stdout = %q, want imported Role path without %q", stdout.String(), skipped)
+		}
 	}
 
 	configured, err := registry.LoadAgents(registry.AgentLoadOptions{
@@ -145,6 +155,29 @@ spec:
 
 	if _, err := configured.GetAgent("codex/sol-luna/roles/sol-planner"); err != nil {
 		t.Fatalf("GetAgent() error: %v", err)
+	}
+}
+
+func TestAgentImportCommandRejectsMalformedResourceDocument(t *testing.T) {
+	project := isolateAgentRoots(t)
+	repo := writeImportRepository(t, map[string]string{
+		".callee/broken.md": "---\ntitle: [\n---\nText\n",
+	})
+	stubCloneAgentImportRepository(t, repo, nil)
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"agent", "import", "https://example.invalid/repo.git"}, &stdout, &stderr)
+	if exitCode == 0 {
+		t.Fatal("agent import exit = 0, want malformed document failure")
+	}
+
+	if got := stderr.String(); !strings.Contains(got, "inspect imported agent") {
+		t.Fatalf("stderr = %q, want malformed document inspection error", got)
+	}
+
+	if _, err := os.Stat(filepath.Join(project, defaultProjectAgentDir, "broken.md")); !os.IsNotExist(err) {
+		t.Fatalf("broken document exists after failed import: %v", err)
 	}
 }
 

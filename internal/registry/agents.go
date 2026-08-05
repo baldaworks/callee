@@ -478,7 +478,25 @@ func discoverAgentRoot(root agentRoot) ([]discoveredAgent, []error) {
 			return nil
 		}
 
-		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !agent.SupportsResourceFile(entry.Name()) {
+		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !agent.SupportsFile(entry.Name()) {
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			diagnostics = append(diagnostics, fmt.Errorf("read agent %q: %w", path, err))
+
+			return nil
+		}
+
+		candidate, err := agent.IsDiscoverableResourceFile(path, data)
+		if err != nil {
+			diagnostics = append(diagnostics, fmt.Errorf("inspect agent %q: %w", path, err))
+
+			return nil
+		}
+
+		if !candidate {
 			return nil
 		}
 
@@ -492,13 +510,6 @@ func discoverAgentRoot(root agentRoot) ([]discoveredAgent, []error) {
 		id, err := ResourceID(relative)
 		if err != nil {
 			diagnostics = append(diagnostics, fmt.Errorf("resource path %q: %w", path, err))
-
-			return nil
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			diagnostics = append(diagnostics, fmt.Errorf("read agent %q: %w", path, err))
 
 			return nil
 		}

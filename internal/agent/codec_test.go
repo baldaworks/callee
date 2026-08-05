@@ -436,24 +436,80 @@ func TestSupportsFileRequiresLowercaseSupportedExtension(t *testing.T) {
 	}
 }
 
-func TestSupportsResourceFileSkipsREADMEOnly(t *testing.T) {
+func TestIsDiscoverableResourceFileClassifiesContent(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]bool{
-		"README.md":        false,
-		"readme.md":        false,
-		"nested/README.md": false,
-		"agent.md":         true,
-		"notes.md":         true,
-		"README.yaml":      true,
-		"agent.yaml":       true,
-		"agent.json":       false,
+	currentMarkdown := "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec: {}\n---\n{{ .Input }}\n"
+	currentYAML := "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec: {}\nbody: '{{ .Input }}'\n"
+
+	tests := []struct {
+		name    string
+		source  string
+		data    []byte
+		want    bool
+		wantErr string
+	}{
+		{name: "plain Markdown documentation", source: "README.md", data: []byte("# Catalog\n"), want: false},
+		{name: "Markdown without API version", source: "guide.md", data: []byte("---\ntitle: Guide\n---\nText\n"), want: false},
+		{name: "Markdown with non-current API version", source: "legacy.md", data: []byte("---\napiVersion: example.dev/v1\n---\nText\n"), want: false},
+		{name: "current Markdown resource", source: "roles/worker.md", data: []byte(currentMarkdown), want: true},
+		{name: "unclosed Markdown frontmatter", source: "broken.md", data: []byte("---\napiVersion: callee.metalagman.dev/v1alpha1\n"), wantErr: "closing delimiter"},
+		{name: "invalid Markdown frontmatter", source: "broken.md", data: []byte("---\ntitle: [\n---\nText\n"), wantErr: "frontmatter"},
+		{name: "YAML without API version", source: "guide.yaml", data: []byte("title: Guide\n"), want: false},
+		{name: "YML with non-current API version", source: "legacy.yml", data: []byte("apiVersion: example.dev/v1\n"), want: false},
+		{name: "current YAML resource", source: "roles/worker.yaml", data: []byte(currentYAML), want: true},
+		{name: "invalid YAML", source: "broken.yaml", data: []byte("title: [\n"), wantErr: "decode YAML document"},
+		{name: "multiple YAML documents", source: "broken.yml", data: []byte("title: first\n---\ntitle: second\n"), wantErr: "exactly one document"},
+		{name: "unsupported extension", source: "guide.txt", data: []byte("# Catalog\n"), want: false},
 	}
 
-	for path, want := range tests {
-		if got := SupportsResourceFile(path); got != want {
-			t.Errorf("SupportsResourceFile(%q) = %t, want %t", path, got, want)
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := IsDiscoverableResourceFile(test.source, test.data)
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("IsDiscoverableResourceFile() error = %v, want containing %q", err, test.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("IsDiscoverableResourceFile() error = %v", err)
+			}
+
+			if got != test.want {
+				t.Errorf("IsDiscoverableResourceFile() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDecodeRemainsStrictForSkippedDiscoveryDocuments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source string
+		data   []byte
+		want   string
+	}{
+		{name: "plain Markdown", source: "README.md", data: []byte("# Catalog\n"), want: "opening delimiter"},
+		{name: "Markdown without API version", source: "guide.md", data: []byte("---\ntitle: Guide\n---\nText\n"), want: "missing apiVersion"},
+		{name: "YAML without API version", source: "guide.yaml", data: []byte("title: Guide\n"), want: "missing apiVersion"},
+		{name: "YML with non-current API version", source: "legacy.yml", data: []byte("apiVersion: example.dev/v1\n"), want: "unsupported apiVersion"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := Decode("document", test.source, test.data); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Errorf("Decode() error = %v, want containing %q", err, test.want)
+			}
+		})
 	}
 }
 

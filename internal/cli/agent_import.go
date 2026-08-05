@@ -242,7 +242,21 @@ func discoverImportedAgentFiles(root string) ([]importedAgentFile, error) {
 			return nil
 		}
 
-		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !resource.SupportsResourceFile(entry.Name()) {
+		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !resource.SupportsFile(entry.Name()) {
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read imported agent %q: %w", path, err)
+		}
+
+		candidate, err := resource.IsDiscoverableResourceFile(path, data)
+		if err != nil {
+			return fmt.Errorf("inspect imported agent %q: %w", path, err)
+		}
+
+		if !candidate {
 			return nil
 		}
 
@@ -258,11 +272,6 @@ func discoverImportedAgentFiles(root string) ([]importedAgentFile, error) {
 
 		if previous, exists := byID[id]; exists {
 			return fmt.Errorf("duplicate agent ID %q from %q and %q", id, previous.sourcePath, path)
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read imported agent %q: %w", path, err)
 		}
 
 		decoded, err := resource.Decode(id, path, data)

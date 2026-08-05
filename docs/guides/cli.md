@@ -128,7 +128,7 @@ callee agent import https://github.com/acme/platform-agents.git --path catalog/f
 callee agent import acme/platform-agents --prefix vendor --force
 ```
 
-The command shells out to the local `git` executable, clones the repository into a temporary checkout, discovers supported `.md`, `.yaml`, and `.yml` resources recursively under `--path`, skips `README.md` documentation, and imports the remaining resources into the local write root. `--path` defaults to `.callee`. When the repository argument is in `owner/repo` form, Callee treats it as GitHub shorthand and expands it to `https://github.com/owner/repo.git` before cloning.
+The command shells out to the local `git` executable, clones the repository into a temporary checkout, and discovers supported `.md`, `.yaml`, and `.yml` resources recursively under `--path`. It skips Markdown files without YAML frontmatter and structurally valid Markdown, YAML, or YML documents whose `apiVersion` is absent or not `callee.metalagman.dev/v1alpha1`; malformed documents and documents that declare the current API remain errors. The remaining resources are imported into the local write root. `--path` defaults to `.callee`. When the repository argument is in `owner/repo` form, Callee treats it as GitHub shorthand and expands it to `https://github.com/owner/repo.git` before cloning.
 
 `--prefix` rewrites imported resource IDs as `<prefix>/<original-id>` and rewrites `spec.children[].ref` only when the referenced target is also part of the same import set. References to local, non-imported resources are preserved unchanged. Existing destination files are left unchanged by default; `--force` overwrites only the files selected by the current import.
 

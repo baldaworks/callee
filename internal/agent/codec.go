@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -12,6 +13,11 @@ import (
 )
 
 const markdownDelimiter = "---"
+
+var (
+	errMissingMarkdownFrontmatterOpeningDelimiter = errors.New("missing YAML frontmatter opening delimiter")
+	errMissingMarkdownFrontmatterClosingDelimiter = errors.New("missing YAML frontmatter closing delimiter")
+)
 
 // SupportsFile reports whether path has a supported lowercase agent file
 // extension.
@@ -24,14 +30,55 @@ func SupportsFile(path string) bool {
 	}
 }
 
-// SupportsResourceFile reports whether path is a discoverable Callee resource
-// file. Conventional README files are catalog documentation, not resources.
-func SupportsResourceFile(path string) bool {
-	if strings.EqualFold(filepath.Base(path), "README.md") {
-		return false
+// IsDiscoverableResourceFile reports whether source and data identify a Callee
+// resource candidate during recursive discovery. Documentation that does not
+// declare the current API is skipped; malformed documents are reported.
+func IsDiscoverableResourceFile(source string, data []byte) (bool, error) {
+	switch filepath.Ext(source) {
+	case ".md":
+		return inspectMarkdownResourceFile(source, data)
+	case ".yaml", ".yml":
+		return inspectYAMLResourceFile(source, data)
+	default:
+		return false, nil
+	}
+}
+
+func inspectMarkdownResourceFile(source string, data []byte) (bool, error) {
+	frontmatter, _, _, err := splitMarkdown(data)
+	if errors.Is(err, errMissingMarkdownFrontmatterOpeningDelimiter) {
+		return false, nil
 	}
 
-	return SupportsFile(path)
+	if err != nil {
+		return false, fmt.Errorf("inspect Markdown resource %q: %w", source, err)
+	}
+
+	var document yaml.Node
+	if err := yaml.Unmarshal(frontmatter, &document); err != nil {
+		return false, fmt.Errorf("inspect Markdown resource %q frontmatter: %w", source, err)
+	}
+
+	return declaresCurrentAPIVersion(&document), nil
+}
+
+func inspectYAMLResourceFile(source string, data []byte) (bool, error) {
+	if !utf8.Valid(data) {
+		return false, fmt.Errorf("inspect YAML resource %q: document must be valid UTF-8", source)
+	}
+
+	document, err := decodeSingleYAMLDocument(source, data)
+	if err != nil {
+		return false, fmt.Errorf("inspect YAML resource %q: %w", source, err)
+	}
+
+	return declaresCurrentAPIVersion(&document), nil
+}
+
+func declaresCurrentAPIVersion(document *yaml.Node) bool {
+	version := nodeAtPath(document, "apiVersion")
+
+	return version != nil && version.Kind == yaml.ScalarNode && version.Value == APIVersion
 }
 
 // Decode decodes one agent file according to its lowercase extension.
@@ -214,7 +261,7 @@ func EncodeMarkdown(resource Resource) ([]byte, error) {
 func splitMarkdown(data []byte) ([]byte, []byte, int, error) {
 	firstEnd, firstNext := lineEnd(data, 0)
 	if firstEnd < 0 || string(trimLineEnding(data[:firstEnd])) != markdownDelimiter {
-		return nil, nil, 0, fmt.Errorf("missing YAML frontmatter opening delimiter")
+		return nil, nil, 0, errMissingMarkdownFrontmatterOpeningDelimiter
 	}
 
 	for start := firstNext; start <= len(data); {
@@ -236,7 +283,7 @@ func splitMarkdown(data []byte) ([]byte, []byte, int, error) {
 		start = next
 	}
 
-	return nil, nil, 0, fmt.Errorf("missing YAML frontmatter closing delimiter")
+	return nil, nil, 0, errMissingMarkdownFrontmatterClosingDelimiter
 }
 
 func validateDocumentDispatch(id, source string, document *yaml.Node, lineOffset int) error {
