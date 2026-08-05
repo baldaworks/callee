@@ -18,10 +18,10 @@ From the repository root, validate the two resources and inspect their
 namespaced IDs:
 
 ```bash
-go run ./cmd/callee agent validate examples/codex/sol-luna/roles/sol-planner.md
-go run ./cmd/callee agent validate examples/codex/sol-luna/roles/luna-max-implementer.md
-go run ./cmd/callee --agent-root examples agent list --kind Role
-go run ./cmd/callee --agent-root examples agent view codex/sol-luna/roles/sol-planner
+callee agent validate examples/codex/sol-luna/roles/sol-planner.md
+callee agent validate examples/codex/sol-luna/roles/luna-max-implementer.md
+callee --agent-root examples agent list --kind Role
+callee --agent-root examples agent view codex/sol-luna/roles/sol-planner
 ```
 
 ## Import the pack
