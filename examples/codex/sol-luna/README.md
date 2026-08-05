@@ -1,27 +1,27 @@
 # Codex Sol + Luna Max pack
 
-This pack provides two separate Codex Roles for a deliberate plan-then-implement
-workflow:
+This pack provides an opinionated Codex workflow for deliberate,
+evidence-backed changes:
 
 - `codex/sol-luna/roles/sol-planner` uses `gpt-5.6-sol` with high reasoning and
   denied permissions for evidence-backed, read-only planning and review.
 - `codex/sol-luna/roles/luna-max-implementer` uses `gpt-5.6-luna` with max
   reasoning and operator-confirmed permissions for bounded implementation.
+- `codex/sol-luna/workflows/plan-then-implement` runs Sol first, then passes
+  both the original task and Sol's plan to Luna Max. Luna retains its `ask`
+  permission mode, so mutating actions remain operator-confirmed.
 
-The Roles are independent. You can run either one directly, or pass the Sol
-artifact to Luna Max as the input for a later run. No Callee workflow state is
-shared between them.
+Use `plan-then-implement` as the normal entry point. The individual Roles are
+also available when you only need planning or implementation.
 
 ## Validate and inspect the pack
 
-From the repository root, validate the two resources and inspect their
-namespaced IDs:
+From the repository root, validate the workflow and inspect its resolved tree:
 
 ```bash
-callee agent validate examples/codex/sol-luna/roles/sol-planner.md
-callee agent validate examples/codex/sol-luna/roles/luna-max-implementer.md
-callee --agent-root examples agent list --kind Role
-callee --agent-root examples agent view codex/sol-luna/roles/sol-planner
+callee agent validate examples/codex/sol-luna/workflows/plan-then-implement.md
+callee --agent-root examples agent list --kind Sequential
+callee --agent-root examples agent view codex/sol-luna/workflows/plan-then-implement
 ```
 
 ## Import the pack
@@ -34,22 +34,19 @@ callee agent import baldaworks/callee \
   --prefix codex/sol-luna
 ```
 
-`--path` selects this remote pack subtree. `--prefix` keeps the imported
-resources in the `codex/sol-luna` namespace, so the Sol Role is available as
-`codex/sol-luna/roles/sol-planner` and the Luna Max Role as
-`codex/sol-luna/roles/luna-max-implementer`. The pack's `README.md` is
-documentation without Callee frontmatter, so catalog discovery and import
-skip it. They likewise skip structurally valid documents with no current
-`apiVersion`, while malformed documents and current-version resources remain
-strict errors.
+`--path` selects this remote pack subtree. `--prefix` keeps its resources in
+the `codex/sol-luna` namespace. The pack's `README.md` is documentation without
+Callee frontmatter, so catalog discovery and import skip it. They likewise skip
+structurally valid documents with no current `apiVersion`, while malformed
+documents and current-version resources remain strict errors.
 
-After importing, inspect the catalog or run the read-only planner:
+After importing, inspect the workflow and run it:
 
 ```bash
 callee agent list
-callee agent view codex/sol-luna/roles/sol-planner
-callee agent run codex/sol-luna/roles/sol-planner \
-  --message "Plan the requested change with verified facts, risks, and validation."
+callee agent view codex/sol-luna/workflows/plan-then-implement
+callee agent run codex/sol-luna/workflows/plan-then-implement \
+  --message "Add the requested feature with appropriate tests and validation."
 ```
 
 Running a Role requires an authenticated Codex installation and a controlling
