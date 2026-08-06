@@ -5,7 +5,7 @@ description: Run and combine project-defined Callee agents and deterministic wor
 
 # Run Callee agents
 
-Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.19.0` for every command in the task.
+Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.20.0` for every command in the task.
 
 ## Discover and select
 
@@ -25,15 +25,27 @@ The selected ID may identify a `Role`, `Script`, `Human`, `Sequential`, `Loop`, 
 
 ## Execute
 
-Every run requires a real controlling PTY, even when `--message` supplies the initial prompt. Keep terminal interaction separate from stdout and stderr.
+Read the top-level `specDrivenInteractive` and effective `interactive` values
+from `agent view --json`. For each Role, also inspect `authoredInteractive`,
+effective `interactive`, `authoredPermissions`, and effective `permissions`.
+Permissions and the Role protocol are independent.
 
-Verify `/dev/tty` in the same shell invocation before launching Callee; a host tool's `tty` option alone may not create a controlling terminal. If `test -r /dev/tty && test -w /dev/tty` fails on Linux, allocate one with util-linux `script`:
+If effective `interactive` is false, run Callee directly without allocating a
+PTY. Supply a nonblank message and every required parameter. The resolved tree
+must contain no Human, effective interactive Role, or effective `ask` policy;
+Callee rejects these conditions before creating a provider.
+
+If effective `interactive` is true, use a real controlling PTY.
+Keep terminal interaction separate from stdout and stderr. Verify `/dev/tty` in the same shell
+invocation before launching Callee; a host tool's `tty` option alone may not
+create a controlling terminal. If `test -r /dev/tty && test -w /dev/tty` fails
+on Linux, allocate one with util-linux `script`:
 
 ```bash
 script -qefc 'callee agent run "<agent-id>" --message "<task>" > /tmp/callee-artifact.txt 2> /tmp/callee-diagnostics.txt' /dev/null
 ```
 
-On BSD/macOS, use `script -q /dev/null /bin/sh -c '<callee command with the same redirections>'`. Keep `/dev/tty` attached for prompts, use unique temporary output paths, inspect the wrapper's exit status, and read the artifact and diagnostics files separately. Do not first launch Callee without a verified controlling terminal; that produces an intentional failed run rather than a useful capability probe.
+On BSD/macOS, use `script -q /dev/null /bin/sh -c '<callee command with the same redirections>'`. Keep `/dev/tty` attached for prompts, use unique temporary output paths, inspect the wrapper's exit status, and read the artifact and diagnostics files separately.
 
 ```bash
 callee agent run "<agent-id>" \
@@ -45,7 +57,8 @@ To override authored Role policy for one run, pass an explicit boolean:
 
 ```bash
 callee agent run "<agent-id>" --message "<task>" --interactive=true
-callee agent run "<agent-id>" --message "<task>" --interactive=false
+callee agent run "<agent-id>" --message "<task>" --interactive=false --permissions=deny
+callee --permissions=allow agent run "<agent-id>" --message "<task>"
 ```
 
 `--interactive=true` forces every Role visit in the selected run, including
@@ -53,12 +66,16 @@ nested, aliased, and repeated Loop visits, through the existing REPL protocol.
 `--interactive=false` forces every Role visit through the existing one-shot
 protocol. When omitted, each Role keeps its authored `spec.interactive` (or
 legacy `spec.repl`) setting. This override is runtime-only: it does not rewrite
-specs or resources and does not change Scripts, Humans, composites, escalation
-authority, provider sessions, TTY requirements, or cleanup. The runtime flag
-is separate from the author-time `promptkit role create ... --interactive`
-flag.
+specs or resources.
 
-Use `--param-file "<effective-node-id>.<name>=<path>"` for exact multiline values. Supply known parameters shown by `agent view`; let Callee collect the rest just in time through the PTY.
+The root-persistent `--permissions=ask|allow|deny` flag separately overrides
+every Role's ACP policy for the invocation. It does not enable or disable Role
+REPL. Explicit `--interactive=false --permissions=ask` is invalid. Without an
+explicit `--interactive`, Callee derives whole-run mode after the permissions
+override: any effective interactive Role, `ask`, or Human makes the run
+interactive; otherwise it is non-interactive.
+
+Use `--param-file "<effective-node-id>.<name>=<path>"` for exact multiline values. Supply known parameters shown by `agent view`; only interactive mode can collect the rest just in time through the PTY.
 
 Read Human prompts, Human responses, Role questions, and permission requests through the same terminal. A Role inside a workflow may enter REPL mode; its stderr lifecycle has one `entering repl` / `exiting repl` pair, with every `await` turn inside that pair. Do not send `quit`, `exit`, `/done`, or a synthetic completion marker; the Role selects control through Callee's injected protocol.
 

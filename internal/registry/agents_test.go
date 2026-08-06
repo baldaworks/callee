@@ -104,6 +104,10 @@ spec:
 		t.Errorf("effective permissions = %+v, want allow", root.Children[0].Permissions)
 	}
 
+	if root.Children[0].AuthoredInteractive == nil || root.Children[0].Interactive == nil || *root.Children[0].AuthoredInteractive != *root.Children[0].Interactive {
+		t.Errorf("interactive policy = authored %+v effective %+v, want matching values", root.Children[0].AuthoredInteractive, root.Children[0].Interactive)
+	}
+
 	if root.Children[1].AuthoredPermissions != nil || root.Children[1].Permissions == nil || root.Children[1].Permissions.Mode != agent.PermissionModeAsk {
 		t.Errorf("validator permissions = authored %+v effective %+v, want omitted/ask", root.Children[1].AuthoredPermissions, root.Children[1].Permissions)
 	}

@@ -127,7 +127,13 @@ The body must contain exactly one unconditional, bare `{{ .Prompt }}` or `{{ .In
 
 See [ACP provider configuration](../guides/acp-providers.md) for the `provider` object.
 
-`spec.permissions.mode` accepts exactly `ask`, `allow`, or `deny` and defaults to `ask` when `permissions` is omitted. It is a Role-only runtime policy and is independent of backend-specific `spec.provider.mode`. See [ACP permission requests](../guides/acp-permissions.md) for option selection and failure semantics.
+`spec.permissions.mode` accepts exactly `ask`, `allow`, or `deny` and defaults to `ask` when `permissions` is omitted. It is a Role-only runtime policy and is independent of backend-specific `spec.provider.mode` and the Role's interactive protocol. The root-persistent `--permissions` flag can override the effective value for one invocation. See [ACP permission requests](../guides/acp-permissions.md) for option selection and failure semantics.
+
+`callee agent view <agent-id> --json` reports `specDrivenInteractive` and the
+effective whole-tree `interactive` value. Every resolved Role reports the
+spec-driven `authoredInteractive` value, effective `interactive`,
+`authoredPermissions`, and effective `permissions`. A `--permissions` override
+changes only the effective permission and aggregate interactive projection.
 
 ## Script
 

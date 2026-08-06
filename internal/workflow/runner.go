@@ -34,6 +34,7 @@ type Runner struct {
 	Pauses              *PauseController
 	Metrics             *RunMetrics
 	InteractiveOverride *bool
+	PermissionOverride  *agent.PermissionMode
 }
 
 // Run executes the root and returns its sole final artifact only after every
@@ -54,6 +55,13 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		return "", fmt.Errorf("workflow process factory is required")
 	}
 
+	if err := ValidatePolicyOverrides(PolicyOverrides{
+		Interactive: r.InteractiveOverride,
+		Permissions: r.PermissionOverride,
+	}); err != nil {
+		return "", err
+	}
+
 	if strings.TrimSpace(prompt) == "" {
 		return "", fmt.Errorf("workflow prompt must not be blank")
 	}
@@ -63,6 +71,13 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 
 	if interactiveOverrideSet {
 		interactiveOverride = *r.InteractiveOverride
+	}
+
+	permissionOverrideSet := r.PermissionOverride != nil
+
+	permissionOverride := agent.PermissionMode("")
+	if permissionOverrideSet {
+		permissionOverride = *r.PermissionOverride
 	}
 
 	run := &runState{
@@ -80,9 +95,11 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		metrics:                metrics,
 		interactiveOverrideSet: interactiveOverrideSet,
 		interactiveOverride:    interactiveOverride,
+		permissionOverrideSet:  permissionOverrideSet,
+		permissionOverride:     permissionOverride,
 	}
 
-	if err := validateRuntimeParams(r.Root, run.params); err != nil {
+	if err := ValidateRuntimeParams(r.Root, run.params); err != nil {
 		return "", err
 	}
 
@@ -149,6 +166,8 @@ type runState struct {
 	metrics                *RunMetrics
 	interactiveOverrideSet bool
 	interactiveOverride    bool
+	permissionOverrideSet  bool
+	permissionOverride     agent.PermissionMode
 }
 
 func (r *runState) visit(
@@ -318,11 +337,22 @@ func (r *runState) role(
 }
 
 func (r *runState) roleInteractive(node *registry.ResolvedNode) bool {
+	return r.rolePolicy(node).Interactive
+}
+
+func (r *runState) rolePolicy(node *registry.ResolvedNode) RolePolicy {
+	overrides := PolicyOverrides{}
 	if r.interactiveOverrideSet {
-		return r.interactiveOverride
+		overrides.Interactive = &r.interactiveOverride
 	}
 
-	return node.Resource.REPL()
+	if r.permissionOverrideSet {
+		overrides.Permissions = &r.permissionOverride
+	}
+
+	policy, _ := ResolveRolePolicy(node.Resource, overrides)
+
+	return policy
 }
 
 func (r *runState) runRoleTurns(
@@ -418,7 +448,12 @@ func (r *runState) newSession(
 	sessionCtx, cancelSession := context.WithTimeout(ctx, node.Resource.ProviderTimeout())
 	defer cancelSession()
 
-	session, err := process.NewSession(sessionCtx, node.Resource, node.EffectiveID)
+	role := node.Resource
+	if r.permissionOverrideSet {
+		role.Spec.Permissions = &agent.Permissions{Mode: r.permissionOverride}
+	}
+
+	session, err := process.NewSession(sessionCtx, role, node.EffectiveID)
 	if err != nil {
 		return nil, err
 	}
@@ -692,7 +727,8 @@ func (r *runState) promote(effectiveID, artifact string) {
 	outputs[effectiveID] = artifact
 }
 
-func validateRuntimeParams(root *registry.ResolvedNode, values map[string]string) error {
+// ValidateRuntimeParams validates supplied qualified parameter values.
+func ValidateRuntimeParams(root *registry.ResolvedNode, values map[string]string) error {
 	known := make(map[string]bool)
 	bound := make(map[string]bool)
 

@@ -1042,6 +1042,7 @@ type scriptedProcess struct {
 	requireLiveProcessContext bool
 	sessions                  int
 	effectiveIDs              []string
+	roles                     []agent.Resource
 	prepareErr                error
 	turnErr                   error
 	closeErr                  error
@@ -1061,6 +1062,7 @@ func (p *scriptedProcess) NewSession(_ context.Context, role agent.Resource, eff
 	p.visits[role.ID] = visits[1:]
 	p.sessions++
 	p.effectiveIDs = append(p.effectiveIDs, effectiveID)
+	p.roles = append(p.roles, role)
 
 	var usages []*runtime.TokenUsage
 

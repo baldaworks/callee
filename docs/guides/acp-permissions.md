@@ -24,6 +24,12 @@ The accepted lowercase modes have closed semantics:
 
 Omitting `permissions` defaults to `ask`. Unknown modes, empty permission objects, permission fields under `provider`, and permission fields on composite kinds fail resource validation.
 
+Use the root-persistent `--permissions=ask|allow|deny` flag to override every
+Role visit for one invocation of `agent run` or `agent view`. The override
+reaches direct, nested, aliased, and repeated Loop visits and never rewrites the
+resource. Permission policy is independent of Role protocol: the flag does not
+change `spec.interactive` or one-shot/REPL parsing.
+
 Automatic modes never choose an option of the opposite decision or an unknown kind. If the provider offers no compatible option, the root run fails. The diagnostic identifies the effective Role ID, configured policy, and offered option kinds, but does not include tool arguments. Duplicate compatible options retain provider order, so the first one wins.
 
 The policy is bound to each fresh Role visit session. Two aliases of the same Role can therefore run in separate ACP sessions, and repeated Loop visits receive a fresh binding each time. Provider process reuse does not share a decision between sessions.
@@ -73,9 +79,19 @@ These diagnostics go to stderr and follow the normal text or `--json` logging fo
 
 If no `permission request received` event appears, the provider did not send an ACP permission request to Callee. A Role permission mode controls how Callee answers a request; it does not force the provider to create one. In particular, a provider may execute operations already allowed by its sandbox without asking.
 
-## Terminal and timeout requirements
+## Run mode, terminal, and timeout requirements
 
-`agent run` opens the controlling TTY before starting any provider, even when `--message`, parameters, and an automatic permission policy would avoid prompts. Permission input never comes from redirected stdin, and a run cannot start without a controlling TTY.
+`agent run` has interactive and non-interactive whole-run modes. With no
+explicit `--interactive`, Callee derives the mode from the effective tree after
+applying `--permissions`: any interactive Role, `ask`, or Human requires
+interactive mode. Interactive mode opens the controlling TTY before starting a
+provider; permission input never comes from redirected stdin.
+
+Non-interactive mode never opens `/dev/tty`. It requires an explicit nonblank
+`--message`, every required parameter, one-shot Roles, `allow` or `deny`, and no
+Human anywhere in the resolved tree. `--interactive=false --permissions=ask`
+is rejected before registry loading; the equivalent conflict with a spec or
+default `ask` is rejected after resolve but before provider creation.
 
 `--repl-timeout`, default `30m`, bounds each `ask` selection just like the initial prompt, missing Role parameters, and REPL responses. Reaching it returns an error rather than an ACP cancellation.
 
@@ -83,7 +99,14 @@ If no `permission request received` event appears, the provider did not send an 
 
 ## Inspection and doctor
 
-`callee agent view <agent-id>` reports both the authored permission object and the resolved effective policy for each Role occurrence. In text output, an omitted policy appears as `authoredPermissions=default permissions=ask`; JSON output uses `authoredPermissions` for the authored object and `permissions` for the resolved effective value.
+`callee agent view <agent-id>` reports `specDrivenInteractive` and effective
+`interactive` for the complete tree. Each Role reports `authoredInteractive`
+and effective `interactive`, plus the authored permission object and resolved
+effective policy. In text output, an omitted policy appears as
+`authoredPermissions=default permissions=ask`; JSON uses
+`authoredPermissions` and `permissions`. Supplying `--permissions` changes only
+the effective projection and whole-tree mode; a later unoverridden view remains
+spec-driven.
 
 `callee doctor` validates the field through normal schema and graph loading. Provider readiness checks create and prepare disposable sessions without a model prompt, so doctor does not trigger permission requests or prove that a provider will offer options compatible with an automatic policy.
 

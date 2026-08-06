@@ -35,6 +35,10 @@ Both prefixed duration fields include operator wait that occurs inside their bou
 
 Wait duration measures elapsed time inside controlling-TTY prompt calls, including retries for blank input and prompts that end in timeout, abort, terminal closure, or another read error.
 
+Only an interactive run opens the controlling TTY and can accumulate operator
+wait. A non-interactive run performs no terminal reads, so its run wait is zero
+and every reached one-shot Role has zero Role wait.
+
 `agent_wait_duration` accumulates every operator prompt reached by the command:
 
 - the initial prompt when `--message` is omitted;

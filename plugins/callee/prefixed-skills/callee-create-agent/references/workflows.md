@@ -51,7 +51,9 @@ Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
   unbound Role parameter for the operator to supply at runtime.
 - Permission policy belongs to each referenced Role's `spec.permissions`, not
   to the child edge or composite. Inspect the resolved authored and effective
-  policy before running; omission defaults to `ask`.
+  policy before running; omission defaults to `ask`. It is independent of the
+  Role's interactive protocol. Effective `ask`, any interactive Role, or any
+  Human makes the complete agent interactive.
 - A Router child must use mapping form and add exactly one unique named
   `route` or the sole `default: true` edge. Do not use `default` as a
   reserved route string; `route: default` remains an ordinary named route.
@@ -232,4 +234,9 @@ Create and validate any new child resources first. Then return to the main skill
 and run `callee agent validate` on every written file followed by
 `callee agent view` on the root ID. The resolved view must have no missing
 children, duplicate IDs, duplicate aliases, or unbound parameters that were
-intended to be fixed by the workflow.
+intended to be fixed by the workflow. Confirm the root's
+`specDrivenInteractive` and effective `interactive` values, then inspect every
+Role's authored/effective interactive and permission fields. A tree intended
+for non-interactive execution must have a nonblank message, all parameters
+bound or supplied, only effective `allow`/`deny` policies, no effective
+interactive Role, and no Human anywhere in the resolved tree.

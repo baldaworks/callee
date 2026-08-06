@@ -4,7 +4,9 @@ This reference describes how a resolved Callee tree executes. Read [Agent resour
 
 ## Root-run contract
 
-`callee agent run <agent-id>` resolves one root and requires a nonblank prompt. The run owns:
+`callee agent run <agent-id>` resolves one root. Interactive mode can collect a
+missing prompt from the controlling terminal; non-interactive mode requires an
+explicit nonblank `--message`. The run owns:
 
 - one immutable original prompt;
 - one shared, ephemeral state object initialized with empty `outputs` and `scripts` maps;
@@ -29,7 +31,11 @@ If state rendering fails, no part of that visit's modifier is committed and no p
 
 ## Role execution
 
-For a Role visit, Callee resolves parameters in sorted name order. A child-edge binding wins; otherwise the runner uses a qualified CLI value and finally prompts on the controlling terminal. The completed map is available as `.Params` while rendering the Role body.
+For a Role visit, Callee resolves parameters in sorted name order. A child-edge
+binding wins; otherwise the runner uses a qualified CLI value. Interactive mode
+prompts on the controlling terminal for a missing value; non-interactive mode
+rejects all missing values during preflight. The completed map is available as
+`.Params` while rendering the Role body.
 
 Callee then:
 
@@ -67,7 +73,9 @@ For a Human visit, Callee renders the Human body from `.Prompt`, current `.Input
 
 The collected response is written to `State[responseKey]`, where `responseKey` is the authored `spec.responseKey` value. The same response is also promoted to `State.outputs[effectiveId]` and returned as the Human artifact.
 
-Human visits require an interactor backed by a controlling terminal. If no interactor is available, the workflow fails when the Human node is reached.
+Human visits require interactive mode and an interactor backed by a controlling
+terminal. Explicit non-interactive mode rejects a Human anywhere in the
+resolved tree during preflight, including beneath an unselected Router branch.
 
 ## Sequential execution
 
@@ -195,9 +203,27 @@ Use `callee agent view <agent-id>` to inspect the required qualified keys before
 
 ## TTY, permissions, and timeouts
 
-`agent run` always opens `/dev/tty`, even when `--message` and all parameters are supplied. This keeps operator prompts, Human-node responses, and ACP permission choices separate from stdout and stderr and means noninteractive environments without a controlling TTY cannot run a tree.
+`agent run` has two whole-run modes. With an explicit `--interactive` value,
+that value selects the mode and also overrides the Role protocol throughout the
+tree. Without the flag, Callee derives the mode after applying any permissions
+override: any interactive Role, effective `ask` policy, or Human node makes the
+run interactive. Otherwise the run is non-interactive.
 
-When an ACP provider requests permission, Callee applies the current Role visit's `spec.permissions.mode`. The default `ask` policy uses the controlling TTY for an interactive numbered selection; `allow` and `deny` select compatible provider options automatically. The complete selection and failure contract is defined in [ACP permission requests](../guides/acp-permissions.md).
+Interactive mode opens `/dev/tty` and can collect an omitted message, missing
+Role parameters, Human responses, REPL responses, and ACP permission choices.
+Non-interactive mode never opens `/dev/tty`; before creating a provider it
+requires a nonblank `--message`, every Role parameter, no Human anywhere in the
+resolved tree, no effective `ask` policy, and no effective interactive Role.
+
+When an ACP provider requests permission, Callee applies the current Role
+visit's effective permission policy. The root-persistent
+`--permissions=ask|allow|deny` flag overrides every Role for that invocation.
+The default `ask` policy uses the controlling TTY for an interactive numbered
+selection; `allow` and `deny` select compatible provider options automatically.
+Permissions and the Role protocol are independent: `allow` does not force
+one-shot execution, and `--interactive=true` does not change permissions.
+`--interactive=false --permissions=ask` is rejected. The complete selection
+and failure contract is defined in [ACP permission requests](../guides/acp-permissions.md).
 
 Two timeout controls have different purposes:
 

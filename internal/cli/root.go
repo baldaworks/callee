@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/baldaworks/callee/internal/agent"
 	"github.com/baldaworks/callee/internal/doctor"
 	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/runtime"
@@ -17,10 +18,11 @@ import (
 )
 
 const (
-	Version       = "0.19.0"
-	exitError     = 1
-	exitInterrupt = 130
-	exitTerminate = 143
+	Version             = "0.20.0"
+	exitError           = 1
+	exitInterrupt       = 130
+	exitTerminate       = 143
+	permissionsFlagName = "permissions"
 )
 
 var (
@@ -96,6 +98,10 @@ func NewRootCommand() *cobra.Command {
 			DisableDefaultCmd: true,
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateCommandPolicyFlags(cmd); err != nil {
+				return err
+			}
+
 			jsonOutput := commandJSONOutput(cmd)
 			if err := logging.Init(logging.WithLevel(loggingLevel(cmd.Name(), debug, trace)), logging.WithJSON(jsonOutput), logging.WithWriter(cmd.ErrOrStderr())); err != nil {
 				return err
@@ -113,6 +119,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVar(&debug, "debug", false, "enable debug logging")
 	root.PersistentFlags().BoolVar(&trace, "trace", false, "enable trace logging (overrides --debug)")
 	root.PersistentFlags().StringVar(&agentRoot, agentRootFlagName, "", "use this directory as the only Callee agent root")
+	root.PersistentFlags().String(permissionsFlagName, "", "override every Role's ACP permission policy for agent run or view (ask, allow, or deny)")
 	root.AddCommand(agentCommand())
 	root.AddCommand(bridgeCommand())
 	root.AddCommand(doctorCommand())
@@ -120,6 +127,47 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(setupCommand())
 
 	return root
+}
+
+func commandPermissionOverride(cmd *cobra.Command) (*agent.PermissionMode, error) {
+	if cmd.Flags().Lookup(permissionsFlagName) == nil || !cmd.Flags().Changed(permissionsFlagName) {
+		return nil, nil
+	}
+
+	value, err := cmd.Flags().GetString(permissionsFlagName)
+	if err != nil {
+		return nil, err
+	}
+
+	mode := agent.PermissionMode(value)
+	switch mode {
+	case agent.PermissionModeAsk, agent.PermissionModeAllow, agent.PermissionModeDeny:
+		return &mode, nil
+	default:
+		return nil, fmt.Errorf("--%s must be ask, allow, or deny", permissionsFlagName)
+	}
+}
+
+func validateCommandPolicyFlags(cmd *cobra.Command) error {
+	permissions, err := commandPermissionOverride(cmd)
+	if err != nil || permissions == nil || *permissions != agent.PermissionModeAsk {
+		return err
+	}
+
+	if cmd.Flags().Lookup("interactive") == nil || !cmd.Flags().Changed("interactive") {
+		return nil
+	}
+
+	interactive, err := cmd.Flags().GetBool("interactive")
+	if err != nil {
+		return err
+	}
+
+	if !interactive {
+		return fmt.Errorf("--interactive=false is incompatible with --permissions=ask")
+	}
+
+	return nil
 }
 
 func commandJSONOutput(cmd *cobra.Command) bool {

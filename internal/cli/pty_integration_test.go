@@ -76,7 +76,7 @@ func ptyRunArgs(mode, agentID string) []string {
 	case "forced-repl":
 		args = append(args, "--interactive=true")
 	case "forced-one-shot":
-		args = append(args, "--interactive=false")
+		args = append(args, "--interactive=false", "--permissions=allow")
 	}
 
 	return args

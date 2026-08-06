@@ -152,6 +152,23 @@ func TestWorkflowPermissionControllerAskUsesTTYAndPauses(t *testing.T) {
 	}
 }
 
+func TestWorkflowPermissionControllerAskRequiresInteractiveRun(t *testing.T) {
+	t.Parallel()
+
+	controller := newWorkflowPermissionController(nil, nil)
+	controller.Bind("session", agent.Resource{ID: "worker"})
+
+	_, err := controller.Handle(context.Background(), acp.RequestPermissionRequest{
+		SessionId: "session",
+		Options: []acp.PermissionOption{
+			{Name: "allow once", Kind: acp.PermissionOptionKindAllowOnce, OptionId: "allow"},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "permission selection requires an interactive run") {
+		t.Fatalf("Handle() error = %v, want interactive-run diagnostic", err)
+	}
+}
+
 func TestWorkflowPermissionControllerLogsAutomaticAnswers(t *testing.T) {
 	t.Parallel()
 

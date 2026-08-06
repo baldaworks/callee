@@ -43,6 +43,7 @@ type ResolvedNode struct {
 	WithinLoop          bool               `json:"-"`
 	Permissions         *agent.Permissions `json:"permissions,omitempty"`
 	AuthoredPermissions *agent.Permissions `json:"authoredPermissions,omitempty"`
+	AuthoredInteractive *bool              `json:"authoredInteractive,omitempty"`
 	Interactive         *bool              `json:"interactive,omitempty"`
 	REPL                *bool              `json:"repl,omitempty"`
 	MaxIterations       *int               `json:"maxIterations,omitempty"`
@@ -281,6 +282,7 @@ func (r *AgentRegistry) resolve(
 	switch resource.Kind {
 	case agent.RoleKind:
 		interactive := resource.Interactive()
+		node.AuthoredInteractive = &interactive
 		node.Interactive = &interactive
 		node.REPL = &interactive
 		node.Permissions = &agent.Permissions{Mode: resource.EffectivePermissionMode()}

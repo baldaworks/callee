@@ -96,6 +96,10 @@ func TestRootCommandExposesOnlyWorkflowSurface(t *testing.T) {
 	if root.PersistentFlags().Lookup(agentRootFlagName) == nil {
 		t.Fatalf("root is missing --%s", agentRootFlagName)
 	}
+
+	if root.PersistentFlags().Lookup(permissionsFlagName) == nil {
+		t.Fatalf("root is missing --%s", permissionsFlagName)
+	}
 }
 
 func TestRootCommandEmbedsCodexBridge(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"github.com/baldaworks/callee/internal/agent"
 )
 
-const releaseVersion = "0.19.0"
+const releaseVersion = "0.20.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "run-agent", "SKILL.md"))
@@ -25,7 +25,12 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"npx --yes @baldaworks/callee@" + releaseVersion,
 		"callee agent list --json",
 		"callee agent view \"<agent-id>\" --json",
+		"`specDrivenInteractive` and effective `interactive`",
+		"`authoredInteractive`",
 		"callee agent run \"<agent-id>\"",
+		"--permissions=ask|allow|deny",
+		"--interactive=false --permissions=ask",
+		"run Callee directly without allocating a",
 		"--param \"<effective-node-id>.<name>=<value>\"",
 		"real controlling PTY",
 		"Keep terminal interaction separate from stdout and stderr.",
@@ -82,6 +87,9 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"callee agent validate \"<written-agent-path>\"",
 		"actual generated `.md`, `.yaml`, or `.yml` path",
 		"callee agent view \"<agent-id>\" --json",
+		"top-level `specDrivenInteractive` and effective `interactive`",
+		"`authoredInteractive`, effective `interactive`",
+		"`authoredPermissions`, and effective `permissions`",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("create-agent skill is missing %q", want)
@@ -154,6 +162,9 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"Do not use a provider to choose an undeclared child",
 		"callee agent validate",
 		"callee agent view",
+		"`specDrivenInteractive` and effective `interactive`",
+		"authored/effective interactive and permission fields",
+		"only effective `allow`/`deny` policies",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("workflow reference is missing %q", want)
@@ -490,7 +501,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	for _, forbidden := range []string{
 		"--sparse",
 		"setup <host>",
-		"@0.19.0 setup",
+		"@0.20.0 setup",
 		"Flat frontmatter",
 		"For Codex:",
 		"callee exec --role",

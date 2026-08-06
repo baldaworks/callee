@@ -5,7 +5,7 @@ description: Create project-defined Callee Role, Script, Human, Sequential, Loop
 
 # Create a Callee agent
 
-Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.19.0` for every command in the task.
+Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.20.0` for every command in the task.
 
 ## Choose the kind and ID
 
@@ -66,7 +66,7 @@ Focus:
 {{ .Params.focus }}
 ```
 
-Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`; do not choose `allow` unless the user explicitly requests unattended approval. Set `spec.interactive: true` on a directly authored Role only when it must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
+Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` makes the whole agent interactive and uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`; do not choose `allow` unless the user explicitly requests unattended approval. Permission policy does not select the Role protocol: set `spec.interactive: true` only when the Role must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
 
 ## Author a Script
 
@@ -102,7 +102,7 @@ Review and approve this request:
 {{ .Input }}
 ```
 
-Use a nonblank `responseKey` other than the reserved `outputs` and `scripts` keys. A Human has no provider, permissions, parameters, or REPL setting. At runtime it displays the rendered body on the controlling TTY, waits for one nonblank response, stores that response at the selected top-level state key and `.State.outputs[effectiveId]`, and returns it as the node artifact.
+Use a nonblank `responseKey` other than the reserved `outputs` and `scripts` keys. A Human has no provider, permissions, parameters, or REPL setting. A Human anywhere in the resolved tree makes spec-driven mode interactive and causes explicit non-interactive execution to fail during preflight, even beneath an unselected Router branch. At runtime it displays the rendered body on the controlling TTY, waits for one nonblank response, stores that response at the selected top-level state key and `.State.outputs[effectiveId]`, and returns it as the node artifact.
 
 ## Author a workflow
 
@@ -119,4 +119,4 @@ callee agent validate "<written-agent-path>"
 callee agent view "<agent-id>" --json
 ```
 
-Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. For a PromptKit template with `metadata.mode: interactive`, confirm that the resolved view reports `interactive: true`. Confirm that every Role's authored and effective permission policy in `agent view --json` matches the request, and that every Human has the intended `responseKey` without Role-only fields. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.
+Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. Confirm the top-level `specDrivenInteractive` and effective `interactive` values in `agent view --json`. For every Role, confirm `authoredInteractive`, effective `interactive`, `authoredPermissions`, and effective `permissions`; these are independent axes. Confirm that every Human has the intended `responseKey` without Role-only fields. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.

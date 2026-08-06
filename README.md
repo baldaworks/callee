@@ -134,20 +134,23 @@ npx --yes @baldaworks/callee@latest agent run roles/reviewer --message "Review t
 npx --yes @baldaworks/callee@latest agent run workflows/goalkeeper --message "Implement the requested feature"
 ```
 
-For a one-run runtime override, pass an explicit boolean to `agent run`:
+Override Role protocol and ACP permissions independently for one run:
 
 ```bash
 callee agent run workflows/investigate --message "Ask for the target" --interactive=true
-callee agent run workflows/investigate --message "Return one artifact" --interactive=false
+callee agent run workflows/investigate --message "Return one artifact" --interactive=false --permissions=deny
+callee --permissions=allow agent view workflows/investigate
 ```
 
 `--interactive=true` forces every `Role` visit in the selected tree, including
 nested, aliased, and repeated `Loop` visits, through the existing REPL protocol.
 `--interactive=false` forces every `Role` visit through the existing one-shot
 protocol. If the flag is omitted, each Role keeps its authored
-`spec.interactive` (or legacy `spec.repl`) behavior. The override is
-runtime-only: it does not rewrite resources or specs and does not change
-`Script`, `Human`, composite, escalation, session, TTY, or cleanup behavior.
+`spec.interactive` (or legacy `spec.repl`) behavior. `--permissions=ask|allow|deny`
+separately overrides every Role's ACP policy for `agent run` and `agent view`.
+The flags are value-compatible except for `--interactive=false` with
+`--permissions=ask`, which fails before registry loading. Neither override
+rewrites resources or specs.
 
 The remaining CLI examples use `callee` for readability and assume the global
 npm installation above.
@@ -165,7 +168,14 @@ callee --version
 Ensure the Go installation directory (normally `$GOBIN` or `$GOPATH/bin`) is
 on `PATH`.
 
-`agent run` always requires a real controlling TTY. Initial input, missing parameters, Human responses, permission questions, and REPL turns use the TTY. Info lifecycle events for every `Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router` visit, long-running provider-turn heartbeats, plus received and answered ACP permission requests, use stderr, so nonempty stderr alone does not indicate failure; use the command exit status. Measured lifecycle durations are rounded to the nearest second and use standard Go strings with units, such as `43s`.
+`agent run` derives one whole-run mode. Interactive mode opens the controlling
+TTY for initial input, missing parameters, Human responses, permission questions,
+and REPL turns. A Human-free tree whose effective Roles are one-shot and use
+`allow` or `deny` runs non-interactively without opening `/dev/tty`; it requires
+an explicit nonblank `--message` and every required parameter. Non-interactive
+violations fail before provider startup. Info lifecycle events for every node,
+provider-turn heartbeats, and ACP permission events use stderr, so determine
+success from the exit status rather than stderr emptiness.
 
 `agent run` emits run-wide metrics on its final `agent run finished` event and
 per-Role metrics on each Role's `agent finished` event. The successful root
@@ -364,6 +374,13 @@ and then `reject_always`. A missing compatible option fails the run. See
 [ACP permission requests](docs/guides/acp-permissions.md) for the exact policy,
 session, timeout, and failure contract.
 
+The root-persistent `--permissions=ask|allow|deny` flag overrides that policy
+for every direct, nested, aliased, and repeated Role visit. It also projects
+effective permissions in `agent view` while retaining authored values. It does
+not change Role REPL/one-shot protocol. Without explicit `--interactive`, the
+effective tree needs a TTY when it contains an interactive Role, `ask`, or a
+Human; otherwise it runs without one.
+
 To temporarily use the external Codex bridge instead, override the executable
 and put every argument in `extraArgs`:
 
@@ -408,11 +425,13 @@ Review and approve this request:
 {{ .Input }}
 ```
 
-`Human` renders its body on the controlling TTY and waits for one nonblank
+In interactive mode, `Human` renders its body on the controlling TTY and waits for one nonblank
 operator response. The response becomes the node artifact, is promoted to
 `.State.outputs[effectiveId]`, and is also stored at the top-level state key
 selected by `responseKey`; `outputs` and `scripts` are reserved response keys.
-A Human has no provider, permissions, parameters, or REPL setting.
+A Human has no provider, permissions, parameters, or REPL setting. Its presence
+makes the spec-driven whole-agent mode interactive; explicitly selecting
+non-interactive mode fails during preflight, even for an unselected Router branch.
 
 ### Sequential
 
@@ -581,8 +600,9 @@ Repeat `--param` for literal values. Use
 `--param-file <effective-node-id>.<name>=<path>` for exact multiline file
 contents; stdin (`-`) is not accepted. Parameters bound by a composite child's
 `params` mapping are omitted from the runtime requirements. If a required value
-is not supplied by a flag, Callee asks for it through the controlling terminal
-immediately before that Role runs.
+is not supplied by a flag, interactive mode asks through the controlling
+terminal immediately before that Role runs. Non-interactive mode reports all
+missing required keys before provider startup.
 
 ## Control and REPL
 
@@ -595,7 +615,9 @@ generation also enables this field automatically for templates whose
 At execution time, `callee agent run --interactive=true|false` overrides the
 authored setting for every Role visit in that run. `true` selects the REPL
 protocol and `false` selects one-shot artifact responses; omitting the flag
-preserves each Role's authored setting. This is separate from PromptKit's
+preserves each Role's authored setting. `--permissions` remains an independent
+ACP policy axis; `--interactive=true` is compatible with every permission mode,
+while `--interactive=false` requires effective `allow` or `deny`. This is separate from PromptKit's
 author-time `promptkit role create ... --interactive` flag.
 
 Callee injects a versioned control protocol into every executed Role. Every
@@ -620,9 +642,9 @@ conditions.
 Every Role visit starts a fresh provider session, including repeated Loop
 visits; only `await` turns within one REPL visit reuse a session. A prepared
 REPL visit emits one `entering repl` / `exiting repl` lifecycle pair, with all
-`await` turns inside it. `agent run` requires a controlling TTY even when
-`--message` and every parameter are supplied. Initial input, missing parameters,
-Human responses, permission choices, and REPL turns all use the TTY. The default
+`await` turns inside it. Interactive mode uses the controlling TTY for initial
+input, missing parameters, Human responses, permission choices, and REPL turns.
+Fully supplied, one-shot, automatic, Human-free runs do not open the TTY. The default
 maximum wait for each operator prompt is `30m`; change it with `--repl-timeout`.
 Hosts must answer on the TTY and must not send `/done`, `quit`, or `exit` to
 choose completion.

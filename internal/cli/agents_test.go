@@ -89,8 +89,372 @@ spec:
 		t.Errorf("resolved permissions = authored %+v effective %+v, want allow/allow", resolvedRole.AuthoredPermissions, resolvedRole.Permissions)
 	}
 
-	if resolvedRole.Interactive == nil || resolvedRole.REPL == nil || *resolvedRole.Interactive != *resolvedRole.REPL {
-		t.Errorf("resolved interactive compat = interactive %+v repl %+v, want matching values", resolvedRole.Interactive, resolvedRole.REPL)
+	assertAgentViewInteraction(t, view, resolvedRole)
+}
+
+func assertAgentViewInteraction(t *testing.T, view agentViewOutput, role *registry.ResolvedNode) {
+	t.Helper()
+
+	if role.Interactive == nil || role.REPL == nil || *role.Interactive != *role.REPL {
+		t.Errorf("resolved interactive compat = interactive %+v repl %+v, want matching values", role.Interactive, role.REPL)
+	}
+
+	if role.AuthoredInteractive == nil || *role.AuthoredInteractive != *role.Interactive {
+		t.Errorf("resolved interactive = authored %+v effective %+v, want matching values", role.AuthoredInteractive, role.Interactive)
+	}
+
+	if view.SpecDrivenInteractive || view.Interactive {
+		t.Errorf("view interactive = spec-driven %t effective %t, want false/false", view.SpecDrivenInteractive, view.Interactive)
+	}
+}
+
+func TestAgentViewProjectsGlobalPermissionOverrideWithoutMutation(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+	writeVersionedAgent(t, dir, "roles/worker.yaml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Implements a task.
+  provider: {type: codex}
+  permissions: {mode: ask}
+  body: 'Work: {{ .Input }}'
+`)
+
+	for _, args := range [][]string{
+		{"--permissions=allow", "agent", "view", "roles/worker", "--json"},
+		{"agent", "view", "roles/worker", "--json", "--permissions=allow"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if exitCode := Run(context.Background(), args, &stdout, &stderr); exitCode != 0 {
+			t.Fatalf("agent view %q exit = %d, stderr = %q", args, exitCode, stderr.String())
+		}
+
+		var view agentViewOutput
+		if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+			t.Fatalf("decode agent view: %v", err)
+		}
+
+		if !view.SpecDrivenInteractive || view.Interactive {
+			t.Errorf("view interactive = spec-driven %t effective %t, want true/false", view.SpecDrivenInteractive, view.Interactive)
+		}
+
+		role := view.ResolvedTree
+		if role.AuthoredPermissions == nil || role.AuthoredPermissions.Mode != agent.PermissionModeAsk || role.Permissions == nil || role.Permissions.Mode != agent.PermissionModeAllow {
+			t.Errorf("view permissions = authored %+v effective %+v, want ask/allow", role.AuthoredPermissions, role.Permissions)
+		}
+
+		if role.AuthoredInteractive == nil || role.Interactive == nil || *role.AuthoredInteractive || *role.Interactive {
+			t.Errorf("view Role interactive = authored %+v effective %+v, want false/false", role.AuthoredInteractive, role.Interactive)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(context.Background(), []string{"agent", "view", "roles/worker", "--json"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("unoverridden agent view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var view agentViewOutput
+	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+		t.Fatalf("decode unoverridden agent view: %v", err)
+	}
+
+	if !view.Interactive || view.ResolvedTree.Permissions == nil || view.ResolvedTree.Permissions.Mode != agent.PermissionModeAsk {
+		t.Errorf("unoverridden view = %+v, want interactive ask policy", view)
+	}
+}
+
+func TestGlobalPermissionsFlagValidation(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "blank", args: []string{"agent", "list", "--permissions="}, want: "--permissions must be ask, allow, or deny"},
+		{name: "unknown", args: []string{"--permissions=sometimes", "agent", "list"}, want: "--permissions must be ask, allow, or deny"},
+		{name: "bare", args: []string{"agent", "list", "--permissions"}, want: "flag needs an argument: --permissions"},
+		{name: "incompatible values", args: []string{"agent", "run", "roles/missing", "--interactive=false", "--permissions=ask"}, want: "--interactive=false is incompatible with --permissions=ask"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if exitCode := Run(context.Background(), test.args, &stdout, &stderr); exitCode != exitError {
+				t.Fatalf("Run(%q) exit = %d, want %d", test.args, exitCode, exitError)
+			}
+
+			if stdout.Len() != 0 || !strings.Contains(stderr.String(), test.want) {
+				t.Errorf("Run(%q) stdout/stderr = %q/%q, want empty and %q", test.args, stdout.String(), stderr.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestGlobalPermissionsFlagAcceptsSupportedValues(t *testing.T) {
+	isolateAgentRoots(t)
+
+	for _, mode := range []string{"ask", "allow", "deny"} {
+		var stdout, stderr bytes.Buffer
+		if exitCode := Run(context.Background(), []string{"agent", "list", "--permissions=" + mode}, &stdout, &stderr); exitCode != 0 {
+			t.Errorf("--permissions=%s exit = %d, stderr = %q", mode, exitCode, stderr.String())
+		}
+	}
+}
+
+func TestGlobalPermissionsFlagHelp(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"agent", "view", "--help"}, {"agent", "run", "--help"}} {
+		var stdout, stderr bytes.Buffer
+		if exitCode := Run(context.Background(), args, &stdout, &stderr); exitCode != 0 {
+			t.Fatalf("Run(%q) exit = %d, stderr = %q", args, exitCode, stderr.String())
+		}
+
+		for _, want := range []string{"--permissions", "ask", "allow", "deny", "every Role"} {
+			if !strings.Contains(stdout.String(), want) {
+				t.Errorf("Run(%q) help = %q, want containing %q", args, stdout.String(), want)
+			}
+		}
+	}
+}
+
+func TestAgentRunPassesGlobalPermissionOverrideToSessionRole(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+	writeVersionedAgent(t, dir, "roles/worker.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Implements a task.
+  provider: {type: codex}
+  permissions: {mode: ask}
+---
+Work: {{ .Input }}
+`)
+
+	oldOpenTerminal := openTerminal
+	oldFactory := newWorkflowFactory
+
+	t.Cleanup(func() {
+		openTerminal = oldOpenTerminal
+		newWorkflowFactory = oldFactory
+	})
+
+	terminalCalls := 0
+	openTerminal = func() (io.ReadWriteCloser, error) {
+		terminalCalls++
+
+		return nil, errors.New("non-interactive run must not open a terminal")
+	}
+	process := &cliTestProcess{response: "done"}
+	newWorkflowFactory = func(_ io.Writer, interactor *terminalInteractor, pauses *workflow.PauseController) runtime.ProcessFactory {
+		if interactor != nil || pauses != nil {
+			t.Errorf("non-interactive factory interactor/pauses = %v/%v, want nil/nil", interactor, pauses)
+		}
+
+		return cliTestFactory{process: process}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	args := []string{"agent", "run", "roles/worker", "--message", "work", "--permissions=deny"}
+	if exitCode := Run(context.Background(), args, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent run exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	if len(process.roles) != 1 || process.roles[0].EffectivePermissionMode() != agent.PermissionModeDeny {
+		t.Fatalf("session Roles = %+v, want one Role with permissions=deny", process.roles)
+	}
+
+	if process.roles[0].Interactive() {
+		t.Error("permission override unexpectedly changed Role protocol")
+	}
+
+	if terminalCalls != 0 {
+		t.Errorf("openTerminal calls = %d, want zero", terminalCalls)
+	}
+}
+
+func TestAgentRunSpecDrivenAutomaticTreeDoesNotOpenTerminal(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+	writeVersionedAgent(t, dir, "roles/worker.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Automatic worker.
+  provider: {type: codex}
+  permissions: {mode: deny}
+---
+Work: {{ .Input }}
+`)
+
+	oldOpenTerminal := openTerminal
+	oldFactory := newWorkflowFactory
+
+	t.Cleanup(func() {
+		openTerminal = oldOpenTerminal
+		newWorkflowFactory = oldFactory
+	})
+
+	terminalCalls := 0
+	openTerminal = func() (io.ReadWriteCloser, error) {
+		terminalCalls++
+
+		return nil, errors.New("unexpected terminal open")
+	}
+	process := &cliTestProcess{response: "done"}
+	newWorkflowFactory = func(io.Writer, *terminalInteractor, *workflow.PauseController) runtime.ProcessFactory {
+		return cliTestFactory{process: process}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(context.Background(), []string{"agent", "run", "roles/worker", "--message", "work"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent run exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	if terminalCalls != 0 || stdout.String() != "done" {
+		t.Errorf("terminal calls/stdout = %d/%q, want 0/done", terminalCalls, stdout.String())
+	}
+}
+
+func TestAgentRunNonInteractivePreflightFailsBeforeTerminalOrFactory(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+	writeVersionedAgent(t, dir, "roles/auto.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Automatic worker.
+  provider: {type: codex}
+  permissions: {mode: allow}
+  params: {language: Language}
+---
+Work in {{ .Params.language }}: {{ .Input }}
+`)
+	writeVersionedAgent(t, dir, "roles/ask.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Asking worker.
+  provider: {type: codex}
+---
+Work: {{ .Input }}
+`)
+	writeVersionedAgent(t, dir, "humans/approval.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Human
+spec:
+  description: Approval.
+  responseKey: approval
+---
+Approve: {{ .Input }}
+`)
+	writeVersionedAgent(t, dir, "workflows/router.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Router
+spec:
+  description: Routes work.
+  route: '{{ .Input }}'
+  children:
+    - ref: roles/auto
+      alias: auto
+      route: auto
+    - ref: humans/approval
+      alias: approval
+      default: true
+---
+{{ .Input }}
+`)
+
+	oldOpenTerminal := openTerminal
+	oldFactory := newWorkflowFactory
+
+	t.Cleanup(func() {
+		openTerminal = oldOpenTerminal
+		newWorkflowFactory = oldFactory
+	})
+
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "missing message", args: []string{"agent", "run", "roles/auto", "--interactive=false", "--permissions=allow", "--param", "roles/auto.language=Go"}, want: "explicit nonblank --message"},
+		{name: "missing parameter", args: []string{"agent", "run", "roles/auto", "--interactive=false", "--permissions=allow", "--message", "work"}, want: `required parameter "roles/auto.language" is missing`},
+		{name: "spec ask", args: []string{"agent", "run", "roles/ask", "--interactive=false", "--message", "work"}, want: `Role "roles/ask" uses permissions=ask`},
+		{name: "unselected Human branch", args: []string{"agent", "run", "workflows/router", "--interactive=false", "--permissions=allow", "--message", "auto", "--param", "auto.language=Go"}, want: `Human "approval" requires operator input`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			terminalCalls := 0
+			factoryCalls := 0
+			openTerminal = func() (io.ReadWriteCloser, error) {
+				terminalCalls++
+
+				return nil, errors.New("unexpected terminal open")
+			}
+			newWorkflowFactory = func(io.Writer, *terminalInteractor, *workflow.PauseController) runtime.ProcessFactory {
+				factoryCalls++
+
+				return cliTestFactory{process: &cliTestProcess{response: "unexpected"}}
+			}
+
+			var stdout, stderr bytes.Buffer
+			if exitCode := Run(context.Background(), test.args, &stdout, &stderr); exitCode != exitError {
+				t.Fatalf("Run(%q) exit = %d, want %d", test.args, exitCode, exitError)
+			}
+
+			if terminalCalls != 0 || factoryCalls != 0 {
+				t.Errorf("terminal/factory calls = %d/%d, want zero/zero", terminalCalls, factoryCalls)
+			}
+
+			if stdout.Len() != 0 || !strings.Contains(stderr.String(), test.want) {
+				t.Errorf("stdout/stderr = %q/%q, want empty and %q", stdout.String(), stderr.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestAgentRunInteractiveAllowsAutomaticPermissions(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+	writeVersionedAgent(t, dir, "roles/worker.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: Worker.
+  provider: {type: codex}
+---
+Work: {{ .Input }}
+`)
+
+	oldOpenTerminal := openTerminal
+	oldFactory := newWorkflowFactory
+
+	t.Cleanup(func() {
+		openTerminal = oldOpenTerminal
+		newWorkflowFactory = oldFactory
+	})
+
+	terminalCalls := 0
+	openTerminal = func() (io.ReadWriteCloser, error) {
+		terminalCalls++
+
+		return &splitTerminal{input: strings.NewReader("")}, nil
+	}
+	process := &cliTestProcess{response: "done\n\ncallee.control.v1.return"}
+	newWorkflowFactory = func(_ io.Writer, interactor *terminalInteractor, pauses *workflow.PauseController) runtime.ProcessFactory {
+		if interactor == nil || pauses == nil {
+			t.Errorf("interactive factory interactor/pauses = %v/%v, want non-nil", interactor, pauses)
+		}
+
+		return cliTestFactory{process: process}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	args := []string{"agent", "run", "roles/worker", "--message", "work", "--interactive=true", "--permissions=allow"}
+	if exitCode := Run(context.Background(), args, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent run exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	if terminalCalls != 1 || stdout.String() != "done" {
+		t.Errorf("terminal calls/stdout = %d/%q, want 1/done", terminalCalls, stdout.String())
 	}
 }
 
@@ -968,10 +1332,12 @@ type cliTestProcess struct {
 	usage        *runtime.TokenUsage
 	closed       bool
 	effectiveIDs []string
+	roles        []agent.Resource
 }
 
-func (p *cliTestProcess) NewSession(_ context.Context, _ agent.Resource, effectiveID string) (runtime.AgentSession, error) {
+func (p *cliTestProcess) NewSession(_ context.Context, role agent.Resource, effectiveID string) (runtime.AgentSession, error) {
 	p.effectiveIDs = append(p.effectiveIDs, effectiveID)
+	p.roles = append(p.roles, role)
 
 	response := p.response
 	if selected, ok := p.responses[effectiveID]; ok {

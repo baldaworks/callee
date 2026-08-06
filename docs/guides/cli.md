@@ -141,23 +141,23 @@ callee agent run workflows/investigate \
   --message "Explain the architecture and main entry points"
 ```
 
-Override the authored interactive policy for the complete selected run with an
-explicit boolean:
+Override Role protocol and ACP permissions independently:
 
 ```bash
 callee agent run workflows/investigate --message "Ask for the target" --interactive=true
-callee agent run workflows/investigate --message "Return one artifact" --interactive=false
+callee agent run workflows/investigate --message "Return one artifact" --interactive=false --permissions=deny
+callee --permissions=allow agent view workflows/investigate
 ```
 
 `--interactive=true` forces every `Role` visit, including direct, nested,
 aliased, and repeated `Loop` visits, through the existing REPL protocol.
 `--interactive=false` forces every Role visit through the existing one-shot
 protocol. Omitting the flag preserves each Role's authored
-`spec.interactive` (or legacy `spec.repl`) setting. The override exists only
-for this run: it does not rewrite specs or resources and does not change
-`Script`, `Human`, composite, escalation, provider-session, TTY, or cleanup
-behavior. A bare `--interactive` is invalid; use `--interactive=true` or
-`--interactive=false`.
+`spec.interactive` (or legacy `spec.repl`) setting. The global
+`--permissions=ask|allow|deny` flag separately overrides every Role's ACP
+policy for `agent run` and the effective projection in `agent view`. A bare
+flag, unknown permission value, or `--interactive=false --permissions=ask`
+fails before registry/provider work. Overrides never rewrite resources.
 
 Omit `--message` to enter the root prompt on the controlling terminal. Supplying an explicitly blank `--message` is an error.
 
@@ -173,9 +173,20 @@ callee agent run workflows/review \
   --param-file worker.context=./request.md
 ```
 
-The two parameter flags are repeatable. Missing values are prompted on the terminal. `--repl-timeout 45m` changes the maximum wait for every operator prompt in the run; the interactive override does not change TTY or timeout requirements.
+The two parameter flags are repeatable. Interactive mode prompts for missing
+values. Non-interactive mode requires all values up front and reports missing
+keys before provider startup. `--repl-timeout 45m` changes the maximum wait for
+operator prompts.
 
-Execution always requires a real controlling TTY. The terminal carries the root prompt, missing parameters, Human-node prompts and responses, REPL turns, abort input, and ACP permission selection. Lifecycle and provider diagnostics go to stderr. The sole successful root artifact is written to stdout only after provider cleanup succeeds, so automation should determine success from the exit status rather than an empty stderr assumption.
+Without explicit `--interactive`, Callee derives the whole-run mode from the
+effective tree: any interactive Role, `ask`, or Human selects interactive mode.
+Interactive mode opens the controlling TTY for the root prompt, parameters,
+Human responses, REPL turns, abort input, and permission selection.
+Non-interactive mode never opens `/dev/tty`; it requires an explicit nonblank
+`--message`, all parameters, one-shot Roles, automatic permissions, and no
+Human anywhere in the resolved tree. Violations fail before provider factory
+creation. Lifecycle and provider diagnostics remain on stderr, and the sole
+successful artifact is written to stdout after cleanup.
 
 If one provider turn stays active for at least 10 seconds, Callee emits `agent turn heartbeat` on stderr with `turn_duration=<elapsed>`. This heartbeat is per provider turn only: it excludes pre-turn rendering and prepare work, REPL idle time between turns, and composite node execution.
 
@@ -256,7 +267,8 @@ callee bridge codex --debug
 
 | Symptom | Check |
 | --- | --- |
-| `interactive terminal is required` | Run under a real controlling TTY; redirected stdin is not sufficient. |
+| `interactive terminal is required` | The effective tree selected interactive mode; run under a controlling TTY or explicitly choose a compatible automatic one-shot configuration. |
+| `non-interactive mode preflight failed` | Supply `--message` and every reported parameter, use `allow` or `deny`, and remove/avoid Human or REPL requirements. |
 | Duplicate resource ID | Remove or rename one matching ID across user/project roots and formats. |
 | Child was not found or graph cycle | Run `agent view` and inspect every referenced ID. |
 | Required parameter error | Use the exact key reported by `agent view`, including the effective alias. |

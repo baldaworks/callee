@@ -71,10 +71,12 @@ type agentListItem struct {
 }
 
 type agentViewOutput struct {
-	ResourceID     string                   `json:"resourceId"`
-	Resource       resource.Resource        `json:"resource"`
-	ResolvedTree   *registry.ResolvedNode   `json:"resolvedTree"`
-	RequiredParams []registry.RequiredParam `json:"requiredParams"`
+	ResourceID            string                   `json:"resourceId"`
+	Resource              resource.Resource        `json:"resource"`
+	SpecDrivenInteractive bool                     `json:"specDrivenInteractive"`
+	Interactive           bool                     `json:"interactive"`
+	ResolvedTree          *registry.ResolvedNode   `json:"resolvedTree"`
+	RequiredParams        []registry.RequiredParam `json:"requiredParams"`
 }
 
 func agentCommand() *cobra.Command {
@@ -185,6 +187,11 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (res
 		interactiveOverride = &opts.interactive
 	}
 
+	permissionOverride, err := commandPermissionOverride(cmd)
+	if err != nil {
+		return err
+	}
+
 	var interactor *terminalInteractor
 
 	var terminalCloser io.Closer
@@ -234,40 +241,53 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (res
 		return err
 	}
 
-	terminal, reader, err := agentTerminal()
+	if err := workflow.ValidateRuntimeParams(root, values); err != nil {
+		return err
+	}
+
+	overrides := workflow.PolicyOverrides{
+		Interactive: interactiveOverride,
+		Permissions: permissionOverride,
+	}
+
+	requiresInteraction, err := workflow.TreeRequiresInteraction(root, overrides)
 	if err != nil {
 		return err
 	}
 
-	terminalCloser = terminal
-
-	interactor = &terminalInteractor{
-		reader:   reader,
-		terminal: terminal,
-		timeout:  opts.replTimeout,
+	interactiveRun := requiresInteraction
+	if interactiveOverride != nil {
+		interactiveRun = *interactiveOverride
 	}
 
-	prompt := opts.message
-	if !cmd.Flags().Changed("message") {
-		prompt, err = interactor.Prompt(cmd.Context(), "Prompt")
-		if err != nil {
-			return err
-		}
-	} else if strings.TrimSpace(prompt) == "" {
-		return fmt.Errorf("message must not be blank")
+	prompt, interactor, terminalCloser, pauses, err := prepareAgentRun(
+		cmd,
+		root,
+		values,
+		opts,
+		interactiveRun,
+		overrides,
+	)
+	if err != nil {
+		return err
 	}
 
-	pauses := workflow.NewPauseController()
 	factory := newWorkflowFactory(cmd.ErrOrStderr(), interactor, pauses)
+
+	var runnerInteractor workflow.Interactor
+	if interactor != nil {
+		runnerInteractor = interactor
+	}
 
 	artifact, err := (workflow.Runner{
 		Root:                root,
 		Factory:             factory,
-		Interactor:          interactor,
+		Interactor:          runnerInteractor,
 		Params:              values,
 		Pauses:              pauses,
 		Metrics:             runMetrics,
 		InteractiveOverride: interactiveOverride,
+		PermissionOverride:  permissionOverride,
 	}).Run(cmd.Context(), prompt)
 	if err != nil {
 		return err
@@ -278,6 +298,109 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (res
 	_, resultErr = io.WriteString(cmd.OutOrStdout(), artifact)
 
 	return resultErr
+}
+
+func prepareAgentRun(
+	cmd *cobra.Command,
+	root *registry.ResolvedNode,
+	values map[string]string,
+	opts *agentRunOptions,
+	interactive bool,
+	overrides workflow.PolicyOverrides,
+) (string, *terminalInteractor, io.Closer, *workflow.PauseController, error) {
+	messageSet := cmd.Flags().Changed("message")
+	if messageSet && strings.TrimSpace(opts.message) == "" {
+		return "", nil, nil, nil, fmt.Errorf("message must not be blank")
+	}
+
+	if !interactive {
+		err := validateNonInteractiveRun(root, values, messageSet, overrides)
+
+		return opts.message, nil, nil, nil, err
+	}
+
+	terminal, reader, err := agentTerminal()
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+
+	interactor := &terminalInteractor{
+		reader:   reader,
+		terminal: terminal,
+		timeout:  opts.replTimeout,
+	}
+
+	prompt := opts.message
+
+	if !messageSet {
+		prompt, err = interactor.Prompt(cmd.Context(), "Prompt")
+		if err != nil {
+			_ = terminal.Close()
+
+			return "", nil, nil, nil, err
+		}
+	}
+
+	return prompt, interactor, terminal, workflow.NewPauseController(), nil
+}
+
+func validateNonInteractiveRun(
+	root *registry.ResolvedNode,
+	values map[string]string,
+	messageSet bool,
+	overrides workflow.PolicyOverrides,
+) error {
+	var issues []string
+	if !messageSet {
+		issues = append(issues, "an explicit nonblank --message is required")
+	}
+
+	for _, parameter := range registry.RequiredParams(root) {
+		if _, ok := values[parameter.Key]; !ok {
+			issues = append(issues, fmt.Sprintf("required parameter %q is missing", parameter.Key))
+		}
+	}
+
+	var visit func(*registry.ResolvedNode)
+
+	visit = func(node *registry.ResolvedNode) {
+		switch node.Kind {
+		case resource.HumanKind:
+			issues = append(issues, fmt.Sprintf("Human %q requires operator input", node.EffectiveID))
+		case resource.RoleKind:
+			issues = append(issues, nonInteractiveRoleIssues(node, overrides)...)
+		}
+
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(root)
+
+	if len(issues) > 0 {
+		return fmt.Errorf("non-interactive mode preflight failed: %s", strings.Join(issues, "; "))
+	}
+
+	return nil
+}
+
+func nonInteractiveRoleIssues(node *registry.ResolvedNode, overrides workflow.PolicyOverrides) []string {
+	policy, err := workflow.ResolveRolePolicy(node.Resource, overrides)
+	if err != nil {
+		return []string{err.Error()}
+	}
+
+	var issues []string
+
+	if policy.Interactive {
+		issues = append(issues, fmt.Sprintf("Role %q uses the interactive protocol", node.EffectiveID))
+	}
+
+	if policy.Permissions == resource.PermissionModeAsk {
+		issues = append(issues, fmt.Sprintf("Role %q uses permissions=ask", node.EffectiveID))
+	}
+
+	return issues
 }
 
 func writeAgentRunFinish(
@@ -384,6 +507,11 @@ func agentViewCommand() *cobra.Command {
 		Short: "View a versioned Callee agent and its resolved tree",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			permissionOverride, err := commandPermissionOverride(cmd)
+			if err != nil {
+				return err
+			}
+
 			configured, err := loadAgentRegistry(cmd)
 			if err != nil {
 				return err
@@ -399,17 +527,36 @@ func agentViewCommand() *cobra.Command {
 				return err
 			}
 
-			required := registry.RequiredParams(resolved)
+			specDrivenInteractive, err := workflow.TreeRequiresInteraction(resolved, workflow.PolicyOverrides{})
+			if err != nil {
+				return err
+			}
+
+			overrides := workflow.PolicyOverrides{Permissions: permissionOverride}
+
+			interactive, err := workflow.TreeRequiresInteraction(resolved, overrides)
+			if err != nil {
+				return err
+			}
+
+			projected, err := projectResolvedTree(resolved, overrides)
+			if err != nil {
+				return err
+			}
+
+			required := registry.RequiredParams(projected)
 			if jsonOutput {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(agentViewOutput{
-					ResourceID:     selected.ID,
-					Resource:       selected,
-					ResolvedTree:   resolved,
-					RequiredParams: required,
+					ResourceID:            selected.ID,
+					Resource:              selected,
+					SpecDrivenInteractive: specDrivenInteractive,
+					Interactive:           interactive,
+					ResolvedTree:          projected,
+					RequiredParams:        required,
 				})
 			}
 
-			return writeAgentView(cmd.OutOrStdout(), selected, resolved, required)
+			return writeAgentView(cmd.OutOrStdout(), selected, projected, required, specDrivenInteractive, interactive)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the canonical resource and resolved tree as JSON")
@@ -428,8 +575,18 @@ func parseKindFilter(value string) (resource.Kind, error) {
 	}
 }
 
-func writeAgentView(output io.Writer, selected resource.Resource, resolved *registry.ResolvedNode, required []registry.RequiredParam) error {
+func writeAgentView(
+	output io.Writer,
+	selected resource.Resource,
+	resolved *registry.ResolvedNode,
+	required []registry.RequiredParam,
+	specDrivenInteractive, interactive bool,
+) error {
 	if _, err := fmt.Fprintf(output, "Resource\n  ID: %s\n  API version: %s\n  Kind: %s\n  Description: %s\n\n", selected.ID, selected.APIVersion, selected.Kind, strings.TrimSpace(selected.Spec.Description)); err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(output, "Execution Policy\n  Spec-driven interactive: %t\n  Interactive: %t\n\n", specDrivenInteractive, interactive); err != nil {
 		return err
 	}
 
@@ -480,7 +637,13 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 			authoredPermissionMode = string(node.AuthoredPermissions.Mode)
 		}
 
-		policy += fmt.Sprintf(" interactive=%t permissions=%s authoredPermissions=%s", node.Interactive != nil && *node.Interactive, permissionMode, authoredPermissionMode)
+		policy += fmt.Sprintf(
+			" authoredInteractive=%t interactive=%t permissions=%s authoredPermissions=%s",
+			node.AuthoredInteractive != nil && *node.AuthoredInteractive,
+			node.Interactive != nil && *node.Interactive,
+			permissionMode,
+			authoredPermissionMode,
+		)
 	case resource.ScriptKind:
 		policy += fmt.Sprintf(
 			" shell=%s onNonZero=%s",
@@ -507,6 +670,40 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 	}
 
 	return nil
+}
+
+func projectResolvedTree(root *registry.ResolvedNode, overrides workflow.PolicyOverrides) (*registry.ResolvedNode, error) {
+	if root == nil {
+		return nil, fmt.Errorf("workflow root is required")
+	}
+
+	projected := *root
+
+	projected.Children = make([]*registry.ResolvedNode, len(root.Children))
+	if root.Kind == resource.RoleKind {
+		policy, err := workflow.ResolveRolePolicy(root.Resource, overrides)
+		if err != nil {
+			return nil, err
+		}
+
+		authoredInteractive := root.Resource.Interactive()
+		interactive := policy.Interactive
+		projected.AuthoredInteractive = &authoredInteractive
+		projected.Interactive = &interactive
+		projected.REPL = &interactive
+		projected.Permissions = &resource.Permissions{Mode: policy.Permissions}
+	}
+
+	for index, child := range root.Children {
+		projectedChild, err := projectResolvedTree(child, overrides)
+		if err != nil {
+			return nil, err
+		}
+
+		projected.Children[index] = projectedChild
+	}
+
+	return &projected, nil
 }
 
 type terminalInteractor struct {
@@ -685,6 +882,10 @@ func (c *workflowPermissionController) respond(
 func (c *workflowPermissionController) ask(ctx context.Context, request acp.RequestPermissionRequest) (response acp.RequestPermissionResponse, resultErr error) {
 	if len(request.Options) == 0 {
 		return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
+	}
+
+	if c.interactor == nil || c.pauses == nil {
+		return acp.RequestPermissionResponse{}, fmt.Errorf("permission selection requires an interactive run")
 	}
 
 	if err := c.pauses.Pause(ctx); err != nil {
