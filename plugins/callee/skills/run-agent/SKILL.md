@@ -5,7 +5,7 @@ description: Run and combine project-defined Callee agents and deterministic wor
 
 # Run Callee agents
 
-Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.20.0` for every command in the task.
+Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.20.1` for every command in the task.
 
 ## Discover and select
 
@@ -23,29 +23,57 @@ callee agent view "<agent-id>" --json
 
 The selected ID may identify a `Role`, `Script`, `Human`, `Sequential`, `Loop`, or `Router`. Treat all kinds as the same run boundary. Do not invent a separate workflow command.
 
-## Execute
+## Select the execution path
 
-Read the top-level `specDrivenInteractive` and effective `interactive` values
-from `agent view --json`. For each Role, also inspect `authoredInteractive`,
-effective `interactive`, `authoredPermissions`, and effective `permissions`.
-Permissions and the Role protocol are independent.
-
-If effective `interactive` is false, run Callee directly without allocating a
-PTY. Supply a nonblank message and every required parameter. The resolved tree
-must contain no Human, effective interactive Role, or effective `ask` policy;
-Callee rejects these conditions before creating a provider.
-
-If effective `interactive` is true, use a real controlling PTY.
-Keep terminal interaction separate from stdout and stderr. Verify `/dev/tty` in the same shell
-invocation before launching Callee; a host tool's `tty` option alone may not
-create a controlling terminal. If `test -r /dev/tty && test -w /dev/tty` fails
-on Linux, allocate one with util-linux `script`:
+Inspect the authored tree first with `agent view --json`. Preserve its
+permission policy unless the user explicitly requests an override. When using
+`--permissions`, inspect the effective projection with the same override before
+running:
 
 ```bash
-script -qefc 'callee agent run "<agent-id>" --message "<task>" > /tmp/callee-artifact.txt 2> /tmp/callee-diagnostics.txt' /dev/null
+callee --permissions="<ask|allow|deny>" agent view "<agent-id>" --json
 ```
 
-On BSD/macOS, use `script -q /dev/null /bin/sh -c '<callee command with the same redirections>'`. Keep `/dev/tty` attached for prompts, use unique temporary output paths, inspect the wrapper's exit status, and read the artifact and diagnostics files separately.
+Read top-level `specDrivenInteractive` as the authored baseline and top-level
+`interactive` as the effective whole-run mode after the permission override.
+For every Role, inspect `authoredInteractive`, effective `interactive`,
+`authoredPermissions`, and effective `permissions`. Keep permissions and the
+Role protocol independent.
+
+Choose the host execution path from this matrix. Apply an explicit
+`--interactive` row first; otherwise use the effective tree rows:
+
+| Condition | Whole-run mode and Role protocol | Host path |
+| --- | --- | --- |
+| One-shot Roles with effective `ask`, no Human | Interactive run; Roles remain one-shot | Controlling PTY |
+| One-shot Roles with effective `allow` or `deny`, no Human | Non-interactive run | Direct, without a PTY |
+| Any effective interactive Role or any Human | Interactive run | Controlling PTY |
+| Explicit `--interactive=true` with any permission mode | Interactive run; every Role uses REPL | Controlling PTY |
+| Explicit `--interactive=false` with effective `allow` or `deny` | Non-interactive run; every Role is one-shot | Direct after preflight |
+
+Reject explicit `--interactive=false` with effective `ask`. Before every
+non-interactive run, supply a nonblank message and every required parameter and
+confirm that the complete resolved tree contains no Human. Callee performs the
+same checks before creating a provider, including Human nodes beneath an
+unselected Router branch.
+
+For an interactive run, use a real controlling PTY. Keep terminal interaction separate from stdout and stderr. Verify `/dev/tty` in the same shell invocation
+before launching Callee; a host tool's `tty` option alone may not create a
+controlling terminal. If `test -r /dev/tty && test -w /dev/tty` fails on Linux,
+allocate one with util-linux `script` and unique capture paths:
+
+```bash
+callee_capture_dir="$(mktemp -d)"
+script -qefc "callee agent run \"<agent-id>\" --message \"<task>\" > \"${callee_capture_dir}/artifact\" 2> \"${callee_capture_dir}/diagnostics\"" /dev/null
+```
+
+On BSD/macOS, use `script -q /dev/null /bin/sh -c '<callee command with
+redirections into the unique capture directory>'`. Keep `/dev/tty` attached for
+prompts, inspect the wrapper's exit status, and read the artifact and
+diagnostics files separately. Remove the capture directory after consuming
+both files.
+
+For a non-interactive run, invoke Callee directly without allocating a PTY.
 
 ```bash
 callee agent run "<agent-id>" \
@@ -69,9 +97,9 @@ legacy `spec.repl`) setting. This override is runtime-only: it does not rewrite
 specs or resources.
 
 The root-persistent `--permissions=ask|allow|deny` flag separately overrides
-every Role's ACP policy for the invocation. It does not enable or disable Role
-REPL. Explicit `--interactive=false --permissions=ask` is invalid. Without an
-explicit `--interactive`, Callee derives whole-run mode after the permissions
+every Role's ACP policy for the invocation. Use the same permission override
+for inspection and execution. It does not enable or disable Role REPL. Without
+an explicit `--interactive`, Callee derives whole-run mode after the permissions
 override: any effective interactive Role, `ask`, or Human makes the run
 interactive; otherwise it is non-interactive.
 

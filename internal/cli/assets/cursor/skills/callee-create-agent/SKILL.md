@@ -5,7 +5,7 @@ description: Create project-defined Callee Role, Script, Human, Sequential, Loop
 
 # Create a Callee agent
 
-Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.20.0` for every command in the task.
+Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.20.1` for every command in the task.
 
 ## Choose the kind and ID
 
@@ -25,6 +25,25 @@ Choose exactly one supported kind:
 - `Router`: exactly one named or default child selected by a deterministic route template.
 
 Do not create `Parallel`. Write below `.callee/`. Markdown is the default; use a complete `.yaml` or `.yml` object only when the user explicitly requests YAML. Directories such as `roles/` and `workflows/` are optional ID namespaces, not kind selectors. The agent ID is the relative path without its final supported extension.
+
+## Choose the authored interaction profile
+
+Choose the profile before authoring any Role or Human. Keep whole-run mode,
+Role protocol, and ACP permissions distinct:
+
+| Intent | Role fields | Default execution path |
+| --- | --- | --- |
+| Supervised one-shot (default) | Omit `spec.interactive`; use `permissions.mode: ask` | Interactive whole run for permission prompts; one-shot Role |
+| Conversational | Set `spec.interactive: true`; choose permissions independently | Interactive whole run and REPL Role |
+| Unattended restricted | Omit `spec.interactive`; use `permissions.mode: deny` | Non-interactive when the tree has no Human and all inputs are supplied |
+| Unattended approved | Omit `spec.interactive`; use `permissions.mode: allow` only on explicit request | Non-interactive when the tree has no Human and all inputs are supplied |
+
+Preserve the supervised one-shot profile when the user does not specify a
+mode. Do not turn `ask` into `allow` or `deny` merely to avoid a controlling
+TTY. Use `deny` for unattended execution without approval to grant
+permissions, and use `allow` only when the user explicitly authorizes automatic
+approval. Do not add a Human anywhere in an unattended tree, including beneath
+an unselected Router branch.
 
 ## Author a Role
 
@@ -66,7 +85,7 @@ Focus:
 {{ .Params.focus }}
 ```
 
-Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` makes the whole agent interactive and uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`; do not choose `allow` unless the user explicitly requests unattended approval. Permission policy does not select the Role protocol: set `spec.interactive: true` only when the Role must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
+Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` makes the whole agent interactive and uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`. Permission policy does not select the Role protocol: set `spec.interactive: true` only when the Role must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
 
 ## Author a Script
 
@@ -119,4 +138,4 @@ callee agent validate "<written-agent-path>"
 callee agent view "<agent-id>" --json
 ```
 
-Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. Confirm the top-level `specDrivenInteractive` and effective `interactive` values in `agent view --json`. For every Role, confirm `authoredInteractive`, effective `interactive`, `authoredPermissions`, and effective `permissions`; these are independent axes. Confirm that every Human has the intended `responseKey` without Role-only fields. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.
+Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. Confirm the top-level `specDrivenInteractive` and effective `interactive` values in `agent view --json`. Treat the former as the authored baseline and the latter as the agent's default execution path. For every Role, confirm `authoredInteractive`, effective `interactive`, `authoredPermissions`, and effective `permissions`; these are independent axes. Confirm that supervised and conversational profiles are effectively interactive. Confirm that unattended profiles are effectively non-interactive, contain no Human, and expose every required parameter for explicit runtime input. Confirm that every Human has the intended `responseKey` without Role-only fields. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.

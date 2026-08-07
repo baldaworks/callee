@@ -11,7 +11,7 @@ import (
 	"github.com/baldaworks/callee/internal/agent"
 )
 
-const releaseVersion = "0.20.0"
+const releaseVersion = "0.20.1"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "run-agent", "SKILL.md"))
@@ -25,15 +25,24 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"npx --yes @baldaworks/callee@" + releaseVersion,
 		"callee agent list --json",
 		"callee agent view \"<agent-id>\" --json",
-		"`specDrivenInteractive` and effective `interactive`",
+		"callee --permissions=\"<ask|allow|deny>\" agent view \"<agent-id>\" --json",
+		"`specDrivenInteractive` as the authored baseline",
 		"`authoredInteractive`",
+		"Apply an explicit",
+		"One-shot Roles with effective `ask`, no Human",
+		"One-shot Roles with effective `allow` or `deny`, no Human",
+		"Explicit `--interactive=true` with any permission mode",
+		"Explicit `--interactive=false` with effective `allow` or `deny`",
+		"including Human nodes beneath an",
 		"callee agent run \"<agent-id>\"",
 		"--permissions=ask|allow|deny",
-		"--interactive=false --permissions=ask",
-		"run Callee directly without allocating a",
+		"Reject explicit `--interactive=false` with effective `ask`",
+		"invoke Callee directly without allocating a PTY",
 		"--param \"<effective-node-id>.<name>=<value>\"",
 		"real controlling PTY",
 		"Keep terminal interaction separate from stdout and stderr.",
+		"mktemp -d",
+		"callee_capture_dir",
 		"`Role`, `Script`, `Human`, `Sequential`, `Loop`, or `Router`",
 		"Read Human prompts, Human responses",
 		"Do not send `quit`, `exit`, `/done`",
@@ -47,7 +56,16 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		}
 	}
 
-	for _, forbidden := range []string{"callee exec", "callee role", "--thread-id", "--role", "type: gemini"} {
+	for _, forbidden := range []string{
+		"callee exec",
+		"callee role",
+		"callee --version",
+		"/tmp/callee-artifact.txt",
+		"/tmp/callee-diagnostics.txt",
+		"--thread-id",
+		"--role",
+		"type: gemini",
+	} {
 		if strings.Contains(strings.ToLower(text), forbidden) {
 			t.Fatalf("skill retains removed or user-visible syntax %q", forbidden)
 		}
@@ -78,6 +96,14 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"kind: Human",
 		"responseKey: approval",
 		"A Human has no provider, permissions, parameters, or REPL setting.",
+		"## Choose the authored interaction profile",
+		"Supervised one-shot (default)",
+		"Conversational",
+		"Unattended restricted",
+		"Unattended approved",
+		"Do not turn `ask` into `allow` or `deny`",
+		"including beneath",
+		"an unselected Router branch",
 		"spec.provider",
 		"{{ .Input }}",
 		"{{ .Params.focus }}",
@@ -88,8 +114,10 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"actual generated `.md`, `.yaml`, or `.yml` path",
 		"callee agent view \"<agent-id>\" --json",
 		"top-level `specDrivenInteractive` and effective `interactive`",
+		"authored baseline and the latter as the agent's default execution path",
 		"`authoredInteractive`, effective `interactive`",
 		"`authoredPermissions`, and effective `permissions`",
+		"unattended profiles are effectively non-interactive",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("create-agent skill is missing %q", want)
@@ -501,7 +529,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	for _, forbidden := range []string{
 		"--sparse",
 		"setup <host>",
-		"@0.20.0 setup",
+		"@0.20.1 setup",
 		"Flat frontmatter",
 		"For Codex:",
 		"callee exec --role",
@@ -741,9 +769,15 @@ func TestRunAgentSkillDocumentsControllingPTYFallback(t *testing.T) {
 	}
 
 	content := string(data)
-	for _, required := range []string{"test -r /dev/tty", "script -qefc", "callee-artifact.txt", "callee-diagnostics.txt"} {
+	for _, required := range []string{"test -r /dev/tty", "script -qefc", "mktemp -d", "callee_capture_dir", "/artifact", "/diagnostics"} {
 		if !strings.Contains(content, required) {
 			t.Errorf("run-agent skill does not contain %q", required)
+		}
+	}
+
+	for _, forbidden := range []string{"/tmp/callee-artifact.txt", "/tmp/callee-diagnostics.txt"} {
+		if strings.Contains(content, forbidden) {
+			t.Errorf("run-agent skill retains fixed capture path %q", forbidden)
 		}
 	}
 }
