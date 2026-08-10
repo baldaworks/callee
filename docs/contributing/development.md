@@ -56,6 +56,10 @@ go run ./cmd/callee agent run --help
 go run ./cmd/callee agent validate examples/roles/reviewer.md
 go run ./cmd/callee agent validate examples/workflows/goalkeeper.md
 go run ./cmd/callee agent validate examples/workflows/task-router.md
+go run ./cmd/callee agent validate examples/opencode/rejudge/workflows/rejudge.md
+go run ./cmd/callee agent validate examples/opencode/rejudge/workflows/rejudge-diff.md
+go run ./cmd/callee --agent-root examples agent view opencode/rejudge/workflows/rejudge
+go run ./cmd/callee --agent-root examples agent view opencode/rejudge/workflows/rejudge-diff
 
 # Run plugin manifest, skill, version, and example consistency tests.
 go test ./plugins/callee

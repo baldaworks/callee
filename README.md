@@ -127,6 +127,12 @@ Import a remote Callee catalog subtree into the current project root:
 npx --yes @baldaworks/callee@latest agent import acme/platform-agents --prefix vendor
 ```
 
+Runnable example packs are checked in below [`examples/`](examples). See the
+[Codex Sol + Luna pack](examples/codex/sol-luna/README.md) for a
+plan-then-implement flow and the
+[OpenCode rejudge-style pack](examples/opencode/rejudge/README.md) for a
+multi-reviewer repository panel with repo-authored prompts.
+
 When you are ready to make changes, run GoalKeeper through the same entrypoint:
 
 ```bash
