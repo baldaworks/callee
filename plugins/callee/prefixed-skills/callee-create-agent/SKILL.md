@@ -59,9 +59,15 @@ callee promptkit role create "<agent-id>" \
   --prompt-param "<runtime-input-parameter>"
 ```
 
-Inspect `metadata.mode` in the selected template. When it is `interactive`, let the generator set `spec.interactive: true`; keep its questions and confirmation gates for `callee agent run` and do not execute those phases while authoring the reusable Role. Use `--interactive` only to force REPL behavior for a template that is not marked interactive.
+Treat every declared PromptKit parameter as required by the host authoring workflow. Reuse values already present in the user request or available task context. Ask only for missing values. Never invent placeholder values or bindings.
 
-Bind only values that are fixed when the agent is authored. Leave intended runtime values unbound so they become `spec.params`. Use `--output` when the requested ID must not live below the generator's default `.callee/roles/` namespace.
+Choose exactly one declared non-`persona` parameter as `--prompt-param`. Choose the parameter that most naturally represents the root task payload and should map to runtime `{{ .Input }}`. Do not use `persona` as `--prompt-param`; a configurable persona must use `--persona`. If two candidates are materially plausible, explain the difference briefly and ask the user which one should be the runtime input.
+
+Bind only author-time-stable values with `--bind` or `--bind-file`. Leave intended runtime values unbound so they become `spec.params`. Use `--output` when the requested ID must not live below the generator's default `.callee/roles/` namespace.
+
+Embedded PromptKit assembly still handles template, protocol, taxonomy, and format composition. The host skill's job is parameter resolution and composition selection, not manual prompt reconstruction.
+
+Inspect `metadata.mode` in the selected template. When it is `interactive`, let the generator set `spec.interactive: true`; keep its questions and confirmation gates for `callee agent run` and do not execute those phases while authoring the reusable Role. Use `--interactive` only to force REPL behavior for a template that is not marked interactive.
 
 If PromptKit does not fit, author the Role directly:
 
