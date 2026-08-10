@@ -4,12 +4,13 @@ This pack provides an opinionated Codex workflow for deliberate,
 evidence-backed changes:
 
 - `codex/sol-luna/roles/sol-planner` uses `gpt-5.6-sol` with high reasoning and
-  denied permissions for evidence-backed, read-only planning and review.
+  operator-confirmed permissions for evidence-backed, read-only planning and
+  review.
 - `codex/sol-luna/roles/luna-max-implementer` uses `gpt-5.6-luna` with max
   reasoning and operator-confirmed permissions for bounded implementation.
 - `codex/sol-luna/workflows/plan-then-implement` runs Sol first, then passes
-  both the original task and Sol's plan to Luna Max. Luna retains its `ask`
-  permission mode, so mutating actions remain operator-confirmed.
+  both the original task and Sol's plan to Luna Max. Both Roles retain `ask`
+  permission mode, so the operator controls every provider permission request.
 
 Use `plan-then-implement` as the normal entry point. The individual Roles are
 also available when you only need planning or implementation.

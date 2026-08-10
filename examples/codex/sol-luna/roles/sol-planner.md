@@ -11,7 +11,7 @@ spec:
     reasoning: high
     mode: review
   permissions:
-    mode: deny
+    mode: ask
 ---
 
 You are the Sol planning and review agent in a two-model Codex workflow.
