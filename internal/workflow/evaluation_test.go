@@ -9,30 +9,30 @@ import (
 	"testing"
 
 	"github.com/baldaworks/callee/internal/agent"
-	jevapi "github.com/baldaworks/callee/internal/jev"
+	evaluationapi "github.com/baldaworks/callee/internal/evaluation"
 	"github.com/rs/zerolog"
 )
 
-type fakeJevCall struct {
-	api     agent.JevAPI
-	request jevapi.Request
+type fakeEvaluationCall struct {
+	config  evaluationapi.Config
+	request evaluationapi.Request
 }
 
-type fakeJevResponse struct {
-	result jevapi.Result
-	trace  jevapi.Trace
+type fakeEvaluationResponse struct {
+	result evaluationapi.Result
+	trace  evaluationapi.Trace
 	err    error
 }
 
-type fakeJevEvaluator struct {
-	calls     []fakeJevCall
-	responses []fakeJevResponse
+type fakeEvaluationEvaluator struct {
+	calls     []fakeEvaluationCall
+	responses []fakeEvaluationResponse
 }
 
-func (f *fakeJevEvaluator) Evaluate(_ context.Context, api agent.JevAPI, request jevapi.Request) (jevapi.Result, jevapi.Trace, error) {
-	f.calls = append(f.calls, fakeJevCall{api: api, request: request})
+func (f *fakeEvaluationEvaluator) Evaluate(_ context.Context, config evaluationapi.Config, request evaluationapi.Request) (evaluationapi.Result, evaluationapi.Trace, error) {
+	f.calls = append(f.calls, fakeEvaluationCall{config: config, request: request})
 	if len(f.responses) == 0 {
-		return jevapi.Result{}, jevapi.Trace{}, errors.New("no fake Jev response")
+		return evaluationapi.Result{}, evaluationapi.Trace{}, errors.New("no fake evaluation response")
 	}
 
 	response := f.responses[0]
@@ -41,32 +41,32 @@ func (f *fakeJevEvaluator) Evaluate(_ context.Context, api agent.JevAPI, request
 	return response.result, response.trace, response.err
 }
 
-func TestRunnerExecutesRootJevWithoutProviderProcessAndLogsSafeTrace(t *testing.T) {
+func TestRunnerExecutesRootEvaluationWithoutProviderProcessAndLogsSafeTrace(t *testing.T) {
 	t.Parallel()
 
 	cost := 0.0042
 	answer := 0.87
-	evaluator := &fakeJevEvaluator{responses: []fakeJevResponse{{
-		result: jevapi.Result{
-			API:            "openrouter",
+	evaluator := &fakeEvaluationEvaluator{responses: []fakeEvaluationResponse{{
+		result: evaluationapi.Result{
+			Service:        "openrouter",
 			Provider:       "TypeSafe",
 			RequestID:      "request-42",
-			RequestedModel: "~typesafe/jev-latest",
+			RequestedModel: "typesafe/jev-1.13",
 			Model:          "typesafe/jev-1.13",
-			Answers:        map[string]jevapi.Answer{"urgent": {Type: "noul", Noul: &answer}},
-			Usage:          &jevapi.Usage{InputTokens: 21, OutputTokens: 5, Cost: &cost},
+			Answers:        map[string]evaluationapi.Answer{"urgent": {Type: "noul", Noul: &answer}},
+			Usage:          &evaluationapi.Usage{InputTokens: 21, OutputTokens: 5, Cost: &cost},
 		},
-		trace: jevapi.Trace{
-			API:            "openrouter",
+		trace: evaluationapi.Trace{
+			Service:        "openrouter",
 			Provider:       "TypeSafe",
 			RequestID:      "request-42",
-			RequestedModel: "~typesafe/jev-latest",
+			RequestedModel: "typesafe/jev-1.13",
 			Model:          "typesafe/jev-1.13",
 			Attempts:       2,
-			Usage:          &jevapi.Usage{InputTokens: 21, OutputTokens: 5, Cost: &cost},
+			Usage:          &evaluationapi.Usage{InputTokens: 21, OutputTokens: 5, Cost: &cost},
 		},
 	}}}
-	resource := jevResource(t, "judges/urgent", "openrouter", map[string]any{
+	resource := evaluationResource(t, "judges/urgent", agent.OpenRouterDecisionKind, map[string]any{
 		"prompt":  "{{ .Prompt }}",
 		"input":   "{{ .Input }}",
 		"tenant":  "{{ .State.tenant }}",
@@ -75,7 +75,7 @@ func TestRunnerExecutesRootJevWithoutProviderProcessAndLogsSafeTrace(t *testing.
 		"missing": nil,
 	})
 	resource.Spec.State = map[string]any{"tenant": "tenant-for-{{ .Input }}"}
-	resource.Spec.Questions["urgent"] = agent.JevQuestion{
+	resource.Spec.Questions["urgent"] = agent.EvaluationQuestion{
 		Type: "noul",
 		Instructions: map[string]any{
 			"rule":    "Judge {{ .State.tenant }}",
@@ -91,10 +91,10 @@ func TestRunnerExecutesRootJevWithoutProviderProcessAndLogsSafeTrace(t *testing.
 	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
 
 	artifact, err := (Runner{
-		Root:         root,
-		Factory:      factory,
-		JevEvaluator: evaluator,
-		Metrics:      metrics,
+		Root:                root,
+		Factory:             factory,
+		EvaluationEvaluator: evaluator,
+		Metrics:             metrics,
 	}).Run(ctx, "triage this")
 	if err != nil {
 		t.Fatalf("Runner.Run() error: %v", err)
@@ -105,7 +105,7 @@ func TestRunnerExecutesRootJevWithoutProviderProcessAndLogsSafeTrace(t *testing.
 	}
 
 	if len(evaluator.calls) != 1 {
-		t.Fatalf("Jev calls = %d, want 1", len(evaluator.calls))
+		t.Fatalf("evaluation calls = %d, want 1", len(evaluator.calls))
 	}
 
 	wantState := map[string]any{
@@ -140,17 +140,17 @@ func TestRunnerExecutesRootJevWithoutProviderProcessAndLogsSafeTrace(t *testing.
 
 	finished := events[1]
 	for field, want := range map[string]any{
-		"status":              "completed",
-		"outcome":             "return",
-		"jev_api":             "openrouter",
-		"jev_requested_model": "~typesafe/jev-latest",
-		"jev_attempts":        float64(2),
-		"jev_model":           "typesafe/jev-1.13",
-		"jev_provider":        "TypeSafe",
-		"jev_request_id":      "request-42",
-		"jev_input_tokens":    float64(21),
-		"jev_output_tokens":   float64(5),
-		"jev_cost":            cost,
+		"status":                     "completed",
+		"outcome":                    "return",
+		"evaluation_service":         "openrouter",
+		"evaluation_requested_model": "typesafe/jev-1.13",
+		"evaluation_attempts":        float64(2),
+		"evaluation_model":           "typesafe/jev-1.13",
+		"evaluation_provider":        "TypeSafe",
+		"evaluation_request_id":      "request-42",
+		"evaluation_input_tokens":    float64(21),
+		"evaluation_output_tokens":   float64(5),
+		"evaluation_cost":            cost,
 	} {
 		if finished[field] != want {
 			t.Errorf("finish field %s = %#v, want %#v", field, finished[field], want)
@@ -164,17 +164,17 @@ func TestRunnerExecutesRootJevWithoutProviderProcessAndLogsSafeTrace(t *testing.
 	}
 }
 
-func TestRunnerSequentialMakesJevEvaluationAvailableToFollowingRole(t *testing.T) {
+func TestRunnerSequentialMakesEvaluationAvailableToFollowingRole(t *testing.T) {
 	t.Parallel()
 
 	answer := 0.8
-	evaluator := &fakeJevEvaluator{responses: []fakeJevResponse{{result: jevapi.Result{
-		API:            "typesafe",
+	evaluator := &fakeEvaluationEvaluator{responses: []fakeEvaluationResponse{{result: evaluationapi.Result{
+		Service:        "typesafe",
 		RequestedModel: "jev-latest",
 		Model:          "jev-1.13",
-		Answers:        map[string]jevapi.Answer{"urgent": {Type: "noul", Noul: &answer}},
+		Answers:        map[string]evaluationapi.Answer{"urgent": {Type: "noul", Noul: &answer}},
 	}}}}
-	judge := jevResource(t, "judges/urgent", "typesafe", "{{ .Input }}")
+	judge := evaluationResource(t, "judges/urgent", agent.TypeSafeJevKind, "{{ .Input }}")
 	reader := roleResource(t, "roles/reader", false, nil, `{{ .Input }} score={{ .State.evaluations.judge.answers.urgent.noul }} artifact={{ .State.outputs.judge }}`)
 	pipeline := compositeResource(t, "workflows/pipeline", agent.SequentialKind, []agent.Child{
 		{Ref: judge.ID, Alias: "judge"},
@@ -184,7 +184,7 @@ func TestRunnerSequentialMakesJevEvaluationAvailableToFollowingRole(t *testing.T
 	process := &scriptedProcess{visits: map[string][][]string{reader.ID: {{"consumed"}}}}
 	factory := &scriptedFactory{process: process}
 
-	artifact, err := (Runner{Root: root, Factory: factory, JevEvaluator: evaluator}).Run(context.Background(), "task")
+	artifact, err := (Runner{Root: root, Factory: factory, EvaluationEvaluator: evaluator}).Run(context.Background(), "task")
 	if err != nil {
 		t.Fatalf("Runner.Run() error: %v", err)
 	}
@@ -203,23 +203,23 @@ func TestRunnerSequentialMakesJevEvaluationAvailableToFollowingRole(t *testing.T
 	}
 }
 
-func TestRunnerLogsClassifiedJevFailureWithoutErrorPayload(t *testing.T) {
+func TestRunnerLogsClassifiedEvaluationFailureWithoutErrorPayload(t *testing.T) {
 	t.Parallel()
 
-	evaluator := &fakeJevEvaluator{responses: []fakeJevResponse{{
-		trace: jevapi.Trace{Attempts: 3, ErrorClass: jevapi.ErrorResponse},
+	evaluator := &fakeEvaluationEvaluator{responses: []fakeEvaluationResponse{{
+		trace: evaluationapi.Trace{Service: "typesafe", RequestedModel: "jev-latest", Attempts: 3, ErrorClass: evaluationapi.ErrorResponse},
 		err:   errors.New("super-secret evidence and answer"),
 	}}}
-	root := resolvedRoot(t, jevResource(t, "judges/urgent", "typesafe", "{{ .Input }}"))
+	root := resolvedRoot(t, evaluationResource(t, "judges/urgent", agent.TypeSafeJevKind, "{{ .Input }}"))
 
 	var logs bytes.Buffer
 
 	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
 
 	_, err := (Runner{
-		Root:         root,
-		Factory:      &scriptedFactory{process: &scriptedProcess{}},
-		JevEvaluator: evaluator,
+		Root:                root,
+		Factory:             &scriptedFactory{process: &scriptedProcess{}},
+		EvaluationEvaluator: evaluator,
 	}).Run(ctx, "private input")
 	if err == nil {
 		t.Fatal("Runner.Run() error = nil, want evaluator failure")
@@ -236,11 +236,11 @@ func TestRunnerLogsClassifiedJevFailureWithoutErrorPayload(t *testing.T) {
 
 	finished := events[1]
 	for field, want := range map[string]any{
-		"status":              "error",
-		"jev_api":             "typesafe",
-		"jev_requested_model": "jev-latest",
-		"jev_attempts":        float64(3),
-		"jev_error_class":     "response",
+		"status":                     "error",
+		"evaluation_service":         "typesafe",
+		"evaluation_requested_model": "jev-latest",
+		"evaluation_attempts":        float64(3),
+		"evaluation_error_class":     "response",
 	} {
 		if finished[field] != want {
 			t.Errorf("finish field %s = %#v, want %#v", field, finished[field], want)
@@ -248,25 +248,25 @@ func TestRunnerLogsClassifiedJevFailureWithoutErrorPayload(t *testing.T) {
 	}
 }
 
-func TestJevPublishesOnlyCompleteSuccessfulResultsAndLastSuccessWins(t *testing.T) {
+func TestEvaluationPublishesOnlyCompleteSuccessfulResultsAndLastSuccessWins(t *testing.T) {
 	t.Parallel()
 
 	first := 0.2
 	second := 0.9
-	evaluator := &fakeJevEvaluator{responses: []fakeJevResponse{
+	evaluator := &fakeEvaluationEvaluator{responses: []fakeEvaluationResponse{
 		{result: jevResult(first)},
 		{result: jevResult(second)},
-		{trace: jevapi.Trace{Attempts: 3, ErrorClass: jevapi.ErrorResponse}, err: errors.New("secret evidence and answer")},
+		{trace: evaluationapi.Trace{Service: "typesafe", RequestedModel: "jev-latest", Attempts: 3, ErrorClass: evaluationapi.ErrorResponse}, err: errors.New("secret evidence and answer")},
 	}}
-	node := resolvedRoot(t, jevResource(t, "judges/urgent", "typesafe", "{{ .Input }}"))
+	node := resolvedRoot(t, evaluationResource(t, "judges/urgent", agent.TypeSafeJevKind, "{{ .Input }}"))
 	run := &runState{
-		prompt:       "task",
-		state:        map[string]any{"outputs": map[string]string{}, "scripts": map[string]any{}, "evaluations": map[string]any{}},
-		jevEvaluator: evaluator,
+		prompt:              "task",
+		state:               map[string]any{"outputs": map[string]string{}, "scripts": map[string]any{}, "evaluations": map[string]any{}},
+		evaluationEvaluator: evaluator,
 	}
 
 	for _, input := range []string{"first", "second"} {
-		if _, err := run.jev(context.Background(), node, input); err != nil {
+		if _, err := run.evaluation(context.Background(), node, input); err != nil {
 			t.Fatalf("jev(%q) error: %v", input, err)
 		}
 	}
@@ -279,36 +279,42 @@ func TestJevPublishesOnlyCompleteSuccessfulResultsAndLastSuccessWins(t *testing.
 		t.Fatalf("last successful artifact = %s, want second result", beforeArtifact)
 	}
 
-	result, err := run.jev(context.Background(), node, "third")
+	result, err := run.evaluation(context.Background(), node, "third")
 	if err == nil {
 		t.Fatal("jev(third) error = nil, want evaluator failure")
 	}
 
-	if result.jevTrace.API != "typesafe" || result.jevTrace.RequestedModel != "jev-latest" || result.jevTrace.ErrorClass != jevapi.ErrorResponse {
-		t.Errorf("failure trace = %#v, want completed safe trace", result.jevTrace)
+	if result.evaluationTrace.Service != "typesafe" || result.evaluationTrace.ErrorClass != evaluationapi.ErrorResponse {
+		t.Errorf("failure trace = %#v, want completed safe trace", result.evaluationTrace)
 	}
 
 	if outputs[node.EffectiveID] != beforeArtifact || !reflect.DeepEqual(run.state["evaluations"].(map[string]any)[node.EffectiveID], beforeEvaluation) {
-		t.Fatal("failed Jev visit changed the last successful publication")
+		t.Fatal("failed evaluation visit changed the last successful publication")
 	}
 }
 
-func jevResource(t *testing.T, id, apiType string, evidence any) agent.Resource {
+func evaluationResource(t *testing.T, id string, kind agent.Kind, evidence any) agent.Resource {
 	t.Helper()
 
 	resource := agent.Resource{
 		APIVersion: agent.APIVersion,
-		Kind:       agent.JevKind,
+		Kind:       kind,
 		ID:         id,
 		Source:     id + ".md",
 		Spec: agent.Spec{
 			Description: id,
-			API:         &agent.JevAPI{Type: apiType},
-			Questions: map[string]agent.JevQuestion{
+			Questions: map[string]agent.EvaluationQuestion{
 				"urgent": {Type: "noul", Instructions: "Is this urgent?"},
 			},
 		},
 	}
+	if kind == agent.OpenRouterDecisionKind {
+		resource.Spec.Model = "typesafe/jev-1.13"
+		question := resource.Spec.Questions["urgent"]
+		question.Criteria = map[string]any{"true": "yes", "false": "no"}
+		resource.Spec.Questions["urgent"] = question
+	}
+
 	if body, ok := evidence.(string); ok {
 		resource.Spec.Body = body
 	} else {
@@ -316,17 +322,17 @@ func jevResource(t *testing.T, id, apiType string, evidence any) agent.Resource 
 	}
 
 	if err := resource.Validate(); err != nil {
-		t.Fatalf("Jev resource %q validation error: %v", id, err)
+		t.Fatalf("evaluation resource %q validation error: %v", id, err)
 	}
 
 	return resource
 }
 
-func jevResult(value float64) jevapi.Result {
-	return jevapi.Result{
-		API:            "typesafe",
+func jevResult(value float64) evaluationapi.Result {
+	return evaluationapi.Result{
+		Service:        "typesafe",
 		RequestedModel: "jev-latest",
 		Model:          "jev-1.13",
-		Answers:        map[string]jevapi.Answer{"urgent": {Type: "noul", Noul: &value}},
+		Answers:        map[string]evaluationapi.Answer{"urgent": {Type: "noul", Noul: &value}},
 	}
 }

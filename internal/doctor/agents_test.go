@@ -123,13 +123,15 @@ func TestRunAgentsClosesProviderAfterGroupTimeout(t *testing.T) {
 	}
 }
 
-func TestRunAgentsChecksJevCredentialsWithoutInference(t *testing.T) {
+func TestRunAgentsChecksEvaluationCredentialsWithoutInference(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "typesafe-key")
+	t.Setenv("TYPESAFE_BASE_URL", "")
+	t.Setenv("TYPESAFE_DEFAULT_MODEL", "")
 	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
 
 	jevs := []agent.Resource{
-		doctorJev("judges/native", "typesafe"),
-		doctorJev("judges/router", "openrouter"),
+		doctorEvaluation("judges/native", "typesafe"),
+		doctorEvaluation("judges/router", "openrouter"),
 	}
 
 	var stdout bytes.Buffer
@@ -144,41 +146,58 @@ func TestRunAgentsChecksJevCredentialsWithoutInference(t *testing.T) {
 	}
 }
 
-func TestRunAgentsRequiresOnlyMatchingJevCredential(t *testing.T) {
+func TestRunAgentsRequiresOnlyMatchingEvaluationCredential(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "")
+	t.Setenv("TYPESAFE_BASE_URL", "")
+	t.Setenv("TYPESAFE_DEFAULT_MODEL", "")
 	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
 
 	factory := &doctorFactory{process: &doctorProcess{}}
 
 	err := RunAgents(context.Background(), []agent.Resource{
-		doctorJev("judges/native", "typesafe"),
-		doctorJev("judges/router", "openrouter"),
+		doctorEvaluation("judges/native", "typesafe"),
+		doctorEvaluation("judges/router", "openrouter"),
 	}, factory, time.Second, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "TYPESAFE_API_KEY") || strings.Contains(err.Error(), "OPENROUTER_API_KEY is required") {
 		t.Fatalf("RunAgents() error = %v, want only missing TypeSafe credential", err)
 	}
 
 	if factory.starts != 0 {
-		t.Fatalf("provider starts = %d, want 0 for Jev-only doctor", factory.starts)
+		t.Fatalf("provider starts = %d, want 0 for evaluation-only doctor", factory.starts)
 	}
 }
 
-func TestRunAgentsChecksMixedRoleAndJevResources(t *testing.T) {
+func TestRunAgentsChecksMixedRoleAndEvaluationResources(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "typesafe-key")
+	t.Setenv("TYPESAFE_BASE_URL", "")
+	t.Setenv("TYPESAFE_DEFAULT_MODEL", "")
 	t.Setenv("OPENROUTER_API_KEY", "")
 
 	factory := &doctorFactory{process: &doctorProcess{}}
 
 	err := RunAgents(context.Background(), []agent.Resource{
 		doctorRole("roles/worker", ""),
-		doctorJev("judges/router", "openrouter"),
+		doctorEvaluation("judges/router", "openrouter"),
 	}, factory, time.Second, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), `agent "judges/router"`) || !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
 		t.Fatalf("RunAgents() error = %v, want missing OpenRouter credential", err)
 	}
 
 	if factory.starts != 1 {
-		t.Fatalf("provider starts = %d, want Role runtime check despite Jev credential failure", factory.starts)
+		t.Fatalf("provider starts = %d, want Role runtime check despite evaluation credential failure", factory.starts)
+	}
+}
+
+func TestRunAgentsValidatesTypeSafeEnvironmentWithoutInference(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "typesafe-key")
+	t.Setenv("TYPESAFE_BASE_URL", "http://unsafe.example")
+	t.Setenv("TYPESAFE_DEFAULT_MODEL", "jev-latest")
+
+	err := RunAgents(context.Background(), []agent.Resource{
+		doctorEvaluation("judges/native", "typesafe"),
+	}, nil, time.Second, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "TYPESAFE_BASE_URL") || strings.Contains(err.Error(), "unsafe.example") {
+		t.Fatalf("RunAgents() error = %v, want safe TypeSafe base URL failure", err)
 	}
 }
 
@@ -349,18 +368,27 @@ func doctorRole(id, model string) agent.Resource {
 	}
 }
 
-func doctorJev(id, apiType string) agent.Resource {
-	return agent.Resource{
+func doctorEvaluation(id, apiType string) agent.Resource {
+	kind := agent.TypeSafeJevKind
+	if apiType == "openrouter" {
+		kind = agent.OpenRouterDecisionKind
+	}
+
+	result := agent.Resource{
 		APIVersion: agent.APIVersion,
-		Kind:       agent.JevKind,
+		Kind:       kind,
 		ID:         id,
 		Spec: agent.Spec{
 			Description: id,
-			API:         &agent.JevAPI{Type: apiType},
 			Body:        "{{ .Input }}",
-			Questions: map[string]agent.JevQuestion{
-				"ready": {Type: "noul", Instructions: "Ready?"},
+			Questions: map[string]agent.EvaluationQuestion{
+				"ready": {Type: "noul", Instructions: "Ready?", Criteria: map[string]any{"true": "yes", "false": "no"}},
 			},
 		},
 	}
+	if kind == agent.OpenRouterDecisionKind {
+		result.Spec.Model = "typesafe/jev-1.13"
+	}
+
+	return result
 }

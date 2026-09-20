@@ -5,7 +5,8 @@
     { "$ref": "#/$defs/role" },
     { "$ref": "#/$defs/script" },
     { "$ref": "#/$defs/human" },
-    { "$ref": "#/$defs/jev" },
+    { "$ref": "#/$defs/typeSafeJev" },
+    { "$ref": "#/$defs/openRouterDecision" },
     { "$ref": "#/$defs/sequential" },
     { "$ref": "#/$defs/loop" },
     { "$ref": "#/$defs/router" }
@@ -128,27 +129,7 @@
         { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
       ]
     },
-    "jevAPI": {
-      "type": "object",
-      "required": ["type"],
-      "properties": {
-        "type": { "enum": ["typesafe", "openrouter"] },
-        "model": { "type": "string", "minLength": 1 },
-        "timeout": { "type": "string", "minLength": 1 }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "type": { "const": "typesafe" } }, "required": ["type"] },
-          "then": { "properties": { "model": { "pattern": "^jev-" } } }
-        },
-        {
-          "if": { "properties": { "type": { "const": "openrouter" } }, "required": ["type"] },
-          "then": { "properties": { "model": { "pattern": "^~?typesafe/jev-" } } }
-        }
-      ],
-      "additionalProperties": false
-    },
-    "jevChoiceQuestion": {
+    "evaluationChoiceQuestion": {
       "type": "object",
       "required": ["type", "instructions", "criteria"],
       "properties": {
@@ -163,7 +144,7 @@
       },
       "additionalProperties": false
     },
-    "jevNoulQuestion": {
+    "evaluationNoulQuestion": {
       "type": "object",
       "required": ["type", "instructions"],
       "properties": {
@@ -182,7 +163,7 @@
       },
       "additionalProperties": false
     },
-    "jevScoreQuestion": {
+    "evaluationScoreQuestion": {
       "type": "object",
       "required": ["type", "instructions", "criteria"],
       "properties": {
@@ -197,32 +178,64 @@
       },
       "additionalProperties": false
     },
-    "jevQuestion": {
+    "evaluationQuestion": {
       "oneOf": [
-        { "$ref": "#/$defs/jevChoiceQuestion" },
-        { "$ref": "#/$defs/jevNoulQuestion" },
-        { "$ref": "#/$defs/jevScoreQuestion" }
+        { "$ref": "#/$defs/evaluationChoiceQuestion" },
+        { "$ref": "#/$defs/evaluationNoulQuestion" },
+        { "$ref": "#/$defs/evaluationScoreQuestion" }
       ]
     },
-    "jev": {
+    "typeSafeJev": {
       "type": "object",
       "required": ["apiVersion", "kind", "spec"],
       "properties": {
         "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
-        "kind": { "const": "Jev" },
+        "kind": { "const": "TypeSafeJev" },
         "spec": {
           "type": "object",
-          "required": ["description", "api", "questions"],
+          "required": ["description", "questions"],
           "properties": {
             "description": { "type": "string" },
-            "api": { "$ref": "#/$defs/jevAPI" },
+            "model": { "type": "string", "minLength": 1, "pattern": "^jev-" },
+            "timeout": { "type": "string", "minLength": 1 },
             "state": { "$ref": "#/$defs/state" },
             "body": { "type": "string", "minLength": 1 },
             "evidence": { "$ref": "#/$defs/jsonContent" },
             "questions": {
               "type": "object",
               "minProperties": 1,
-              "additionalProperties": { "$ref": "#/$defs/jevQuestion" }
+              "additionalProperties": { "$ref": "#/$defs/evaluationQuestion" }
+            }
+          },
+          "oneOf": [
+            { "required": ["body"], "not": { "required": ["evidence"] } },
+            { "required": ["evidence"], "not": { "required": ["body"] } }
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "openRouterDecision": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "OpenRouterDecision" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "model", "questions"],
+          "properties": {
+            "description": { "type": "string" },
+            "model": { "type": "string", "minLength": 1, "pattern": "^\\S+$" },
+            "timeout": { "type": "string", "minLength": 1 },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 },
+            "evidence": { "$ref": "#/$defs/jsonContent" },
+            "questions": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": { "$ref": "#/$defs/evaluationQuestion" }
             }
           },
           "oneOf": [

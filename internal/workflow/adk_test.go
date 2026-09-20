@@ -255,7 +255,7 @@ func TestADKCompilerSelectsOnlyNativeLeafExecutors(t *testing.T) {
 	t.Parallel()
 
 	compiler := &adkCompiler{run: &runState{}}
-	for _, kind := range []agent.Kind{agent.RoleKind, agent.ScriptKind, agent.HumanKind, agent.JevKind} {
+	for _, kind := range []agent.Kind{agent.RoleKind, agent.ScriptKind, agent.HumanKind, agent.TypeSafeJevKind, agent.OpenRouterDecisionKind} {
 		if execute, ok := compiler.nativeLeafExecutor(kind); !ok || execute == nil {
 			t.Errorf("nativeLeafExecutor(%q) = (%v, %t), want executor", kind, execute, ok)
 		}

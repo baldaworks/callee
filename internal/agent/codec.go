@@ -146,7 +146,7 @@ func DecodeMarkdown(id, source string, data []byte) (Resource, error) {
 		return Resource{}, fmt.Errorf("agent %q: spec must be an object", id)
 	}
 
-	if resource.Kind != JevKind || strings.TrimSpace(string(body)) != "" {
+	if !resource.IsEvaluation() || strings.TrimSpace(string(body)) != "" {
 		rawSpec["body"] = string(body)
 	}
 
@@ -302,14 +302,14 @@ func validateDocumentDispatch(id, source string, document *yaml.Node, lineOffset
 
 	kind := nodeAtPath(document, "kind")
 	if kind == nil {
-		return fmt.Errorf("agent %q: %s: missing kind; supported kinds: Role, Script, Human, Jev, Sequential, Loop, Router", id, sourcePosition(source, firstValueLine, 1))
+		return fmt.Errorf("agent %q: %s: missing kind; supported kinds: Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, Router", id, sourcePosition(source, firstValueLine, 1))
 	}
 
 	switch Kind(kind.Value) {
-	case RoleKind, ScriptKind, HumanKind, JevKind, SequentialKind, LoopKind, RouterKind:
+	case RoleKind, ScriptKind, HumanKind, TypeSafeJevKind, OpenRouterDecisionKind, SequentialKind, LoopKind, RouterKind:
 		return nil
 	default:
-		return fmt.Errorf("agent %q: %s: unsupported kind %q; supported kinds: Role, Script, Human, Jev, Sequential, Loop, Router", id, sourcePosition(source, kind.Line+lineOffset, kind.Column), kind.Value)
+		return fmt.Errorf("agent %q: %s: unsupported kind %q; supported kinds: Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, Router", id, sourcePosition(source, kind.Line+lineOffset, kind.Column), kind.Value)
 	}
 }
 

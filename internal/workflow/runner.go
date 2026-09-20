@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
-	jevapi "github.com/baldaworks/callee/internal/jev"
+	evaluationapi "github.com/baldaworks/callee/internal/evaluation"
 	"github.com/baldaworks/callee/internal/logging"
 	"github.com/baldaworks/callee/internal/registry"
 	"github.com/baldaworks/callee/internal/runtime"
@@ -36,7 +36,7 @@ type Runner struct {
 	Metrics             *RunMetrics
 	InteractiveOverride *bool
 	PermissionOverride  *agent.PermissionMode
-	JevEvaluator        jevapi.Evaluator
+	EvaluationEvaluator evaluationapi.Evaluator
 }
 
 // Run executes the root and returns its sole final artifact only after every
@@ -82,9 +82,9 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		permissionOverride = *r.PermissionOverride
 	}
 
-	jevEvaluator := r.JevEvaluator
-	if jevEvaluator == nil {
-		jevEvaluator = jevapi.NewEvaluator()
+	evaluationEvaluator := r.EvaluationEvaluator
+	if evaluationEvaluator == nil {
+		evaluationEvaluator = evaluationapi.NewEvaluator()
 	}
 
 	run := &runState{
@@ -105,7 +105,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		interactiveOverride:    interactiveOverride,
 		permissionOverrideSet:  permissionOverrideSet,
 		permissionOverride:     permissionOverride,
-		jevEvaluator:           jevEvaluator,
+		evaluationEvaluator:    evaluationEvaluator,
 	}
 
 	if err := ValidateRuntimeParams(r.Root, run.params); err != nil {
@@ -149,7 +149,7 @@ type nodeResult struct {
 	sourceResourceID string
 	sourcePath       string
 	roleMetrics      roleMetrics
-	jevTrace         jevapi.Trace
+	evaluationTrace  evaluationapi.Trace
 }
 
 type startedProcess struct {
@@ -178,7 +178,7 @@ type runState struct {
 	interactiveOverride    bool
 	permissionOverrideSet  bool
 	permissionOverride     agent.PermissionMode
-	jevEvaluator           jevapi.Evaluator
+	evaluationEvaluator    evaluationapi.Evaluator
 }
 
 func (r *runState) visit(
@@ -190,8 +190,10 @@ func (r *runState) visit(
 	r.visits[node.EffectiveID]++
 	if node.Kind == agent.RoleKind {
 		result.roleMetrics = newRoleMetrics(node.Resource.Spec.Provider)
-	} else if node.Kind == agent.JevKind && node.Resource.Spec.API != nil {
-		result.jevTrace = jevapi.Trace{API: node.Resource.Spec.API.Type, RequestedModel: node.Resource.JevModel()}
+	} else if node.Resource.IsEvaluation() {
+		result.evaluationTrace = evaluationapi.Trace{
+			Service: serviceForEvaluationKind(node.Kind), RequestedModel: node.Resource.EvaluationModel(),
+		}
 	}
 
 	logger := r.lifecycleLogger(ctx, node)
@@ -200,7 +202,7 @@ func (r *runState) visit(
 	logger.Info().Msg("running agent")
 
 	defer func() {
-		writeLifecycleFinish(logger, "agent finished", result, resultErr, started, node.Kind == agent.RoleKind, node.Kind == agent.JevKind)
+		writeLifecycleFinish(logger, "agent finished", result, resultErr, started, node.Kind == agent.RoleKind, node.Resource.IsEvaluation())
 	}()
 
 	if err := r.applyState(node, input); err != nil {
@@ -230,7 +232,7 @@ func writeLifecycleFinish(
 	resultErr error,
 	started time.Time,
 	includeRoleMetrics bool,
-	includeJevTrace bool,
+	includeEvaluationTrace bool,
 ) {
 	event := logger.Info()
 
@@ -261,47 +263,47 @@ func writeLifecycleFinish(
 		}
 	}
 
-	if includeJevTrace {
-		event = appendJevTrace(event, result.jevTrace)
+	if includeEvaluationTrace {
+		event = appendEvaluationTrace(event, result.evaluationTrace)
 	}
 
 	event.Dur("duration", logging.RoundElapsed(time.Since(started))).Msg(message)
 }
 
-func appendJevTrace(event *zerolog.Event, trace jevapi.Trace) *zerolog.Event {
-	if trace.API != "" {
-		event = event.Str("jev_api", boundedLogValue(trace.API))
+func appendEvaluationTrace(event *zerolog.Event, trace evaluationapi.Trace) *zerolog.Event {
+	if trace.Service != "" {
+		event = event.Str("evaluation_service", boundedLogValue(trace.Service))
 	}
 
 	if trace.RequestedModel != "" {
-		event = event.Str("jev_requested_model", boundedLogValue(trace.RequestedModel))
+		event = event.Str("evaluation_requested_model", boundedLogValue(trace.RequestedModel))
 	}
 
 	if trace.Attempts > 0 {
-		event = event.Int("jev_attempts", trace.Attempts)
+		event = event.Int("evaluation_attempts", trace.Attempts)
 	}
 
 	if trace.Model != "" {
-		event = event.Str("jev_model", boundedLogValue(trace.Model))
+		event = event.Str("evaluation_model", boundedLogValue(trace.Model))
 	}
 
 	if trace.Provider != "" {
-		event = event.Str("jev_provider", boundedLogValue(trace.Provider))
+		event = event.Str("evaluation_provider", boundedLogValue(trace.Provider))
 	}
 
 	if trace.RequestID != "" {
-		event = event.Str("jev_request_id", boundedLogValue(trace.RequestID))
+		event = event.Str("evaluation_request_id", boundedLogValue(trace.RequestID))
 	}
 
 	if trace.Usage != nil {
-		event = event.Int64("jev_input_tokens", trace.Usage.InputTokens).Int64("jev_output_tokens", trace.Usage.OutputTokens)
+		event = event.Int64("evaluation_input_tokens", trace.Usage.InputTokens).Int64("evaluation_output_tokens", trace.Usage.OutputTokens)
 		if trace.Usage.Cost != nil {
-			event = event.Float64("jev_cost", *trace.Usage.Cost)
+			event = event.Float64("evaluation_cost", *trace.Usage.Cost)
 		}
 	}
 
 	if trace.ErrorClass != "" {
-		event = event.Str("jev_error_class", boundedLogValue(string(trace.ErrorClass)))
+		event = event.Str("evaluation_error_class", boundedLogValue(string(trace.ErrorClass)))
 	}
 
 	return event

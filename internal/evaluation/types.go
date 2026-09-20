@@ -1,19 +1,27 @@
-// Package jev implements typed Jev evaluations independently of workflow and ACP.
-package jev
+// Package evaluation implements typed remote evaluations independently of workflow and ACP.
+package evaluation
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
 )
 
-// Request is one rendered Jev evaluation.
+// Config selects a service adapter and its resource-level request settings.
+type Config struct {
+	Kind    agent.Kind
+	Model   string
+	Timeout time.Duration
+}
+
+// Request is one fully rendered typed evaluation request.
 type Request struct {
 	Model     string
 	State     any
-	Questions map[string]agent.JevQuestion
+	Questions map[string]agent.EvaluationQuestion
 }
 
 // Answer is the canonical union returned for one question.
@@ -27,16 +35,16 @@ type Answer struct {
 	Confidence    *float64           `json:"confidence,omitempty"`
 }
 
-// Usage is provider-reported usage for the successful response.
+// Usage is service-reported usage for a successful response.
 type Usage struct {
 	InputTokens  int64    `json:"inputTokens"`
 	OutputTokens int64    `json:"outputTokens"`
 	Cost         *float64 `json:"cost,omitempty"`
 }
 
-// Result is the provider-neutral value published to workflow state.
+// Result is the service-neutral value published to workflow state.
 type Result struct {
-	API            string            `json:"api"`
+	Service        string            `json:"service"`
 	Provider       string            `json:"provider,omitempty"`
 	RequestID      string            `json:"requestId,omitempty"`
 	RequestedModel string            `json:"requestedModel"`
@@ -61,7 +69,7 @@ const (
 
 // Trace contains safe fields suitable for lifecycle logging.
 type Trace struct {
-	API            string
+	Service        string
 	Provider       string
 	RequestID      string
 	RequestedModel string
@@ -71,12 +79,12 @@ type Trace struct {
 	ErrorClass     ErrorClass
 }
 
-// Evaluator executes one rendered request through the selected API.
+// Evaluator executes one rendered request through the service selected by kind.
 type Evaluator interface {
-	Evaluate(ctx context.Context, api agent.JevAPI, request Request) (Result, Trace, error)
+	Evaluate(ctx context.Context, config Config, request Request) (Result, Trace, error)
 }
 
-// Error is a classified failure that never contains response bodies or secrets.
+// Error is a classified failure that excludes response bodies and secrets.
 type Error struct {
 	Class ErrorClass
 	Op    string
@@ -89,7 +97,7 @@ func (e *Error) Error() string {
 		return "<nil>"
 	}
 
-	message := fmt.Sprintf("jev %s failed (%s)", e.Op, e.Class)
+	message := fmt.Sprintf("evaluation %s failed (%s)", e.Op, e.Class)
 	if e.Code != 0 {
 		message += fmt.Sprintf(" with HTTP status %d", e.Code)
 	}
@@ -109,11 +117,11 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-// MarshalResult returns the deterministic compact JSON artifact for result.
+// MarshalResult returns deterministic compact JSON for result.
 func MarshalResult(result Result) ([]byte, error) {
 	data, err := json.Marshal(result)
 	if err != nil {
-		return nil, fmt.Errorf("marshal Jev result: %w", err)
+		return nil, fmt.Errorf("marshal evaluation result: %w", err)
 	}
 
 	return data, nil

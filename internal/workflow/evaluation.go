@@ -8,18 +8,16 @@ import (
 	"strings"
 
 	"github.com/baldaworks/callee/internal/agent"
-	jevapi "github.com/baldaworks/callee/internal/jev"
+	evaluationapi "github.com/baldaworks/callee/internal/evaluation"
 	"github.com/baldaworks/callee/internal/registry"
 )
 
-func (r *runState) jev(ctx context.Context, node *registry.ResolvedNode, input string) (result nodeResult, resultErr error) {
-	if node.Resource.Spec.API == nil {
-		return result, fmt.Errorf("agent %q has no Jev API configuration", node.EffectiveID)
+func (r *runState) evaluation(ctx context.Context, node *registry.ResolvedNode, input string) (result nodeResult, resultErr error) {
+	result.evaluationTrace = evaluationapi.Trace{
+		Service: serviceForEvaluationKind(node.Kind), RequestedModel: node.Resource.EvaluationModel(),
 	}
-
-	result.jevTrace = jevapi.Trace{API: node.Resource.Spec.API.Type, RequestedModel: node.Resource.JevModel()}
-	if r.jevEvaluator == nil {
-		return result, fmt.Errorf("agent %q has no Jev evaluator", node.EffectiveID)
+	if r.evaluationEvaluator == nil {
+		return result, fmt.Errorf("agent %q has no evaluation service", node.EffectiveID)
 	}
 
 	snapshot, err := cloneState(r.state)
@@ -40,9 +38,9 @@ func (r *runState) jev(ctx context.Context, node *registry.ResolvedNode, input s
 		return result, err
 	}
 
-	questions := make(map[string]agent.JevQuestion, len(node.Resource.Spec.Questions))
-	ids := make([]string, 0, len(node.Resource.Spec.Questions))
+	questions := make(map[string]agent.EvaluationQuestion, len(node.Resource.Spec.Questions))
 
+	ids := make([]string, 0, len(node.Resource.Spec.Questions))
 	for id := range node.Resource.Spec.Questions {
 		ids = append(ids, id)
 	}
@@ -67,30 +65,29 @@ func (r *runState) jev(ctx context.Context, node *registry.ResolvedNode, input s
 		questions[id] = question
 	}
 
-	request := jevapi.Request{Model: node.Resource.JevModel(), State: evidence, Questions: questions}
+	config := evaluationapi.Config{
+		Kind: node.Kind, Model: node.Resource.EvaluationModel(), Timeout: node.Resource.EvaluationTimeout(),
+	}
+	request := evaluationapi.Request{State: evidence, Questions: questions}
 
-	evaluated, trace, err := r.jevEvaluator.Evaluate(ctx, *node.Resource.Spec.API, request)
-	if trace.API == "" {
-		trace.API = node.Resource.Spec.API.Type
+	evaluated, trace, err := r.evaluationEvaluator.Evaluate(ctx, config, request)
+	if trace.Service == "" {
+		trace.Service = serviceForEvaluationKind(node.Kind)
 	}
 
-	if trace.RequestedModel == "" {
-		trace.RequestedModel = node.Resource.JevModel()
-	}
-
-	result.jevTrace = trace
+	result.evaluationTrace = trace
 	if err != nil {
-		return result, fmt.Errorf("agent %q evaluate Jev: %w", node.EffectiveID, err)
+		return result, fmt.Errorf("agent %q evaluate %s: %w", node.EffectiveID, node.Kind, err)
 	}
 
-	artifact, err := jevapi.MarshalResult(evaluated)
+	artifact, err := evaluationapi.MarshalResult(evaluated)
 	if err != nil {
 		return result, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
 	}
 
 	var structured map[string]any
 	if err := json.Unmarshal(artifact, &structured); err != nil {
-		return result, fmt.Errorf("agent %q decode Jev state result: %w", node.EffectiveID, err)
+		return result, fmt.Errorf("agent %q decode evaluation state result: %w", node.EffectiveID, err)
 	}
 
 	evaluations, ok := r.state["evaluations"].(map[string]any)
@@ -105,7 +102,6 @@ func (r *runState) jev(ctx context.Context, node *registry.ResolvedNode, input s
 
 	evaluations[node.EffectiveID] = structured
 	outputs[node.EffectiveID] = string(artifact)
-
 	result.outcome = outcomeReturn
 	result.artifact = string(artifact)
 	result.sourceID = node.EffectiveID
@@ -113,4 +109,16 @@ func (r *runState) jev(ctx context.Context, node *registry.ResolvedNode, input s
 	result.sourcePath = strings.Join(node.Path, " -> ")
 
 	return result, nil
+}
+
+func serviceForEvaluationKind(kind agent.Kind) string {
+	if kind == agent.TypeSafeJevKind {
+		return "typesafe"
+	}
+
+	if kind == agent.OpenRouterDecisionKind {
+		return "openrouter"
+	}
+
+	return ""
 }

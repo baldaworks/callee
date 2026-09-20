@@ -13,6 +13,7 @@ import (
 	"time"
 
 	resource "github.com/baldaworks/callee/internal/agent"
+	"github.com/baldaworks/callee/internal/evaluation"
 	"github.com/baldaworks/callee/internal/runtime"
 )
 
@@ -28,28 +29,28 @@ type sessionGroup struct {
 }
 
 // RunAgents checks every versioned Role provider group without sending a model
-// prompt and verifies Jev credential presence without inference. Static
+// prompt and verifies evaluation configuration without inference. Static
 // resource and graph validation must already have succeeded.
 func RunAgents(ctx context.Context, resources []resource.Resource, factory runtime.ProcessFactory, timeout time.Duration, stdout io.Writer) error {
 	if timeout <= 0 {
 		return fmt.Errorf("callee doctor: timeout must be greater than zero")
 	}
 
-	roles, jevs := executableResources(resources)
-	if len(roles) == 0 && len(jevs) == 0 {
-		return fmt.Errorf("callee doctor: no Role or Jev resources found")
+	roles, evaluations := executableResources(resources)
+	if len(roles) == 0 && len(evaluations) == 0 {
+		return fmt.Errorf("callee doctor: no Role or evaluation resources found")
 	}
 
 	if len(roles) > 0 && factory == nil {
 		return fmt.Errorf("callee doctor: process factory is required")
 	}
 
-	resourceFailures := checkJevCredentials(jevs)
+	resourceFailures := checkEvaluationConfig(evaluations)
 	checkRoleResources(ctx, roles, factory, timeout, resourceFailures)
 
 	var failures []error
 
-	checked := append(append([]resource.Resource(nil), roles...), jevs...)
+	checked := append(append([]resource.Resource(nil), roles...), evaluations...)
 	sort.Slice(checked, func(i, j int) bool { return checked[i].ID < checked[j].ID })
 
 	for _, item := range checked {
@@ -79,30 +80,30 @@ func RunAgents(ctx context.Context, resources []resource.Resource, factory runti
 
 func executableResources(resources []resource.Resource) ([]resource.Resource, []resource.Resource) {
 	roles := make([]resource.Resource, 0)
-	jevs := make([]resource.Resource, 0)
+	evaluations := make([]resource.Resource, 0)
 
 	for _, item := range resources {
 		switch item.Kind {
 		case resource.RoleKind:
 			roles = append(roles, item)
-		case resource.JevKind:
-			jevs = append(jevs, item)
+		case resource.TypeSafeJevKind, resource.OpenRouterDecisionKind:
+			evaluations = append(evaluations, item)
 		}
 	}
 
 	sort.Slice(roles, func(i, j int) bool { return roles[i].ID < roles[j].ID })
-	sort.Slice(jevs, func(i, j int) bool { return jevs[i].ID < jevs[j].ID })
+	sort.Slice(evaluations, func(i, j int) bool { return evaluations[i].ID < evaluations[j].ID })
 
-	return roles, jevs
+	return roles, evaluations
 }
 
-func checkJevCredentials(jevs []resource.Resource) map[string]error {
+func checkEvaluationConfig(resources []resource.Resource) map[string]error {
 	failures := make(map[string]error)
 
-	for _, jev := range jevs {
-		credential := jevCredential(jev)
-		if strings.TrimSpace(os.Getenv(credential)) == "" {
-			failures[jev.ID] = fmt.Errorf("environment variable %s is required for Jev API %q", credential, jev.Spec.API.Type)
+	for _, item := range resources {
+		config := evaluation.Config{Kind: item.Kind, Model: item.EvaluationModel(), Timeout: item.EvaluationTimeout()}
+		if err := evaluation.ValidateConfig(config, os.Getenv); err != nil {
+			failures[item.ID] = err
 		}
 	}
 
@@ -152,14 +153,6 @@ func checkRoleResources(
 			resourceFailures[roleID] = errors.Join(resourceFailures[roleID], err)
 		}
 	}
-}
-
-func jevCredential(item resource.Resource) string {
-	if item.Spec.API != nil && item.Spec.API.Type == "openrouter" {
-		return "OPENROUTER_API_KEY"
-	}
-
-	return "TYPESAFE_API_KEY"
 }
 
 func checkAgentGroup(ctx context.Context, factory runtime.ProcessFactory, roles []resource.Resource) map[string]error {

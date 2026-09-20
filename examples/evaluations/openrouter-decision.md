@@ -1,12 +1,10 @@
 ---
 apiVersion: callee.metalagman.dev/v1alpha1
-kind: Jev
+kind: OpenRouterDecision
 spec:
   description: Scores release risk through OpenRouter Decisions.
-  api:
-    type: openrouter
-    model: typesafe/jev-1.13
-    timeout: 30s
+  model: typesafe/jev-1.13
+  timeout: 30s
   evidence:
     change: "{{ .Input }}"
     production: true

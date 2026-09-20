@@ -1,4 +1,4 @@
-package jev
+package evaluation
 
 import (
 	"bytes"
@@ -6,22 +6,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
 )
 
-const typesafeEndpoint = "https://api.typesafe.ai/v1/systemone"
+const defaultTypeSafeBaseURL = "https://api.typesafe.ai"
 
 const defaultAPITimeout = 30 * time.Second
 
 type typesafeAdapter struct{ core httpCore }
 
 type wireRequest struct {
-	Model     string                       `json:"model"`
-	State     any                          `json:"state"`
-	Questions map[string]agent.JevQuestion `json:"questions"`
+	Model     string                              `json:"model"`
+	State     any                                 `json:"state"`
+	Questions map[string]agent.EvaluationQuestion `json:"questions"`
 }
 
 type typesafeResponse struct {
@@ -30,15 +32,25 @@ type typesafeResponse struct {
 	Usage   *Usage
 }
 
-func (a typesafeAdapter) evaluate(ctx context.Context, api agent.JevAPI, request Request) (Result, Trace, error) {
-	trace := Trace{API: "typesafe", RequestedModel: request.Model}
+func (a typesafeAdapter) getenv(name string) string { return a.core.config.getenv(name) }
 
-	ctx, cancel := context.WithTimeout(ctx, apiTimeout(api))
+func (a typesafeAdapter) evaluate(ctx context.Context, config Config, request Request) (Result, Trace, error) {
+	trace := Trace{Service: "typesafe", RequestedModel: request.Model}
+	if !strings.HasPrefix(request.Model, "jev-") {
+		return Result{}, trace, &Error{Class: ErrorConfiguration, Op: "validate model", Err: fmt.Errorf("requested model is not a TypeSafe Jev model")}
+	}
+
+	endpoint, err := resolveTypeSafeEndpoint(a.getenv("TYPESAFE_BASE_URL"))
+	if err != nil {
+		return Result{}, trace, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, apiTimeout(config.Timeout))
 	defer cancel()
 
 	var response typesafeResponse
 
-	attempts, err := a.core.postJSON(ctx, typesafeEndpoint, "TYPESAFE_API_KEY", wireRequest{
+	attempts, err := a.core.postJSON(ctx, endpoint, "TYPESAFE_API_KEY", wireRequest{
 		Model: request.Model, State: request.State, Questions: request.Questions,
 	}, func(data []byte) error {
 		decoded, decodeErr := decodeTypesafeResponse(data)
@@ -48,8 +60,8 @@ func (a typesafeAdapter) evaluate(ctx context.Context, api agent.JevAPI, request
 
 		return decodeErr
 	})
-
 	trace.Attempts = attempts
+
 	if err != nil {
 		return Result{}, trace, err
 	}
@@ -58,15 +70,27 @@ func (a typesafeAdapter) evaluate(ctx context.Context, api agent.JevAPI, request
 		return Result{}, trace, responseError("decode response", "actual model is not a TypeSafe Jev model")
 	}
 
-	result := Result{
-		API:            "typesafe",
-		RequestedModel: request.Model,
-		Model:          response.Model,
-		Answers:        response.Answers,
-		Usage:          response.Usage,
+	return Result{
+		Service: "typesafe", RequestedModel: request.Model, Model: response.Model,
+		Answers: response.Answers, Usage: response.Usage,
+	}, trace, nil
+}
+
+func resolveTypeSafeEndpoint(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		raw = defaultTypeSafeBaseURL
 	}
 
-	return result, trace, nil
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", &Error{Class: ErrorConfiguration, Op: "configure TypeSafe endpoint", Err: fmt.Errorf("TYPESAFE_BASE_URL must be an absolute HTTPS API root without userinfo, query, or fragment")}
+	}
+
+	parsed.Path = path.Join("/", parsed.Path, "v1/systemone")
+	parsed.RawPath = ""
+
+	return parsed.String(), nil
 }
 
 func decodeTypesafeResponse(data []byte) (typesafeResponse, error) {
@@ -177,11 +201,9 @@ func strictJSON(data []byte, destination any) error {
 	return nil
 }
 
-func apiTimeout(api agent.JevAPI) time.Duration {
-	if api.Timeout != "" {
-		if timeout, err := time.ParseDuration(api.Timeout); err == nil && timeout > 0 {
-			return timeout
-		}
+func apiTimeout(timeout time.Duration) time.Duration {
+	if timeout > 0 {
+		return timeout
 	}
 
 	return defaultAPITimeout

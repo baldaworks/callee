@@ -1,6 +1,6 @@
 # ADR 0002: Native Jev node and API adapters
 
-- Status: Accepted
+- Status: Superseded by [ADR 0003](0003-explicit-typesafe-jev-and-openrouter-decisions-nodes.md)
 - Date: 2026-09-20
 - Supersedes: [ADR 0001](0001-native-jev-evaluation-node.md)
 

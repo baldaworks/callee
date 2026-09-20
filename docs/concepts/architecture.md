@@ -6,7 +6,7 @@ Callee turns repository-owned agent resources into a statically validated execut
 
 | Concept | Meaning |
 | --- | --- |
-| Resource | One versioned Markdown or YAML definition with a `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, or `Router` kind. |
+| Resource | One versioned Markdown or YAML definition with a `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router` kind. |
 | Resource ID | The path below a discovery root with the final supported extension removed, such as `roles/reviewer`. |
 | Resolved node | One occurrence of a resource in a selected root tree. An edge alias, when present, becomes its effective ID. |
 | Role | A provider-backed leaf that renders a prompt and performs one or more turns in one fresh ACP session. |
@@ -47,7 +47,7 @@ Discovery loads the user and project roots together. Registry construction rejec
 
 Escalation authority belongs to child edges, not resource definitions. A Role may escalate to its nearest enclosing Loop only when every edge from that Loop to the Role occurrence sets `canEscalate: true`; omitted values are `false`. Entering a nested Loop starts a new authorization boundary, so its descendants do not inherit authority from the outer Loop. The resolved effective capability is visible in `agent view`, while doctor graphs show the authored value on every edge. See [Escalation authorization](../reference/workflow-semantics.md#escalation-authorization) for the runtime consequences.
 
-At runtime, the runner creates state with engine-owned `outputs`, `scripts`, and `evaluations` maps. Each node may render a state modifier against a pre-node snapshot. A Role renders its body and calls its provider session. A Script renders and executes a local validator step, then records its structured result under `State.scripts`. A Human displays its rendered body on the controlling terminal and records the response under its configured state key. A Jev renders explicit evidence and typed questions, calls its selected decision API once per visit, and records a validated result under `State.evaluations`. Sequential and Loop composites activate children serially. Router uses the internal ADK 2 graph scheduler to activate exactly one `StringRoute` or `Default` edge; its route key and child payload are rendered separately. Every composite may render `spec.output` to transform the natural child result. See [Workflow semantics](../reference/workflow-semantics.md) for the precise data flow.
+At runtime, the runner creates state with engine-owned `outputs`, `scripts`, and `evaluations` maps. Each node may render a state modifier against a pre-node snapshot. A Role renders its body and calls its provider session. A Script renders and executes a local validator step, then records its structured result under `State.scripts`. A Human displays its rendered body on the controlling terminal and records the response under its configured state key. A TypeSafeJev or OpenRouterDecision renders explicit evidence and typed questions, calls its service once per visit, and records a validated result under `State.evaluations`. Sequential and Loop composites activate children serially. Router uses the internal ADK 2 graph scheduler to activate exactly one `StringRoute` or `Default` edge; its route key and child payload are rendered separately. Every composite may render `spec.output` to transform the natural child result. See [Workflow semantics](../reference/workflow-semantics.md) for the precise data flow.
 
 ## ADK graph compilation
 
@@ -63,10 +63,10 @@ These ADK names are private diagnostic identities. They are not resource IDs,
 selectors, state keys, or a compatibility surface. Public behavior continues to
 use Callee resource and effective IDs.
 
-Role, Script, Human, and Jev are the current native leaf kinds. One private compiler
+Role, Script, Human, TypeSafeJev, and OpenRouterDecision are the current native leaf kinds. One private compiler
 boundary maps each leaf kind to its own executor, while Sequential, Loop, and
-Router retain their composite compilation paths. [ADR 0002](../adr/0002-native-jev-node-and-api-adapters.md)
-defines Jev's schema, API adapters, result, retry, authorization, and
+Router retain their composite compilation paths. [ADR 0003](../adr/0003-explicit-typesafe-jev-and-openrouter-decisions-nodes.md)
+defines the evaluation schema, service adapters, result, retry, authorization, and
 observability contract.
 
 With debug logging enabled, compilation emits structured mapping events before

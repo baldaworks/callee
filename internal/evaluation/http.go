@@ -1,4 +1,4 @@
-package jev
+package evaluation
 
 import (
 	"bytes"
@@ -40,7 +40,7 @@ func defaultHTTPConfig() httpConfig {
 		client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 			return errRedirect
 		}},
-		getenv: func(name string) string { return strings.TrimSpace(os.Getenv(name)) },
+		getenv: os.Getenv,
 		wait: func(ctx context.Context, delay time.Duration) error {
 			timer := time.NewTimer(delay)
 			defer timer.Stop()
@@ -57,8 +57,8 @@ func defaultHTTPConfig() httpConfig {
 }
 
 func (core httpCore) postJSON(ctx context.Context, endpoint, credentialEnv string, payload any, decode func([]byte) error) (int, error) {
-	key := strings.TrimSpace(core.config.getenv(credentialEnv))
-	if key == "" {
+	key := core.config.getenv(credentialEnv)
+	if strings.TrimSpace(key) == "" {
 		return 0, &Error{Class: ErrorConfiguration, Op: "authenticate", Err: fmt.Errorf("%s is not set", credentialEnv)}
 	}
 

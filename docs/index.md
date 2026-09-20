@@ -6,7 +6,7 @@ Callee is a CLI runtime for provider-backed agents and deterministic workflows d
 
 - [Concepts and architecture](concepts/architecture.md) explains the resource, registry, runtime, state, and ACP process model.
 - [Agent resource format](reference/agent-resources.md) defines discovery, the versioned envelope, kind-specific fields, templates, parameters, and validation rules.
-- [Workflow semantics](reference/workflow-semantics.md) defines Role, Script, Human, and Jev leaf execution; Sequential, Loop, and Router composition; node input and output; state updates; edge-authorized Loop escalation; failure; REPL control; and lifecycle behavior.
+- [Workflow semantics](reference/workflow-semantics.md) defines Role, Script, Human, TypeSafeJev, and OpenRouterDecision leaf execution; Sequential, Loop, and Router composition; node input and output; state updates; edge-authorized Loop escalation; failure; REPL control; and lifecycle behavior.
 - [Execution metrics](reference/execution-metrics.md) defines `agent_*` and `role_*` duration, operator-wait, provider-selection, and token fields, including presence, fallback, and aggregation rules.
 
 ## Install and operate Callee
@@ -19,11 +19,12 @@ Callee is a CLI runtime for provider-backed agents and deterministic workflows d
 ## Maintain the project
 
 - [ADR 0001: Native Jev evaluation node](adr/0001-native-jev-evaluation-node.md) records a provisional integration proposal intended for later supersession; it does not describe a shipped node kind.
+- [ADR 0003: Explicit TypeSafe Jev and OpenRouter Decisions nodes](adr/0003-explicit-typesafe-jev-and-openrouter-decisions-nodes.md) records the current evaluation resource and service boundaries.
 - [Development and validation](contributing/development.md) covers the repository layout, toolchain, local checks, focused validation, and documentation maintenance.
 - [Release process](contributing/release.md) records the tag-triggered release sequence, versioned surfaces, remote quality gate, artifact publication, and post-release verification.
 
 ## Scope and compatibility
 
-The current resource API is `callee.metalagman.dev/v1alpha1`. It supports `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and `Router`. Callee is CLI-only and intentionally has no `Parallel` kind, Gemini provider, server transport, durable thread store, or handle binding. Treat the Workflows API as a clean break: removed legacy command and resource forms are not compatibility surfaces.
+The current resource API is `callee.metalagman.dev/v1alpha1`. It supports `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router`. Callee is CLI-only and intentionally has no `Parallel` kind, Gemini provider, server transport, durable thread store, or handle binding. Treat the Workflows API as a clean break: removed legacy command and resource forms are not compatibility surfaces.
 
-The checked-in [JSON Schema](../internal/agent/schema.json) is the machine-readable resource contract. `callee agent schema <Role|Script|Human|Jev|Sequential|Loop|Router>` prints standalone per-kind schema documents derived from that same embedded source. Source, tests, CLI help, manifests, and repository instructions remain authoritative when implementation behavior changes.
+The checked-in [JSON Schema](../internal/agent/schema.json) is the machine-readable resource contract. `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Loop|Router>` prints standalone per-kind schema documents derived from that same embedded source. Source, tests, CLI help, manifests, and repository instructions remain authoritative when implementation behavior changes.

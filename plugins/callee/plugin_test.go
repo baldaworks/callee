@@ -43,7 +43,7 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"Keep terminal interaction separate from stdout and stderr.",
 		"mktemp -d",
 		"callee_capture_dir",
-		"`Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, or `Router`",
+		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router`",
 		"Read Human prompts, Human responses",
 		"Do not send `quit`, `exit`, `/done`",
 		"artifact is written to stdout only after provider cleanup succeeds",
@@ -104,7 +104,7 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"kind: Role",
 		"kind: Script",
 		"kind: Human",
-		"kind: Jev",
+		"kind: OpenRouterDecision",
 		"responseKey: approval",
 		"A Human has no provider, permissions, parameters, or REPL setting.",
 		"## Choose the authored interaction profile",
@@ -148,7 +148,7 @@ func TestCreateAgentHumanExampleValidates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	encoded := readmeFence(t, string(data), "## Author a Human", "## Author a Jev judgment", "markdown")
+	encoded := readmeFence(t, string(data), "## Author a Human", "## Author a typed evaluation", "markdown")
 
 	resource, err := agent.DecodeMarkdown("humans/approver", "humans/approver.md", []byte(encoded))
 	if err != nil {
@@ -160,21 +160,21 @@ func TestCreateAgentHumanExampleValidates(t *testing.T) {
 	}
 }
 
-func TestCreateAgentJevExampleValidates(t *testing.T) {
+func TestCreateAgentEvaluationExampleValidates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	encoded := readmeFence(t, string(data), "## Author a Jev judgment", "## Author a workflow", "markdown")
+	encoded := readmeFence(t, string(data), "## Author a typed evaluation", "## Author a workflow", "markdown")
 
 	resource, err := agent.DecodeMarkdown("judges/urgent", "judges/urgent.md", []byte(encoded))
 	if err != nil {
-		t.Fatalf("decode Create Agent Jev example: %v", err)
+		t.Fatalf("decode Create Agent evaluation example: %v", err)
 	}
 
-	if resource.Kind != agent.JevKind {
-		t.Errorf("Create Agent Jev example kind = %s, want %s", resource.Kind, agent.JevKind)
+	if resource.Kind != agent.OpenRouterDecisionKind {
+		t.Errorf("Create Agent evaluation example kind = %s, want %s", resource.Kind, agent.OpenRouterDecisionKind)
 	}
 }
 
@@ -199,7 +199,7 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"kind: Sequential",
 		"kind: Router",
 		"kind: Loop",
-		"`Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and `Router`",
+		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router`",
 		"workflow child may reference any supported kind",
 		"unique across the entire resolved tree",
 		"`params` only when that child resolves directly to a `Role`",
@@ -594,7 +594,7 @@ func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
 		"### Role",
 		"### Script",
 		"### Human",
-		"### Jev",
+		"### TypeSafeJev and OpenRouterDecision",
 		"### Sequential",
 		"### Loop",
 		"### Router",
@@ -624,8 +624,8 @@ func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
 	}{
 		{id: "roles/reviewer", startHeading: "### Role", endHeading: "### ACP provider configuration", wantKind: agent.RoleKind},
 		{id: "scripts/validator", startHeading: "### Script", endHeading: "### Human", wantKind: agent.ScriptKind},
-		{id: "humans/approver", startHeading: "### Human", endHeading: "### Jev", wantKind: agent.HumanKind},
-		{id: "judges/urgent", startHeading: "### Jev", endHeading: "### Sequential", wantKind: agent.JevKind},
+		{id: "humans/approver", startHeading: "### Human", endHeading: "### TypeSafeJev and OpenRouterDecision", wantKind: agent.HumanKind},
+		{id: "judges/urgent", startHeading: "### TypeSafeJev and OpenRouterDecision", endHeading: "### Sequential", wantKind: agent.OpenRouterDecisionKind},
 		{id: "workflows/pipeline", startHeading: "### Sequential", endHeading: "### Loop", wantKind: agent.SequentialKind},
 		{id: "workflows/goalkeeper", startHeading: "### Loop", endHeading: "### Router", wantKind: agent.LoopKind},
 		{id: "workflows/task-router", startHeading: "### Router", endHeading: "### Children and composition", wantKind: agent.RouterKind},

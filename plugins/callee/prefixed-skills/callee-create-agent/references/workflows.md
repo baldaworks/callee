@@ -28,7 +28,7 @@ complete resource object and must include `spec.body` explicitly.
 
 ## Compose the resolved tree
 
-Use only `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and `Router`. A workflow child may reference
+Use only `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router`. A workflow child may reference
 any supported kind, so workflows may nest other workflows. Do not author
 `Parallel`, fan-out, Join, or arbitrary graph edges.
 
@@ -61,7 +61,7 @@ Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
 Every successful nonblank node artifact is stored at
 `.State.outputs[effectiveID]`. Repeated visits overwrite that key with the
 last successful artifact. Completed `Script` visits also record structured
-validator results at `.State.scripts[effectiveID]`. Completed `Jev` visits
+validator results at `.State.scripts[effectiveID]`. Completed evaluation visits
 record typed judgments at `.State.evaluations[effectiveID]`. A `Human` additionally
 stores its response at the top-level key selected by `spec.responseKey`. Use
 `index` for robust lookup:

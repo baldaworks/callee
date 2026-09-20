@@ -1,6 +1,6 @@
 ---
 name: callee-create-agent
-description: Create project-defined Callee Role, Script, Human, Jev, Sequential, Loop, and Router agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
+description: Create project-defined Callee Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, and Router agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
 ---
 
 # Create a Callee agent
@@ -20,7 +20,8 @@ Choose exactly one supported kind:
 - `Role`: one provider-backed leaf agent.
 - `Script`: one deterministic local validator leaf.
 - `Human`: one operator-backed interactive leaf.
-- `Jev`: one remote typed-judgment leaf using TypeSafe or OpenRouter Decisions.
+- `TypeSafeJev`: one typed judgment through TypeSafe's native Jev API.
+- `OpenRouterDecision`: one typed judgment through OpenRouter Decisions.
 - `Sequential`: ordered child agents that each run once.
 - `Loop`: ordered child agents repeated until an authorized Role escalates or the iteration limit is exhausted.
 - `Router`: exactly one named or default child selected by a deterministic route template.
@@ -130,22 +131,19 @@ Review and approve this request:
 
 Use a nonblank `responseKey` other than the reserved `outputs`, `scripts`, and `evaluations` keys. A Human has no provider, permissions, parameters, or REPL setting. A Human anywhere in the resolved tree makes spec-driven mode interactive and causes explicit non-interactive execution to fail during preflight, even beneath an unselected Router branch. At runtime it displays the rendered body on the controlling TTY, waits for one nonblank response, stores that response at the selected top-level state key and `.State.outputs[effectiveId]`, and returns it as the node artifact.
 
-## Author a Jev judgment
+## Author a typed evaluation
 
-Use `Jev` when code needs typed semantic judgment rather than prose, tools, or
-workflow control. Choose `typesafe` with `TYPESAFE_API_KEY`, or `openrouter`
-with `OPENROUTER_API_KEY`. OpenRouter must use its Decisions API through Callee;
-do not model Jev as an OpenAI-compatible chat Role.
+Use `TypeSafeJev` for TypeSafe's native Jev API with `TYPESAFE_API_KEY`. Use
+`OpenRouterDecision` for OpenRouter Decisions with `OPENROUTER_API_KEY` and an
+explicit model. The OpenRouter kind is not limited to TypeSafe or Jev models.
 
 ```markdown
 ---
 apiVersion: callee.metalagman.dev/v1alpha1
-kind: Jev
+kind: OpenRouterDecision
 spec:
   description: Judges whether the input needs urgent attention.
-  api:
-    type: openrouter
-    model: typesafe/jev-1.13
+  model: typesafe/jev-1.13
   evidence:
     request: "{{ .Input }}"
   questions:
@@ -165,7 +163,7 @@ preserve useful booleans, numbers, arrays, objects, and nulls as structured
 values. Evidence and questions leave the machine for the selected service.
 Aliases auto-upgrade; pin a concrete model for reproducibility. Downstream
 templates read typed answers from `.State.evaluations[effectiveId]` or compact
-JSON from `.State.outputs[effectiveId]`. Jev cannot escalate, invoke tools, or
+JSON from `.State.outputs[effectiveId]`. Evaluation leaves cannot escalate, invoke tools, or
 mutate arbitrary state.
 
 ## Author a workflow

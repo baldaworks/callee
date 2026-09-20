@@ -240,8 +240,8 @@ func (c *adkCompiler) nativeLeafExecutor(kind agent.Kind) (leafExecutor, bool) {
 		return c.run.script, true
 	case agent.HumanKind:
 		return c.run.human, true
-	case agent.JevKind:
-		return c.run.jev, true
+	case agent.TypeSafeJevKind, agent.OpenRouterDecisionKind:
+		return c.run.evaluation, true
 	default:
 		return nil, false
 	}

@@ -1,11 +1,9 @@
 ---
 apiVersion: callee.metalagman.dev/v1alpha1
-kind: Jev
+kind: TypeSafeJev
 spec:
   description: Judges whether a request needs urgent attention through TypeSafe.
-  api:
-    type: typesafe
-    model: jev-1.13
+  model: jev-1.13
   evidence:
     request: "{{ .Input }}"
     source: operator

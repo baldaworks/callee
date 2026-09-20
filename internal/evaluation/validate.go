@@ -1,4 +1,4 @@
-package jev
+package evaluation
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/baldaworks/callee/internal/agent"
 )
@@ -18,8 +20,8 @@ const (
 
 // ValidateRequest checks the completely rendered request before credential lookup.
 func ValidateRequest(request Request) error {
-	if strings.TrimSpace(request.Model) == "" {
-		return responseError("validate request", "model must not be blank")
+	if !validModelIdentifier(request.Model) {
+		return responseError("validate request", "model must be one nonblank identifier without whitespace or control characters")
 	}
 
 	if err := validateContent("state", request.State, false); err != nil {
@@ -57,12 +59,8 @@ func ValidateRequest(request Request) error {
 
 // ValidateResult checks a normalized result against its rendered request.
 func ValidateResult(request Request, result Result) error {
-	if strings.TrimSpace(result.API) == "" || strings.TrimSpace(result.RequestedModel) == "" || strings.TrimSpace(result.Model) == "" {
-		return responseError("validate response", "API, requested model, and actual model must not be blank")
-	}
-
-	if result.RequestedModel != request.Model {
-		return responseError("validate response", "requested model does not match the request")
+	if err := validateResultIdentity(request, result); err != nil {
+		return err
 	}
 
 	if len(result.Answers) != len(request.Questions) {
@@ -103,7 +101,34 @@ func ValidateResult(request Request, result Result) error {
 	return nil
 }
 
-func validateRenderedQuestion(id string, question agent.JevQuestion) error {
+func validateResultIdentity(request Request, result Result) error {
+	if strings.TrimSpace(result.Service) == "" || strings.TrimSpace(result.RequestedModel) == "" || strings.TrimSpace(result.Model) == "" {
+		return responseError("validate response", "service, requested model, and actual model must not be blank")
+	}
+
+	if result.RequestedModel != request.Model {
+		return responseError("validate response", "requested model does not match the request")
+	}
+
+	if !validModelIdentifier(result.Model) {
+		return responseError("validate response", "actual model must be one nonblank identifier without whitespace or control characters")
+	}
+
+	for name, value := range map[string]string{"provider": result.Provider, "request ID": result.RequestID} {
+		if value != "" && (utf8.RuneCountInString(value) > 1024 || strings.IndexFunc(value, unicode.IsControl) >= 0) {
+			return responseError("validate response", name+" contains unsafe metadata")
+		}
+	}
+
+	return nil
+}
+
+func validModelIdentifier(model string) bool {
+	return model != "" && model == strings.TrimSpace(model) &&
+		strings.IndexFunc(model, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) < 0
+}
+
+func validateRenderedQuestion(id string, question agent.EvaluationQuestion) error {
 	switch question.Type {
 	case "noul":
 		return validateRenderedNoul(id, question.Criteria)
@@ -179,7 +204,7 @@ func validateRenderedScore(id string, value any) error {
 	return nil
 }
 
-func validateAnswer(id string, question agent.JevQuestion, answer Answer) error {
+func validateAnswer(id string, question agent.EvaluationQuestion, answer Answer) error {
 	switch answer.Type {
 	case "noul":
 		return validateNoulAnswer(id, answer)

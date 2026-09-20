@@ -1,4 +1,4 @@
-package jev
+package evaluation
 
 import (
 	"context"

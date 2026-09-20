@@ -122,8 +122,10 @@ func schemaDefinitionName(kind Kind) (string, error) {
 		return "script", nil
 	case HumanKind:
 		return "human", nil
-	case JevKind:
-		return "jev", nil
+	case TypeSafeJevKind:
+		return "typeSafeJev", nil
+	case OpenRouterDecisionKind:
+		return "openRouterDecision", nil
 	case SequentialKind:
 		return "sequential", nil
 	case LoopKind:
@@ -131,7 +133,7 @@ func schemaDefinitionName(kind Kind) (string, error) {
 	case RouterKind:
 		return "router", nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Jev, Sequential, Loop, or Router)", kind)
+		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, or Router)", kind)
 	}
 }
 

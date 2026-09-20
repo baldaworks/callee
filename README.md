@@ -9,7 +9,7 @@
 
 ## Markdown-defined agents and deterministic workflows
 
-Callee lets a repository define `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and `Router` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
+Callee lets a repository define `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
 
 Callee remains CLI-only. It uses [Norma Runtime](https://github.com/normahq/runtime) for ACP provider processes and Go ADK-aligned escalation semantics. It has no server, durable thread store, or handle binding.
 
@@ -25,8 +25,8 @@ Callee installs two complementary skills in your coding host:
 
 | Skill | What it does | Result |
 | --- | --- | --- |
-| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, or `Router` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by emitted lifecycle data and Role execution metrics. |
-| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, or `Router` in Markdown or YAML. For a `Role`, it uses an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
+| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by emitted lifecycle data and Role execution metrics. |
+| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router` in Markdown or YAML. For a `Role`, it uses an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
 
 These skills are host integrations: they teach Codex, Claude Code, Grok Build,
 Copilot CLI, OpenCode, or Cursor how to create and run Callee agents. Runtime
@@ -439,18 +439,16 @@ A Human has no provider, permissions, parameters, or REPL setting. Its presence
 makes the spec-driven whole-agent mode interactive; explicitly selecting
 non-interactive mode fails during preflight, even for an unselected Router branch.
 
-### Jev
+### TypeSafeJev and OpenRouterDecision
 
 ```markdown
 ---
 apiVersion: callee.metalagman.dev/v1alpha1
-kind: Jev
+kind: OpenRouterDecision
 spec:
   description: Judges whether a request needs urgent attention.
-  api:
-    type: openrouter
-    model: typesafe/jev-1.13
-    timeout: 30s
+  model: typesafe/jev-1.13
+  timeout: 30s
   evidence:
     request: "{{ .Input }}"
     source: operator
@@ -464,19 +462,18 @@ spec:
 ---
 ```
 
-`Jev` is a typed judgment leaf with no ACP session, tools, or control-flow
+Both kinds are typed judgment leaves with no ACP session, tools, or control-flow
 authority. A visit sends only its explicitly rendered `body` or structured
 `evidence` and all questions in one request. String leaves render against
 `.Prompt`, `.Input`, and `.State`; booleans, numbers, arrays, objects, and null
 values keep their JSON types. Questions use `noul`, `choice`, or `score`.
 
-Set `api.type: typesafe` with `TYPESAFE_API_KEY`, or `api.type: openrouter`
-with `OPENROUTER_API_KEY`. TypeSafe calls System One; OpenRouter calls its
-Decisions API, so OpenAI-compatible chat-completions clients do not implement
-this node. Defaults are `jev-latest` and `~typesafe/jev-latest` respectively.
-Aliases receive upgrades automatically; pin a concrete model for reproducible
-policy decisions. Both paths disclose the authored evidence and questions to
-the selected remote service.
+Use `TypeSafeJev` with `TYPESAFE_API_KEY`. Its optional model resolves from
+`spec.model`, then `TYPESAFE_DEFAULT_MODEL`, then `jev-latest`; its API root
+resolves from `TYPESAFE_BASE_URL` or `https://api.typesafe.ai`. Use
+`OpenRouterDecision` with `OPENROUTER_API_KEY` and an explicit model. It calls
+OpenRouter's Decisions API and is not limited to TypeSafe or Jev model IDs.
+Both kinds disclose the authored evidence and questions to their remote service.
 
 After a fully validated response, Callee stores the structured result at
 `.State.evaluations[effectiveId]`, its deterministic compact JSON at
@@ -484,9 +481,9 @@ After a fully validated response, Callee stores the structured result at
 deadline covers up to three attempts for retryable transport, timeout, 408,
 429, and server failures. Lifecycle logs include bounded operational fields
 such as models, attempts, usage, cost, and error class; they exclude request and
-answer content. Jev adds no metrics. See the validated
-[`TypeSafe`](examples/jev/typesafe.md) and
-[`OpenRouter`](examples/jev/openrouter.md) examples.
+answer content. Evaluations add no metrics. See the validated
+[`TypeSafeJev`](examples/evaluations/typesafe-jev.md) and
+[`OpenRouterDecision`](examples/evaluations/openrouter-decision.md) examples.
 
 ### Sequential
 
@@ -590,7 +587,7 @@ Children may reference any supported kind, including another composite. A child 
 
 Markdown is the canonical authoring format: its physical body becomes `spec.body` and `spec.body` must not also appear in frontmatter. A `.yaml` or `.yml` file represents the same complete resource object and must author `spec.body` inline.
 
-Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Human|Jev|Sequential|Loop|Router>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
+Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Loop|Router>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json
@@ -630,7 +627,7 @@ The common template root exposes:
 - `.Params`: current Role parameter map.
 - `.Output`: natural child-derived output, only while rendering composite `spec.output`.
 
-Every successful nonblank node artifact is promoted to `.State.outputs[effectiveId]`. `Script` also records its detailed validator result at `.State.scripts[effectiveId]`, including `status`, `exitCode`, `stdout`, `stderr`, and `timedOut`. `Jev` records its typed result at `.State.evaluations[effectiveId]`. The engine owns `outputs`, `scripts`, and `evaluations`; authored state cannot replace those keys. Repeated visits use last-successful-write-wins.
+Every successful nonblank node artifact is promoted to `.State.outputs[effectiveId]`. `Script` also records its detailed validator result at `.State.scripts[effectiveId]`, including `status`, `exitCode`, `stdout`, `stderr`, and `timedOut`. `TypeSafeJev` and `OpenRouterDecision` record typed results at `.State.evaluations[effectiveId]`. The engine owns `outputs`, `scripts`, and `evaluations`; authored state cannot replace those keys. Repeated visits use last-successful-write-wins.
 
 State modifiers are shallow top-level replacements. String leaves are templates evaluated against one pre-node snapshot, and the complete modifier commits atomically.
 
@@ -732,7 +729,7 @@ callee doctor --graph mermaid
 callee doctor --graph dot
 ```
 
-Plain doctor completes static schema/template/graph validation before provider startup, groups Roles by provider process identity, checks ACP initialization and disposable session creation, and sends no model prompt. It also checks that each Jev API mode has its matching nonblank credential without making an inference call. Graph modes are static-only and never start providers.
+Plain doctor completes static schema/template/graph validation before provider startup, groups Roles by provider process identity, checks ACP initialization and disposable session creation, and sends no model prompt. It also validates the local TypeSafe or OpenRouter configuration required by each reachable evaluation kind without making an inference call. Graph modes are static-only and never start providers.
 
 ## PromptKit
 
@@ -787,7 +784,7 @@ Callee was built during OpenAI Build Week using Codex and GPT-5.6 as the primary
 
 Codex and GPT-5.6 were used to:
 
-- design the `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and `Router` agent model;
+- design the `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router` agent model;
 - implement CLI commands, runtime behavior, and validation flows;
 - build graph inspection, doctor checks, and setup integrations;
 - create starter agents, examples, and user-facing documentation;

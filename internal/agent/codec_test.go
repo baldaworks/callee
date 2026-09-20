@@ -678,7 +678,7 @@ func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 		{
 			name: "unsupported kind",
 			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Parallel\nspec: {}\n---\n{{ .Input }}",
-			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Human, Jev, Sequential, Loop, Router`,
+			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, Router`,
 		},
 		{
 			name: "wrong field case",

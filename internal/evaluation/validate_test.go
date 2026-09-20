@@ -1,4 +1,4 @@
-package jev
+package evaluation
 
 import (
 	"math"
@@ -83,6 +83,8 @@ func TestValidateResultRejectsRequestDependentViolations(t *testing.T) {
 			r.Answers["urgent"] = a
 		}, want: "another answer type"},
 		{name: "negative usage", edit: func(r *Result) { r.Usage.InputTokens = -1 }, want: "nonnegative"},
+		{name: "unsafe provider metadata", edit: func(r *Result) { r.Provider = "bad\nprovider" }, want: "unsafe metadata"},
+		{name: "invalid actual model", edit: func(r *Result) { r.Model = "bad model" }, want: "actual model"},
 	}
 
 	for _, test := range tests {
@@ -115,7 +117,7 @@ func validRequest() Request {
 	return Request{
 		Model: "jev-1.13.0",
 		State: map[string]any{"message": "Please help", "attempt": 2.0, "note": nil},
-		Questions: map[string]agent.JevQuestion{
+		Questions: map[string]agent.EvaluationQuestion{
 			"urgent": {Type: "noul", Instructions: "Is it urgent?"},
 			"team": {
 				Type:         "choice",
@@ -139,7 +141,7 @@ func validResult() Result {
 	cost := 0.000018
 
 	return Result{
-		API:            "typesafe",
+		Service:        "typesafe",
 		RequestedModel: "jev-1.13.0",
 		Model:          "jev-1.13.0",
 		Answers: map[string]Answer{

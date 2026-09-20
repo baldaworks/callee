@@ -1,12 +1,10 @@
-package jev
+package evaluation
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/baldaworks/callee/internal/agent"
 )
 
 const openRouterEndpoint = "https://openrouter.ai/api/alpha/decisions"
@@ -21,13 +19,12 @@ type openRouterResponse struct {
 	Usage    *Usage
 }
 
-func (a openRouterAdapter) evaluate(ctx context.Context, api agent.JevAPI, request Request) (Result, Trace, error) {
-	trace := Trace{API: "openrouter", RequestedModel: request.Model}
-	if !validOpenRouterModel(request.Model) {
-		return Result{}, trace, &Error{Class: ErrorConfiguration, Op: "validate model", Err: fmt.Errorf("model %q is not in the TypeSafe Jev family", request.Model)}
-	}
+func (a openRouterAdapter) getenv(name string) string { return a.core.config.getenv(name) }
 
-	ctx, cancel := context.WithTimeout(ctx, apiTimeout(api))
+func (a openRouterAdapter) evaluate(ctx context.Context, config Config, request Request) (Result, Trace, error) {
+	trace := Trace{Service: "openrouter", RequestedModel: request.Model}
+
+	ctx, cancel := context.WithTimeout(ctx, apiTimeout(config.Timeout))
 	defer cancel()
 
 	var response openRouterResponse
@@ -42,31 +39,20 @@ func (a openRouterAdapter) evaluate(ctx context.Context, api agent.JevAPI, reque
 
 		return decodeErr
 	})
-
 	trace.Attempts = attempts
+
 	if err != nil {
 		return Result{}, trace, err
 	}
 
-	if !strings.HasPrefix(response.Model, "typesafe/jev-") {
-		return Result{}, trace, responseError("decode response", "actual model is not an OpenRouter TypeSafe Jev model")
+	if strings.TrimSpace(response.Model) == "" {
+		return Result{}, trace, responseError("decode response", "actual model must not be blank")
 	}
 
-	if response.Provider != "" && !strings.EqualFold(response.Provider, "typesafe") {
-		return Result{}, trace, responseError("decode response", "actual provider is not TypeSafe")
-	}
-
-	result := Result{
-		API:            "openrouter",
-		Provider:       response.Provider,
-		RequestID:      response.ID,
-		RequestedModel: request.Model,
-		Model:          response.Model,
-		Answers:        response.Answers,
-		Usage:          response.Usage,
-	}
-
-	return result, trace, nil
+	return Result{
+		Service: "openrouter", Provider: response.Provider, RequestID: response.ID,
+		RequestedModel: request.Model, Model: response.Model, Answers: response.Answers, Usage: response.Usage,
+	}, trace, nil
 }
 
 func decodeOpenRouterResponse(data []byte) (openRouterResponse, error) {
@@ -101,11 +87,5 @@ func decodeOpenRouterResponse(data []byte) (openRouterResponse, error) {
 
 	usage := &Usage{InputTokens: *envelope.Usage.InputTokens, OutputTokens: *envelope.Usage.OutputTokens, Cost: envelope.Usage.Cost}
 
-	return openRouterResponse{
-		ID: envelope.ID, Model: envelope.Model, Provider: envelope.Provider, Answers: answers, Usage: usage,
-	}, nil
-}
-
-func validOpenRouterModel(model string) bool {
-	return strings.HasPrefix(model, "typesafe/jev-") || strings.HasPrefix(model, "~typesafe/jev-")
+	return openRouterResponse{ID: envelope.ID, Model: envelope.Model, Provider: envelope.Provider, Answers: answers, Usage: usage}, nil
 }
