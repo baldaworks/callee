@@ -18,6 +18,7 @@ Callee is a CLI runtime for provider-backed agents and deterministic workflows d
 
 ## Maintain the project
 
+- [ADR 0001: Native Jev evaluation node](adr/0001-native-jev-evaluation-node.md) records a provisional integration proposal intended for later supersession; it does not describe a shipped node kind.
 - [Development and validation](contributing/development.md) covers the repository layout, toolchain, local checks, focused validation, and documentation maintenance.
 - [Release process](contributing/release.md) records the tag-triggered release sequence, versioned surfaces, remote quality gate, artifact publication, and post-release verification.
 
