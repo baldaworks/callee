@@ -36,5 +36,6 @@ Thumbs.db
 
 # Logs and temporary files
 *.log
+.beads.gate.lock
 tmp/
 temp/
