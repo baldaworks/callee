@@ -1,9 +1,9 @@
 # ADR 0001: Native Jev evaluation node
 
-- Status: Proposed — provisional
+- Status: Superseded
 - Date: 2026-09-20
 - Supersedes: None
-- Superseded by: None yet; a later ADR is expected to replace this proposal.
+- Superseded by: [ADR 0002](0002-native-jev-node-and-api-adapters.md)
 
 ## Context
 

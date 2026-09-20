@@ -493,7 +493,7 @@ func agentListCommand() *cobra.Command {
 			return out.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, Sequential, Loop, or Router")
+	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, Jev, Sequential, Loop, or Router")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the catalog as JSON")
 
 	return cmd
@@ -568,10 +568,10 @@ func parseKindFilter(value string) (resource.Kind, error) {
 	switch resource.Kind(value) {
 	case "":
 		return "", nil
-	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.SequentialKind, resource.LoopKind, resource.RouterKind:
+	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.JevKind, resource.SequentialKind, resource.LoopKind, resource.RouterKind:
 		return resource.Kind(value), nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Sequential, Loop, or Router)", value)
+		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, Jev, Sequential, Loop, or Router)", value)
 	}
 }
 
@@ -649,6 +649,13 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 			" shell=%s onNonZero=%s",
 			node.Resource.ScriptShell(),
 			node.Resource.NonZeroPolicy(),
+		)
+	case resource.JevKind:
+		policy += fmt.Sprintf(
+			" api=%s model=%s timeout=%s",
+			node.Resource.Spec.API.Type,
+			node.Resource.JevModel(),
+			node.Resource.JevTimeout(),
 		)
 	case resource.LoopKind:
 		maxIterations := 0

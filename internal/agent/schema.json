@@ -5,6 +5,7 @@
     { "$ref": "#/$defs/role" },
     { "$ref": "#/$defs/script" },
     { "$ref": "#/$defs/human" },
+    { "$ref": "#/$defs/jev" },
     { "$ref": "#/$defs/sequential" },
     { "$ref": "#/$defs/loop" },
     { "$ref": "#/$defs/router" }
@@ -57,7 +58,8 @@
       "not": {
         "anyOf": [
           { "required": ["outputs"] },
-          { "required": ["scripts"] }
+          { "required": ["scripts"] },
+          { "required": ["evaluations"] }
         ]
       },
       "additionalProperties": { "$ref": "#/$defs/stateValue" }
@@ -107,6 +109,129 @@
           "not": { "required": ["route"] }
         }
       ],
+      "additionalProperties": false
+    },
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "jsonContent": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "jevAPI": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["typesafe", "openrouter"] },
+        "model": { "type": "string", "minLength": 1 },
+        "timeout": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "typesafe" } }, "required": ["type"] },
+          "then": { "properties": { "model": { "pattern": "^jev-" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "openrouter" } }, "required": ["type"] },
+          "then": { "properties": { "model": { "pattern": "^~?typesafe/jev-" } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "jevChoiceQuestion": {
+      "type": "object",
+      "required": ["type", "instructions", "criteria"],
+      "properties": {
+        "type": { "const": "choice" },
+        "instructions": { "$ref": "#/$defs/jsonContent" },
+        "criteria": {
+          "type": "object",
+          "minProperties": 2,
+          "maxProperties": 255,
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "jevNoulQuestion": {
+      "type": "object",
+      "required": ["type", "instructions"],
+      "properties": {
+        "type": { "const": "noul" },
+        "instructions": { "$ref": "#/$defs/jsonContent" },
+        "criteria": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 2,
+          "properties": {
+            "true": { "$ref": "#/$defs/jsonValue" },
+            "false": { "$ref": "#/$defs/jsonValue" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "jevScoreQuestion": {
+      "type": "object",
+      "required": ["type", "instructions", "criteria"],
+      "properties": {
+        "type": { "const": "score" },
+        "instructions": { "$ref": "#/$defs/jsonContent" },
+        "criteria": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/jsonValue" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "jevQuestion": {
+      "oneOf": [
+        { "$ref": "#/$defs/jevChoiceQuestion" },
+        { "$ref": "#/$defs/jevNoulQuestion" },
+        { "$ref": "#/$defs/jevScoreQuestion" }
+      ]
+    },
+    "jev": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "Jev" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "api", "questions"],
+          "properties": {
+            "description": { "type": "string" },
+            "api": { "$ref": "#/$defs/jevAPI" },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 },
+            "evidence": { "$ref": "#/$defs/jsonContent" },
+            "questions": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": { "$ref": "#/$defs/jevQuestion" }
+            }
+          },
+          "oneOf": [
+            { "required": ["body"], "not": { "required": ["evidence"] } },
+            { "required": ["evidence"], "not": { "required": ["body"] } }
+          ],
+          "additionalProperties": false
+        }
+      },
       "additionalProperties": false
     },
     "role": {

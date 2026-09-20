@@ -29,7 +29,7 @@ Some tests and integrations also exercise platform or external boundaries:
 
 ## Product guardrails
 
-The Workflows API is a clean break. Its supported kinds are `Role`, `Script`, `Human`, `Sequential`, `Loop`, and deterministic single-branch `Router`. Do not restore legacy `exec` or `role` commands, selector-based agent roles, thread flags, or unversioned Role resources. Do not add `Parallel`, fan-out, arbitrary graph edges, Gemini, a server transport, a Callee thread store, handle binding, or duplicated ACP process logic without an explicit product decision.
+The Workflows API is a clean break. Its supported kinds are `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and deterministic single-branch `Router`. Do not restore legacy `exec` or `role` commands, selector-based agent roles, thread flags, or unversioned Role resources. Do not add `Parallel`, fan-out, arbitrary graph edges, Gemini, a server transport, a Callee thread store, handle binding, or duplicated ACP process logic without an explicit product decision.
 
 One root run owns one state object. Every Role visit owns a fresh provider session. Norma Runtime remains the ACP process layer.
 

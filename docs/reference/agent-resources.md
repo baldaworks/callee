@@ -1,6 +1,6 @@
 # Agent resource format
 
-Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|Sequential|Loop|Router>` to print a standalone schema document for one kind.
+Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|Jev|Sequential|Loop|Router>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 
@@ -29,7 +29,7 @@ kind: Role
 spec: {}
 ```
 
-The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `Sequential`, `Loop`, and `Router`. Unknown fields are rejected at every schema-defined object boundary.
+The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and `Router`. Unknown fields are rejected at every schema-defined object boundary.
 
 ## Markdown and YAML representations
 
@@ -69,30 +69,33 @@ A YAML file must contain exactly one UTF-8 document. Markdown frontmatter and it
 
 ## Common `spec` fields
 
-All kinds require a nonblank `description` and nonblank `body`. Every kind may declare `state`, whose values are described under [State modifiers](#state-modifiers).
+All kinds require a nonblank `description`. Jev requires exactly one of `body` or structured `evidence`; every other kind requires a nonblank `body`. Every kind may declare `state`, whose values are described under [State modifiers](#state-modifiers).
 
 The supported fields differ by kind:
 
-| Field | Role | Script | Human | Sequential | Loop | Router |
-| --- | --- | --- | --- | --- | --- | --- |
-| `description` | Required | Required | Required | Required | Required | Required |
-| `body` | Required | Required | Required | Required | Required | Required |
-| `state` | Optional | Optional | Optional | Optional | Optional | Optional |
-| `provider` | Required | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `permissions` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `interactive` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `params` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `responseKey` | Not allowed | Not allowed | Required, nonblank | Not allowed | Not allowed | Not allowed |
-| `shell` | Not allowed | Optional: `sh` or `bash` | Not allowed | Not allowed | Not allowed | Not allowed |
-| `cwd` | Not allowed | Optional | Not allowed | Not allowed | Not allowed | Not allowed |
-| `env` | Not allowed | Optional string map | Not allowed | Not allowed | Not allowed | Not allowed |
-| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Not allowed | Not allowed | Not allowed |
-| `onNonZero` | Not allowed | Optional: `fail` or `continue` | Not allowed | Not allowed | Not allowed | Not allowed |
-| `children` | Not allowed | Not allowed | Not allowed | Required, nonempty | Required, nonempty | Required, nonempty mappings |
-| `route` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required, nonblank |
-| `output` | Not allowed | Not allowed | Not allowed | Optional | Optional | Optional |
-| `maxIterations` | Not allowed | Not allowed | Not allowed | Not allowed | Required, integer at least 1 | Not allowed |
-| `onExhausted` | Not allowed | Not allowed | Not allowed | Not allowed | Optional: `fail` or `complete` | Not allowed |
+| Field | Role | Script | Human | Jev | Sequential | Loop | Router |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `description` | Required | Required | Required | Required | Required | Required | Required |
+| `body` | Required | Required | Required | One of body/evidence | Required | Required | Required |
+| `evidence` | Not allowed | Not allowed | Not allowed | One of body/evidence | Not allowed | Not allowed | Not allowed |
+| `state` | Optional | Optional | Optional | Optional | Optional | Optional | Optional |
+| `api` | Not allowed | Not allowed | Not allowed | Required | Not allowed | Not allowed | Not allowed |
+| `questions` | Not allowed | Not allowed | Not allowed | Required, nonempty | Not allowed | Not allowed | Not allowed |
+| `provider` | Required | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `permissions` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `interactive` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `params` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `responseKey` | Not allowed | Not allowed | Required, nonblank | Not allowed | Not allowed | Not allowed | Not allowed |
+| `shell` | Not allowed | Optional: `sh` or `bash` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `cwd` | Not allowed | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `env` | Not allowed | Optional string map | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Under `api` | Not allowed | Not allowed | Not allowed |
+| `onNonZero` | Not allowed | Optional: `fail` or `continue` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `children` | Not allowed | Not allowed | Not allowed | Not allowed | Required, nonempty | Required, nonempty | Required, nonempty mappings |
+| `route` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required, nonblank |
+| `output` | Not allowed | Not allowed | Not allowed | Not allowed | Optional | Optional | Optional |
+| `maxIterations` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required, integer at least 1 | Not allowed |
+| `onExhausted` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Optional: `fail` or `complete` | Not allowed |
 
 ## Role
 
@@ -176,9 +179,60 @@ spec:
 
 The body uses the restricted template surface: `.Prompt`, `.Input`, and `.State` are available, while `.Params` and `.Output` are not.
 
-`spec.responseKey` names the top-level shared-state entry that receives the collected operator response. The key must be nonblank and cannot be the reserved `outputs` or `scripts` keys.
+`spec.responseKey` names the top-level shared-state entry that receives the collected operator response. The key must be nonblank and cannot be the reserved `outputs`, `scripts`, or `evaluations` keys.
 
 At runtime, Callee renders `body`, displays the rendered text on the controlling terminal, prompts once for a nonblank response, stores that string at `State[responseKey]`, and also promotes it to `State.outputs[effectiveId]`.
+
+## Jev
+
+A `Jev` is a typed remote judgment leaf. It batches every question into one
+request and never starts ACP, a shell, or a tool:
+
+```yaml
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Jev
+spec:
+  description: Classifies a support request.
+  api:
+    type: typesafe
+    model: jev-1.13
+    timeout: 30s
+  evidence:
+    request: "{{ .Input }}"
+    customerTier: "{{ .State.customerTier }}"
+  questions:
+    urgent:
+      type: noul
+      instructions: Is this request urgent?
+    queue:
+      type: choice
+      instructions: Select the handling queue.
+      criteria:
+        support: Product support work.
+        security: A possible security incident.
+```
+
+`spec.api.type` is `typesafe` or `openrouter`. TypeSafe defaults to
+`jev-latest` and reads `TYPESAFE_API_KEY`; OpenRouter defaults to
+`~typesafe/jev-latest` and reads `OPENROUTER_API_KEY`. OpenRouter uses
+`/api/alpha/decisions`, not chat completions, and accepts only TypeSafe Jev
+models. Moving aliases trade reproducibility for upgrades; use a concrete model
+when a stable policy decision matters. The explicit evidence and questions are
+sent to the selected remote service.
+
+Use exactly one evidence representation: Markdown body for a string, or
+`spec.evidence` for a JSON-compatible string, object, or array. String leaves in
+evidence, instructions, and criteria use the restricted template surface.
+`noul` accepts optional true/false criteria, `choice` requires 2–255 named
+choices, and `score` requires 2–10 ordered levels. OpenRouter requires both
+true and false when noul criteria are supplied.
+
+A validated result is stored structurally at
+`State.evaluations[effectiveId]`; the same deterministic compact JSON is stored
+at `State.outputs[effectiveId]` and returned as the artifact. Failed visits do
+not publish partial data. Lifecycle logs expose only bounded API/model,
+attempt, usage/cost, request/provider, and error-class fields. Jev contributes
+no run metrics.
 
 ## Composite children
 

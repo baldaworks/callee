@@ -123,6 +123,65 @@ func TestRunAgentsClosesProviderAfterGroupTimeout(t *testing.T) {
 	}
 }
 
+func TestRunAgentsChecksJevCredentialsWithoutInference(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "typesafe-key")
+	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
+
+	jevs := []agent.Resource{
+		doctorJev("judges/native", "typesafe"),
+		doctorJev("judges/router", "openrouter"),
+	}
+
+	var stdout bytes.Buffer
+	if err := RunAgents(context.Background(), jevs, nil, time.Second, &stdout); err != nil {
+		t.Fatalf("RunAgents() error: %v", err)
+	}
+
+	for _, want := range []string{`agent "judges/native": ok`, `agent "judges/router": ok`, "callee doctor: ok"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout %q does not contain %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunAgentsRequiresOnlyMatchingJevCredential(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
+
+	factory := &doctorFactory{process: &doctorProcess{}}
+
+	err := RunAgents(context.Background(), []agent.Resource{
+		doctorJev("judges/native", "typesafe"),
+		doctorJev("judges/router", "openrouter"),
+	}, factory, time.Second, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "TYPESAFE_API_KEY") || strings.Contains(err.Error(), "OPENROUTER_API_KEY is required") {
+		t.Fatalf("RunAgents() error = %v, want only missing TypeSafe credential", err)
+	}
+
+	if factory.starts != 0 {
+		t.Fatalf("provider starts = %d, want 0 for Jev-only doctor", factory.starts)
+	}
+}
+
+func TestRunAgentsChecksMixedRoleAndJevResources(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "typesafe-key")
+	t.Setenv("OPENROUTER_API_KEY", "")
+
+	factory := &doctorFactory{process: &doctorProcess{}}
+
+	err := RunAgents(context.Background(), []agent.Resource{
+		doctorRole("roles/worker", ""),
+		doctorJev("judges/router", "openrouter"),
+	}, factory, time.Second, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), `agent "judges/router"`) || !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
+		t.Fatalf("RunAgents() error = %v, want missing OpenRouter credential", err)
+	}
+
+	if factory.starts != 1 {
+		t.Fatalf("provider starts = %d, want Role runtime check despite Jev credential failure", factory.starts)
+	}
+}
+
 func TestWriteGraphFormats(t *testing.T) {
 	t.Parallel()
 
@@ -286,6 +345,22 @@ func doctorRole(id, model string) agent.Resource {
 			Provider:    &agent.Provider{Type: "codex", Model: model},
 			Interactive: &repl,
 			Body:        "{{ .Input }}",
+		},
+	}
+}
+
+func doctorJev(id, apiType string) agent.Resource {
+	return agent.Resource{
+		APIVersion: agent.APIVersion,
+		Kind:       agent.JevKind,
+		ID:         id,
+		Spec: agent.Spec{
+			Description: id,
+			API:         &agent.JevAPI{Type: apiType},
+			Body:        "{{ .Input }}",
+			Questions: map[string]agent.JevQuestion{
+				"ready": {Type: "noul", Instructions: "Ready?"},
+			},
 		},
 	}
 }

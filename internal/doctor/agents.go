@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -27,37 +28,100 @@ type sessionGroup struct {
 }
 
 // RunAgents checks every versioned Role provider group without sending a model
-// prompt. Static resource and graph validation must already have succeeded.
+// prompt and verifies Jev credential presence without inference. Static
+// resource and graph validation must already have succeeded.
 func RunAgents(ctx context.Context, resources []resource.Resource, factory runtime.ProcessFactory, timeout time.Duration, stdout io.Writer) error {
-	if factory == nil {
-		return fmt.Errorf("callee doctor: process factory is required")
-	}
-
 	if timeout <= 0 {
 		return fmt.Errorf("callee doctor: timeout must be greater than zero")
 	}
 
-	roles := make([]resource.Resource, 0)
+	roles, jevs := executableResources(resources)
+	if len(roles) == 0 && len(jevs) == 0 {
+		return fmt.Errorf("callee doctor: no Role or Jev resources found")
+	}
 
-	for _, item := range resources {
-		if item.Kind == resource.RoleKind {
-			roles = append(roles, item)
+	if len(roles) > 0 && factory == nil {
+		return fmt.Errorf("callee doctor: process factory is required")
+	}
+
+	resourceFailures := checkJevCredentials(jevs)
+	checkRoleResources(ctx, roles, factory, timeout, resourceFailures)
+
+	var failures []error
+
+	checked := append(append([]resource.Resource(nil), roles...), jevs...)
+	sort.Slice(checked, func(i, j int) bool { return checked[i].ID < checked[j].ID })
+
+	for _, item := range checked {
+		if err := resourceFailures[item.ID]; err != nil {
+			failures = append(failures, fmt.Errorf("agent %q: %w", item.ID, err))
 		}
 	}
 
-	if len(roles) == 0 {
-		return fmt.Errorf("callee doctor: no Role resources found")
+	if len(failures) > 0 {
+		return fmt.Errorf("callee doctor found %d failing executable resource(s): %w", len(failures), errors.Join(failures...))
+	}
+
+	var report bytes.Buffer
+
+	for _, item := range checked {
+		_, _ = fmt.Fprintf(&report, "agent %q: ok\n", item.ID)
+	}
+
+	_, _ = fmt.Fprintln(&report, "callee doctor: ok")
+
+	if _, err := io.Copy(stdout, &report); err != nil {
+		return fmt.Errorf("write doctor report: %w", err)
+	}
+
+	return nil
+}
+
+func executableResources(resources []resource.Resource) ([]resource.Resource, []resource.Resource) {
+	roles := make([]resource.Resource, 0)
+	jevs := make([]resource.Resource, 0)
+
+	for _, item := range resources {
+		switch item.Kind {
+		case resource.RoleKind:
+			roles = append(roles, item)
+		case resource.JevKind:
+			jevs = append(jevs, item)
+		}
 	}
 
 	sort.Slice(roles, func(i, j int) bool { return roles[i].ID < roles[j].ID })
+	sort.Slice(jevs, func(i, j int) bool { return jevs[i].ID < jevs[j].ID })
 
+	return roles, jevs
+}
+
+func checkJevCredentials(jevs []resource.Resource) map[string]error {
+	failures := make(map[string]error)
+
+	for _, jev := range jevs {
+		credential := jevCredential(jev)
+		if strings.TrimSpace(os.Getenv(credential)) == "" {
+			failures[jev.ID] = fmt.Errorf("environment variable %s is required for Jev API %q", credential, jev.Spec.API.Type)
+		}
+	}
+
+	return failures
+}
+
+func checkRoleResources(
+	ctx context.Context,
+	roles []resource.Resource,
+	factory runtime.ProcessFactory,
+	timeout time.Duration,
+	resourceFailures map[string]error,
+) {
 	groupsByKey := make(map[string]*providerGroup)
-	roleFailures := make(map[string]error)
 
 	for _, role := range roles {
 		provider, err := runtime.ProviderForAgent(role)
 		if err != nil {
-			roleFailures[role.ID] = err
+			resourceFailures[role.ID] = err
 
 			continue
 		}
@@ -85,35 +149,17 @@ func RunAgents(ctx context.Context, resources []resource.Resource, factory runti
 		cancel()
 
 		for roleID, err := range failures {
-			roleFailures[roleID] = errors.Join(roleFailures[roleID], err)
+			resourceFailures[roleID] = errors.Join(resourceFailures[roleID], err)
 		}
 	}
+}
 
-	var failures []error
-
-	for _, role := range roles {
-		if err := roleFailures[role.ID]; err != nil {
-			failures = append(failures, fmt.Errorf("agent %q: %w", role.ID, err))
-		}
+func jevCredential(item resource.Resource) string {
+	if item.Spec.API != nil && item.Spec.API.Type == "openrouter" {
+		return "OPENROUTER_API_KEY"
 	}
 
-	if len(failures) > 0 {
-		return fmt.Errorf("callee doctor found %d failing Role resource(s): %w", len(failures), errors.Join(failures...))
-	}
-
-	var report bytes.Buffer
-
-	for _, role := range roles {
-		_, _ = fmt.Fprintf(&report, "agent %q: ok\n", role.ID)
-	}
-
-	_, _ = fmt.Fprintln(&report, "callee doctor: ok")
-
-	if _, err := io.Copy(stdout, &report); err != nil {
-		return fmt.Errorf("write doctor report: %w", err)
-	}
-
-	return nil
+	return "TYPESAFE_API_KEY"
 }
 
 func checkAgentGroup(ctx context.Context, factory runtime.ProcessFactory, roles []resource.Resource) map[string]error {

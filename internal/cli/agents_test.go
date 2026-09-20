@@ -466,6 +466,7 @@ func TestAgentSchemaCommand(t *testing.T) {
 		{kind: "Role", definition: "role"},
 		{kind: "Script", definition: "script"},
 		{kind: "Human", definition: "human"},
+		{kind: "Jev", definition: "jev"},
 		{kind: "Sequential", definition: "sequential"},
 		{kind: "Loop", definition: "loop"},
 		{kind: "Router", definition: "router"},
@@ -514,7 +515,7 @@ func TestAgentSchemaCommandReportsKindErrors(t *testing.T) {
 		{
 			name: "unsupported kind",
 			args: []string{"agent", "schema", "Parallel"},
-			want: `unsupported kind "Parallel" (want Role, Script, Human, Sequential, Loop, or Router)`,
+			want: `unsupported kind "Parallel" (want Role, Script, Human, Jev, Sequential, Loop, or Router)`,
 		},
 	}
 
@@ -712,6 +713,60 @@ spec:
 
 	if got, want := view.ResolvedTree.Children[0].Kind, agent.HumanKind; got != want {
 		t.Fatalf("resolved child kind = %q, want %q", got, want)
+	}
+}
+
+func TestAgentListAndViewIncludeJevNodes(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+
+	writeVersionedAgent(t, dir, "judges/urgent.yaml", `apiVersion: callee.metalagman.dev/v1alpha1
+kind: Jev
+spec:
+  description: Judges urgency.
+  api:
+    type: openrouter
+    model: typesafe/jev-1.13
+    timeout: 12s
+  evidence:
+    request: '{{ .Input }}'
+    retries: 0
+  questions:
+    urgent:
+      type: noul
+      instructions: Is this request urgent?
+`)
+
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(context.Background(), []string{"agent", "list", "--kind", "Jev", "--json"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent list exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var catalog agentListOutput
+	if err := json.Unmarshal(stdout.Bytes(), &catalog); err != nil {
+		t.Fatalf("decode agent list: %v", err)
+	}
+
+	if len(catalog.Agents) != 1 || catalog.Agents[0].ResourceID != "judges/urgent" || catalog.Agents[0].Kind != agent.JevKind {
+		t.Fatalf("Jev catalog = %+v", catalog.Agents)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	if exitCode := Run(context.Background(), []string{"agent", "view", "judges/urgent"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	for _, want := range []string{
+		"judges/urgent [Jev] -> judges/urgent",
+		"api=openrouter",
+		"model=typesafe/jev-1.13",
+		"timeout=12s",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("agent view = %q, want containing %q", stdout.String(), want)
+		}
 	}
 }
 

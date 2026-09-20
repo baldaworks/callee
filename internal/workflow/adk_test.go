@@ -255,13 +255,13 @@ func TestADKCompilerSelectsOnlyNativeLeafExecutors(t *testing.T) {
 	t.Parallel()
 
 	compiler := &adkCompiler{run: &runState{}}
-	for _, kind := range []agent.Kind{agent.RoleKind, agent.ScriptKind, agent.HumanKind} {
+	for _, kind := range []agent.Kind{agent.RoleKind, agent.ScriptKind, agent.HumanKind, agent.JevKind} {
 		if execute, ok := compiler.nativeLeafExecutor(kind); !ok || execute == nil {
 			t.Errorf("nativeLeafExecutor(%q) = (%v, %t), want executor", kind, execute, ok)
 		}
 	}
 
-	for _, kind := range []agent.Kind{agent.SequentialKind, agent.LoopKind, agent.RouterKind, "Jev", "Unknown"} {
+	for _, kind := range []agent.Kind{agent.SequentialKind, agent.LoopKind, agent.RouterKind, "Unknown"} {
 		if execute, ok := compiler.nativeLeafExecutor(kind); ok || execute != nil {
 			t.Errorf("nativeLeafExecutor(%q) = (%v, %t), want no executor", kind, execute, ok)
 		}
@@ -290,10 +290,10 @@ func TestADKCompileErrorIncludesResourceContextAndPreservesCause(t *testing.T) {
 	}
 
 	compiler := &adkCompiler{run: &runState{}, logger: zerolog.Nop()}
-	unsupported := &registry.ResolvedNode{EffectiveID: "judge", ResourceID: "judges/main", Kind: "Jev"}
+	unsupported := &registry.ResolvedNode{EffectiveID: "judge", ResourceID: "judges/main", Kind: "Unknown"}
 
 	_, err = compiler.compile(unsupported)
-	if err == nil || !strings.Contains(err.Error(), `unsupported kind "Jev"`) || !strings.Contains(err.Error(), `compile Jev "judge"`) {
+	if err == nil || !strings.Contains(err.Error(), `unsupported kind "Unknown"`) || !strings.Contains(err.Error(), `compile Unknown "judge"`) {
 		t.Fatalf("compile(unsupported) error = %v, want contextual unsupported-kind error", err)
 	}
 }

@@ -4,6 +4,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ const (
 	ScriptKind Kind = "Script"
 	// HumanKind identifies an operator-backed interactive leaf.
 	HumanKind Kind = "Human"
+	// JevKind identifies a remote typed-judgment leaf.
+	JevKind Kind = "Jev"
 	// SequentialKind identifies an ordered composite agent.
 	SequentialKind Kind = "Sequential"
 	// LoopKind identifies a bounded repeated composite agent.
@@ -42,6 +45,7 @@ const (
 	defaultProviderTimeout = 15 * time.Minute
 	defaultREPLTimeout     = 30 * time.Minute
 	defaultScriptShell     = "sh"
+	defaultJevTimeout      = 30 * time.Second
 )
 
 var aliasPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -68,6 +72,20 @@ type Provider struct {
 	Timeout   string   `json:"timeout,omitempty"   yaml:"timeout,omitempty"`
 }
 
+// JevAPI selects the fixed API transport used by a Jev resource.
+type JevAPI struct {
+	Type    string `json:"type"              yaml:"type"`
+	Model   string `json:"model,omitempty"   yaml:"model,omitempty"`
+	Timeout string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+}
+
+// JevQuestion defines one typed judgment in a batched Jev evaluation.
+type JevQuestion struct {
+	Type         string `json:"type"               yaml:"type"`
+	Instructions any    `json:"instructions"       yaml:"instructions"`
+	Criteria     any    `json:"criteria,omitempty" yaml:"criteria,omitempty"`
+}
+
 // Child identifies one ordered child occurrence in a composite.
 type Child struct {
 	Ref         string            `json:"ref"                   yaml:"ref"`
@@ -82,25 +100,28 @@ type Child struct {
 
 // Spec contains kind-specific authored configuration.
 type Spec struct {
-	Description   string            `json:"description"             yaml:"description"`
-	Provider      *Provider         `json:"provider,omitempty"      yaml:"provider,omitempty"`
-	Permissions   *Permissions      `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
-	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
-	LegacyREPL    *bool             `json:"repl,omitempty"          yaml:"repl,omitempty"`
-	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
-	ResponseKey   string            `json:"responseKey,omitempty"   yaml:"responseKey,omitempty"`
-	Shell         string            `json:"shell,omitempty"         yaml:"shell,omitempty"`
-	Cwd           string            `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
-	Env           map[string]string `json:"env,omitempty"           yaml:"env,omitempty"`
-	Timeout       string            `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
-	OnNonZero     string            `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
-	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
-	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
-	Route         string            `json:"route,omitempty"         yaml:"route,omitempty"`
-	Body          string            `json:"body"                    yaml:"body,omitempty"`
-	Output        string            `json:"output,omitempty"        yaml:"output,omitempty"`
-	MaxIterations *int              `json:"maxIterations,omitempty" yaml:"maxIterations,omitempty"`
-	OnExhausted   string            `json:"onExhausted,omitempty"   yaml:"onExhausted,omitempty"`
+	Description   string                 `json:"description"             yaml:"description"`
+	Provider      *Provider              `json:"provider,omitempty"      yaml:"provider,omitempty"`
+	API           *JevAPI                `json:"api,omitempty"           yaml:"api,omitempty"`
+	Evidence      any                    `json:"evidence,omitempty"      yaml:"evidence,omitempty"`
+	Questions     map[string]JevQuestion `json:"questions,omitempty"     yaml:"questions,omitempty"`
+	Permissions   *Permissions           `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
+	Interactive   *bool                  `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
+	LegacyREPL    *bool                  `json:"repl,omitempty"          yaml:"repl,omitempty"`
+	Params        map[string]string      `json:"params,omitempty"        yaml:"params,omitempty"`
+	ResponseKey   string                 `json:"responseKey,omitempty"   yaml:"responseKey,omitempty"`
+	Shell         string                 `json:"shell,omitempty"         yaml:"shell,omitempty"`
+	Cwd           string                 `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
+	Env           map[string]string      `json:"env,omitempty"           yaml:"env,omitempty"`
+	Timeout       string                 `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
+	OnNonZero     string                 `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
+	State         map[string]any         `json:"state,omitempty"         yaml:"state,omitempty"`
+	Children      []Child                `json:"children,omitempty"      yaml:"children,omitempty"`
+	Route         string                 `json:"route,omitempty"         yaml:"route,omitempty"`
+	Body          string                 `json:"body"                    yaml:"body,omitempty"`
+	Output        string                 `json:"output,omitempty"        yaml:"output,omitempty"`
+	MaxIterations *int                   `json:"maxIterations,omitempty" yaml:"maxIterations,omitempty"`
+	OnExhausted   string                 `json:"onExhausted,omitempty"   yaml:"onExhausted,omitempty"`
 }
 
 // Resource is one canonical agent resource. ID and Source are discovery data
@@ -204,6 +225,37 @@ func (r Resource) ScriptTimeout() time.Duration {
 	return value
 }
 
+// JevTimeout returns the total budget for one Jev visit.
+func (r Resource) JevTimeout() time.Duration {
+	if r.Spec.API == nil || strings.TrimSpace(r.Spec.API.Timeout) == "" {
+		return defaultJevTimeout
+	}
+
+	value, err := time.ParseDuration(r.Spec.API.Timeout)
+	if err != nil {
+		return defaultJevTimeout
+	}
+
+	return value
+}
+
+// JevModel returns the selected model or the transport-specific stable alias.
+func (r Resource) JevModel() string {
+	if r.Spec.API == nil {
+		return ""
+	}
+
+	if model := strings.TrimSpace(r.Spec.API.Model); model != "" {
+		return model
+	}
+
+	if r.Spec.API.Type == "openrouter" {
+		return "~typesafe/jev-latest"
+	}
+
+	return "jev-latest"
+}
+
 // NonZeroPolicy reports the effective Script exit handling policy.
 func (r Resource) NonZeroPolicy() string {
 	if r.Spec.OnNonZero == "" {
@@ -236,7 +288,7 @@ func (r Resource) validateCommon() error {
 		return fmt.Errorf("agent %q: spec.description must not be blank", r.ID)
 	}
 
-	if strings.TrimSpace(r.Spec.Body) == "" {
+	if r.Kind != JevKind && strings.TrimSpace(r.Spec.Body) == "" {
 		return fmt.Errorf("agent %q: spec.body must not be blank", r.ID)
 	}
 
@@ -340,6 +392,8 @@ func (r Resource) validateKind() error {
 		return r.validateScript()
 	case HumanKind:
 		return r.validateHuman()
+	case JevKind:
+		return r.validateJev()
 	case SequentialKind, LoopKind, RouterKind:
 		if _, err := ParseTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
 			return err
@@ -362,6 +416,224 @@ func (r Resource) validateKind() error {
 		}
 	default:
 		return fmt.Errorf("agent %q: unsupported kind %q", r.ID, r.Kind)
+	}
+
+	return nil
+}
+
+func (r Resource) validateJev() error {
+	hasBody := strings.TrimSpace(r.Spec.Body) != ""
+	hasEvidence := r.Spec.Evidence != nil
+
+	if hasBody == hasEvidence {
+		return fmt.Errorf("agent %q: Jev requires exactly one of spec.body or spec.evidence", r.ID)
+	}
+
+	if r.Spec.API == nil {
+		return fmt.Errorf("agent %q: Jev requires spec.api", r.ID)
+	}
+
+	if err := r.validateJevAPI(); err != nil {
+		return err
+	}
+
+	if hasBody {
+		if _, err := ParseRestrictedTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
+			return err
+		}
+	} else if err := validateJevContent(r.ID+" spec.evidence", r.Spec.Evidence, false); err != nil {
+		return err
+	}
+
+	return r.validateJevQuestions()
+}
+
+func (r Resource) validateJevAPI() error {
+	switch r.Spec.API.Type {
+	case "typesafe":
+		if model := strings.TrimSpace(r.Spec.API.Model); model != "" && !strings.HasPrefix(model, "jev-") {
+			return fmt.Errorf("agent %q: spec.api.model %q must identify a TypeSafe Jev model", r.ID, r.Spec.API.Model)
+		}
+	case "openrouter":
+		if model := strings.TrimSpace(r.Spec.API.Model); model != "" &&
+			!strings.HasPrefix(model, "typesafe/jev-") && !strings.HasPrefix(model, "~typesafe/jev-") {
+			return fmt.Errorf("agent %q: spec.api.model %q must identify an OpenRouter TypeSafe Jev model", r.ID, r.Spec.API.Model)
+		}
+	default:
+		return fmt.Errorf("agent %q: spec.api.type %q must be typesafe or openrouter", r.ID, r.Spec.API.Type)
+	}
+
+	if r.Spec.API.Model != strings.TrimSpace(r.Spec.API.Model) {
+		return fmt.Errorf("agent %q: spec.api.model must not have leading or trailing whitespace", r.ID)
+	}
+
+	if r.Spec.API.Timeout != "" {
+		timeout, err := time.ParseDuration(r.Spec.API.Timeout)
+		if err != nil {
+			return fmt.Errorf("agent %q: spec.api.timeout %q: %w", r.ID, r.Spec.API.Timeout, err)
+		}
+
+		if timeout <= 0 {
+			return fmt.Errorf("agent %q: spec.api.timeout must be greater than zero", r.ID)
+		}
+	}
+
+	return nil
+}
+
+func (r Resource) validateJevQuestions() error {
+	if len(r.Spec.Questions) == 0 {
+		return fmt.Errorf("agent %q: Jev requires at least one spec.questions entry", r.ID)
+	}
+
+	for id, question := range r.Spec.Questions {
+		if strings.TrimSpace(id) == "" || id != strings.TrimSpace(id) {
+			return fmt.Errorf("agent %q: spec.questions contains invalid ID %q", r.ID, id)
+		}
+
+		path := fmt.Sprintf("%s spec.questions.%s", r.ID, id)
+		if err := validateJevContent(path+".instructions", question.Instructions, false); err != nil {
+			return err
+		}
+
+		if err := validateJevQuestion(path, r.Spec.API.Type, question); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateJevQuestion(path, apiType string, question JevQuestion) error {
+	switch question.Type {
+	case "choice":
+		return validateJevChoiceQuestion(path, question.Criteria)
+	case "score":
+		return validateJevScoreQuestion(path, question.Criteria)
+	case "noul":
+		return validateJevNoulQuestion(path, apiType, question.Criteria)
+	default:
+		return fmt.Errorf("%s.type %q must be choice, noul, or score", path, question.Type)
+	}
+}
+
+func validateJevChoiceQuestion(path string, value any) error {
+	criteria, ok := value.(map[string]any)
+	if !ok || len(criteria) < 2 || len(criteria) > 255 {
+		return fmt.Errorf("%s.criteria must be an object with 2 to 255 choices", path)
+	}
+
+	for name, description := range criteria {
+		if strings.TrimSpace(name) == "" || name != strings.TrimSpace(name) {
+			return fmt.Errorf("%s.criteria contains invalid choice %q", path, name)
+		}
+
+		if description != nil {
+			if err := validateJevContent(path+".criteria."+name, description, false); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateJevScoreQuestion(path string, value any) error {
+	criteria, ok := value.([]any)
+	if !ok || len(criteria) < 2 || len(criteria) > 10 {
+		return fmt.Errorf("%s.criteria must be an array with 2 to 10 levels", path)
+	}
+
+	for index, description := range criteria {
+		if description == nil {
+			continue
+		}
+
+		if err := validateJevContent(fmt.Sprintf("%s.criteria[%d]", path, index), description, false); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateJevNoulQuestion(path, apiType string, value any) error {
+	if value == nil {
+		return nil
+	}
+
+	criteria, ok := value.(map[string]any)
+	if !ok || len(criteria) == 0 || len(criteria) > 2 {
+		return fmt.Errorf("%s.criteria must describe true, false, or both", path)
+	}
+
+	for name, description := range criteria {
+		if name != "true" && name != "false" {
+			return fmt.Errorf("%s.criteria contains unsupported outcome %q", path, name)
+		}
+
+		if description != nil {
+			if err := validateJevContent(path+".criteria."+name, description, false); err != nil {
+				return err
+			}
+		}
+	}
+
+	if apiType == "openrouter" && len(criteria) != 2 {
+		return fmt.Errorf("%s.criteria must describe both true and false for openrouter", path)
+	}
+
+	return nil
+}
+
+func validateJevContent(path string, value any, nested bool) error {
+	switch typed := value.(type) {
+	case nil:
+		if nested {
+			return nil
+		}
+
+		return fmt.Errorf("%s must be a string, object, or array", path)
+	case string:
+		_, err := ParseRestrictedTemplate(path, typed)
+
+		return err
+	case bool, json.Number, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		if nested {
+			return nil
+		}
+
+		return fmt.Errorf("%s must be a string, object, or array", path)
+	case float32:
+		return validateJevNumber(path, float64(typed), nested)
+	case float64:
+		return validateJevNumber(path, typed, nested)
+	case []any:
+		for index, item := range typed {
+			if err := validateJevContent(fmt.Sprintf("%s[%d]", path, index), item, true); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		for key, item := range typed {
+			if err := validateJevContent(path+"."+key, item, true); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("%s contains unsupported value of type %T", path, value)
+	}
+
+	return nil
+}
+
+func validateJevNumber(path string, value float64, nested bool) error {
+	if !nested {
+		return fmt.Errorf("%s must be a string, object, or array", path)
+	}
+
+	if math.IsInf(value, 0) || math.IsNaN(value) {
+		return fmt.Errorf("%s numbers must be finite", path)
 	}
 
 	return nil
@@ -478,7 +750,7 @@ func (r Resource) validateHuman() error {
 	}
 
 	switch r.Spec.ResponseKey {
-	case "outputs", "scripts":
+	case "outputs", "scripts", "evaluations":
 		return fmt.Errorf("agent %q: spec.responseKey %q is reserved", r.ID, r.Spec.ResponseKey)
 	}
 
@@ -538,6 +810,9 @@ func (s Spec) canonicalMarshaledSpec() (specMarshalAlias, error) {
 	return specMarshalAlias{
 		Description:   s.Description,
 		Provider:      s.Provider,
+		API:           s.API,
+		Evidence:      s.Evidence,
+		Questions:     s.Questions,
 		Permissions:   s.Permissions,
 		Interactive:   interactive,
 		Params:        s.Params,
@@ -558,24 +833,27 @@ func (s Spec) canonicalMarshaledSpec() (specMarshalAlias, error) {
 }
 
 type specMarshalAlias struct {
-	Description   string            `json:"description"             yaml:"description"`
-	Provider      *Provider         `json:"provider,omitempty"      yaml:"provider,omitempty"`
-	Permissions   *Permissions      `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
-	Interactive   *bool             `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
-	Params        map[string]string `json:"params,omitempty"        yaml:"params,omitempty"`
-	ResponseKey   string            `json:"responseKey,omitempty"   yaml:"responseKey,omitempty"`
-	Shell         string            `json:"shell,omitempty"         yaml:"shell,omitempty"`
-	Cwd           string            `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
-	Env           map[string]string `json:"env,omitempty"           yaml:"env,omitempty"`
-	Timeout       string            `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
-	OnNonZero     string            `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
-	State         map[string]any    `json:"state,omitempty"         yaml:"state,omitempty"`
-	Children      []Child           `json:"children,omitempty"      yaml:"children,omitempty"`
-	Route         string            `json:"route,omitempty"         yaml:"route,omitempty"`
-	Body          string            `json:"body"                    yaml:"body,omitempty"`
-	Output        string            `json:"output,omitempty"        yaml:"output,omitempty"`
-	MaxIterations *int              `json:"maxIterations,omitempty" yaml:"maxIterations,omitempty"`
-	OnExhausted   string            `json:"onExhausted,omitempty"   yaml:"onExhausted,omitempty"`
+	Description   string                 `json:"description"             yaml:"description"`
+	Provider      *Provider              `json:"provider,omitempty"      yaml:"provider,omitempty"`
+	API           *JevAPI                `json:"api,omitempty"           yaml:"api,omitempty"`
+	Evidence      any                    `json:"evidence,omitempty"      yaml:"evidence,omitempty"`
+	Questions     map[string]JevQuestion `json:"questions,omitempty"     yaml:"questions,omitempty"`
+	Permissions   *Permissions           `json:"permissions,omitempty"   yaml:"permissions,omitempty"`
+	Interactive   *bool                  `json:"interactive,omitempty"   yaml:"interactive,omitempty"`
+	Params        map[string]string      `json:"params,omitempty"        yaml:"params,omitempty"`
+	ResponseKey   string                 `json:"responseKey,omitempty"   yaml:"responseKey,omitempty"`
+	Shell         string                 `json:"shell,omitempty"         yaml:"shell,omitempty"`
+	Cwd           string                 `json:"cwd,omitempty"           yaml:"cwd,omitempty"`
+	Env           map[string]string      `json:"env,omitempty"           yaml:"env,omitempty"`
+	Timeout       string                 `json:"timeout,omitempty"       yaml:"timeout,omitempty"`
+	OnNonZero     string                 `json:"onNonZero,omitempty"     yaml:"onNonZero,omitempty"`
+	State         map[string]any         `json:"state,omitempty"         yaml:"state,omitempty"`
+	Children      []Child                `json:"children,omitempty"      yaml:"children,omitempty"`
+	Route         string                 `json:"route,omitempty"         yaml:"route,omitempty"`
+	Body          string                 `json:"body,omitempty"          yaml:"body,omitempty"`
+	Output        string                 `json:"output,omitempty"        yaml:"output,omitempty"`
+	MaxIterations *int                   `json:"maxIterations,omitempty" yaml:"maxIterations,omitempty"`
+	OnExhausted   string                 `json:"onExhausted,omitempty"   yaml:"onExhausted,omitempty"`
 }
 
 func boolPointer(value bool) *bool {

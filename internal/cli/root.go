@@ -211,8 +211,8 @@ func doctorCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Validate agents and check configured Role runtimes",
-		Long:  "Validate the complete agent graph, then initialize every configured Role runtime without sending a model prompt.",
+		Short: "Validate agents and check executable readiness",
+		Long:  "Validate the complete agent graph, initialize configured Role runtimes without a model prompt, and check Jev credentials without inference.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			configured, err := loadAgentRegistry(cmd)

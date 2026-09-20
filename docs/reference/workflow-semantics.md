@@ -154,7 +154,7 @@ If no escalation occurs before the bound:
 
 ## Artifact promotion
 
-Every successful nonblank Role, Script, or Human artifact is written to `State.outputs[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation and a Router that propagates selected-child escalation also promote their final artifacts before returning the escalation.
+Every successful nonblank Role, Script, Human, or Jev artifact is written to `State.outputs[effectiveId]`. Jev also publishes its typed result at `State.evaluations[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation and a Router that propagates selected-child escalation also promote their final artifacts before returning the escalation.
 
 Failed outcomes are not promoted. Repeated successful visits to the same effective ID replace the previous value.
 

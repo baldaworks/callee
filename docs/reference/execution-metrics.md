@@ -63,7 +63,7 @@ Every Role `agent finished` event identifies the effective provider selections f
 
 Callee resolves model and reasoning independently. For each field, the latest concrete ACP value wins over the explicit Role value. If ACP does not report a concrete value, the explicit Role selection remains the fallback. Only when neither source supplies a concrete value does Callee emit `backend-default`. This marker does not identify or make a claim about the backend's private default. `role_provider` is always the validated Role provider type and does not use the marker.
 
-These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Script`, `Human`, `Sequential`, `Loop`, and `Router` events do not receive any `role_*` fields.
+These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Script`, `Human`, `Jev`, `Sequential`, `Loop`, and `Router` events do not receive any `role_*` fields. Jev operational data appears only as `jev_*` lifecycle log fields and is not aggregated into run metrics.
 
 ## Token fields and aggregation
 

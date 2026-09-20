@@ -62,6 +62,7 @@ List all discovered resources or filter by exact kind:
 ```bash
 callee agent list
 callee agent list --kind Role
+callee agent list --kind Jev
 callee agent list --kind Router
 callee agent list --json
 ```
@@ -93,6 +94,7 @@ Print the standalone JSON Schema for one kind:
 callee agent schema Role
 callee agent schema Script
 callee agent schema Human
+callee agent schema Jev
 callee agent schema Sequential
 callee agent schema Loop
 callee agent schema Router
@@ -106,14 +108,14 @@ callee doctor --graph mermaid
 callee doctor --graph dot
 ```
 
-Graph modes do not start provider processes. Plain doctor performs static validation first, then initializes configured Role providers and disposable sessions without sending a model prompt:
+Graph modes do not start provider processes. Plain doctor performs static validation first, then initializes configured Role providers and disposable sessions without sending a model prompt. It checks `TYPESAFE_API_KEY` for TypeSafe Jev resources and `OPENROUTER_API_KEY` for OpenRouter Jev resources without making inference calls:
 
 ```bash
 callee doctor
 callee doctor --timeout 90s
 ```
 
-The timeout is applied to each provider group. Doctor requires at least one discovered Role.
+The timeout is applied to each provider group. Doctor requires at least one discovered Role or Jev resource.
 
 Doctor graphs annotate every registry edge with its authored `canEscalate=true|false` value in text, Mermaid, and DOT output. Unlike `agent view`, this is the edge setting rather than a resolved path capability. Compare the graph with a selected resolved view when diagnosing a missing opt-in through a nested composite.
 
