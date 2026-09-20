@@ -18,7 +18,7 @@ func TestWorkflowDependencyPins(t *testing.T) {
 		"github.com/Masterminds/sprig/v3 v3.3.0",
 		"github.com/normahq/codex-acp-bridge v1.7.7",
 		"github.com/normahq/runtime/v2 v2.0.8",
-		"google.golang.org/adk/v2 v2.0.0",
+		"google.golang.org/adk/v2 v2.4.0",
 	} {
 		if !strings.Contains(string(module), dependency) {
 			t.Errorf("go.mod does not pin %q", dependency)

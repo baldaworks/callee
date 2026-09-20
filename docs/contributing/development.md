@@ -4,7 +4,7 @@ Use this guide when changing Callee itself. Repository instructions in [`AGENTS.
 
 ## Prerequisites
 
-Install the Go version declared by [`go.mod`](../../go.mod), currently Go 1.26.5. The module pins the linter and vulnerability scanner as Go tools, so separate global installations are not required for the standard checks.
+Install the Go version declared by [`go.mod`](../../go.mod), currently Go 1.26.6. The module pins the linter and vulnerability scanner as Go tools, so separate global installations are not required for the standard checks.
 
 Some tests and integrations also exercise platform or external boundaries:
 
