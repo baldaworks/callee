@@ -131,7 +131,9 @@ Runnable example packs are checked in below [`examples/`](examples). See the
 [Codex Sol + Luna pack](examples/codex/sol-luna/README.md) for a
 plan-then-implement flow and the
 [OpenCode rejudge-style pack](examples/opencode/rejudge/README.md) for a
-multi-reviewer repository panel with repo-authored prompts.
+multi-reviewer repository panel with repo-authored prompts. The
+[typed evaluation examples](examples/evaluations/README.md) include direct
+TypeSafe and OpenRouter calls plus a two-step TypeSafe `Sequential` workflow.
 
 When you are ready to make changes, run GoalKeeper through the same entrypoint:
 
@@ -483,7 +485,9 @@ deadline covers up to three attempts for retryable transport, timeout, 408,
 such as models, attempts, usage, cost, and error class; they exclude request and
 answer content. Evaluations add no metrics. See the validated
 [`TypeSafeJev`](examples/evaluations/typesafe-jev.md) and
-[`OpenRouterDecision`](examples/evaluations/openrouter-decision.md) examples.
+[`OpenRouterDecision`](examples/evaluations/openrouter-decision.md) resources,
+or run the [complete evaluation examples](examples/evaluations/README.md),
+including a two-step [`Sequential` triage](examples/evaluations/typesafe-triage.md).
 
 ### Sequential
 

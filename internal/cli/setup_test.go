@@ -553,6 +553,7 @@ func TestCheckedInExamplesFormValidAgentRegistry(t *testing.T) {
 	assertStarterWorkflowTree(t, configured, "workflows/goalkeeper", agent.LoopKind, []string{"worker", "validator"})
 	assertStarterWorkflowTree(t, configured, "workflows/task-router", agent.RouterKind, []string{"routed_implementer", "routed_reviewer", "routed_generalist"})
 	assertStarterWorkflowTree(t, configured, "workflows/routed-task", agent.SequentialKind, []string{"classifier", "router"})
+	assertStarterWorkflowTree(t, configured, "evaluations/typesafe-triage", agent.SequentialKind, []string{"triage", "recommendation"})
 }
 
 func TestWriteStarterAgentsIsRepeatable(t *testing.T) {
