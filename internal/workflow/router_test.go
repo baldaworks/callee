@@ -214,7 +214,7 @@ func TestRunnerRouterDoesNotVisitUnselectedSubtree(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	ctx := zerolog.New(&logs).WithContext(context.Background())
+	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
 
 	_, err := (Runner{
 		Root:       root,
@@ -397,7 +397,7 @@ func TestRunnerRouterPreservesCancellationAndCleanup(t *testing.T) {
 
 			var logs bytes.Buffer
 
-			ctx = zerolog.New(&logs).WithContext(ctx)
+			ctx = zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(ctx)
 
 			done := make(chan error, 1)
 
@@ -629,7 +629,7 @@ func TestRunnerRouterBoundsMatchedRouteLifecycleField(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	ctx := zerolog.New(&logs).WithContext(context.Background())
+	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
 
 	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "ticket"); err != nil {
 		t.Fatalf("Runner.Run() error: %v", err)
@@ -688,7 +688,7 @@ func TestRunnerRouterLogsNamedAndDefaultSelection(t *testing.T) {
 
 			var logs bytes.Buffer
 
-			ctx := zerolog.New(&logs).WithContext(context.Background())
+			ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
 
 			if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "ticket"); err != nil {
 				t.Fatalf("Runner.Run() error: %v", err)

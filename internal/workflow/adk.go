@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/baldaworks/callee/internal/agent"
 	"github.com/baldaworks/callee/internal/registry"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	adkagent "google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/workflowagent"
 	adkrunner "google.golang.org/adk/v2/runner"
@@ -22,6 +25,17 @@ const (
 	adkAppName      = "callee"
 	adkWorkflowName = "callee_workflow"
 	adkUserID       = "callee"
+
+	maxADKNodeNameLength = 96
+)
+
+type adkNodeRole string
+
+const (
+	adkNodeRoleResource       adkNodeRole = "resource"
+	adkNodeRoleTerminal       adkNodeRole = "terminal"
+	adkNodeRoleRouterDispatch adkNodeRole = "router_dispatch"
+	adkNodeRoleRouterBranch   adkNodeRole = "router_branch"
 )
 
 // nodeExecution carries Callee execution errors as workflow data. ADK wraps
@@ -40,20 +54,27 @@ type rootRunOutput struct {
 }
 
 type adkCompiler struct {
-	run  *runState
-	next int
+	run       *runState
+	logger    zerolog.Logger
+	next      uint64
+	exhausted bool
 }
 
 func (r *runState) runADK(ctx context.Context, root *registry.ResolvedNode, prompt string) (nodeResult, error) {
-	compiler := &adkCompiler{run: r}
+	compiler := &adkCompiler{run: r, logger: *log.Ctx(ctx)}
 
 	rootNode, err := compiler.compile(root)
 	if err != nil {
 		return nodeResult{}, err
 	}
 
+	terminalName, err := compiler.helperName(adkNodeRoleTerminal, nil, nil)
+	if err != nil {
+		return nodeResult{}, fmt.Errorf("allocate ADK terminal node name: %w", err)
+	}
+
 	terminal := workflow.NewFunctionNode(
-		compiler.nextName(),
+		terminalName,
 		func(_ adkagent.Context, execution nodeExecution) (rootRunOutput, error) {
 			return rootRunOutput{execution: execution}, nil
 		},
@@ -65,7 +86,13 @@ func (r *runState) runADK(ctx context.Context, root *registry.ResolvedNode, prom
 		Edges: workflow.Chain(workflow.Start, rootNode, terminal),
 	})
 	if err != nil {
-		return nodeResult{}, fmt.Errorf("compile ADK workflow: %w", err)
+		return nodeResult{}, fmt.Errorf(
+			"compile root %s %q (resource %q) ADK workflow: %w",
+			root.Kind,
+			root.EffectiveID,
+			root.ResourceID,
+			err,
+		)
 	}
 
 	sessions := session.InMemoryService()
@@ -141,15 +168,25 @@ func collectRootRunOutput(ctx context.Context, events func(func(*session.Event, 
 }
 
 func (c *adkCompiler) compile(node *registry.ResolvedNode) (workflow.Node, error) {
-	name := c.nextName()
+	name, err := c.resourceName(node)
+	if err != nil {
+		return nil, wrapADKCompileError(node, err)
+	}
+
+	compiled, err := c.compileNode(name, node)
+	if err != nil {
+		return nil, wrapADKCompileError(node, err)
+	}
+
+	return compiled, nil
+}
+
+func (c *adkCompiler) compileNode(name string, node *registry.ResolvedNode) (workflow.Node, error) {
+	if execute, ok := c.nativeLeafExecutor(node.Kind); ok {
+		return c.leaf(name, node, execute), nil
+	}
 
 	switch node.Kind {
-	case agent.RoleKind:
-		return c.leaf(name, node, c.run.role), nil
-	case agent.ScriptKind:
-		return c.leaf(name, node, c.run.script), nil
-	case agent.HumanKind:
-		return c.leaf(name, node, c.run.human), nil
 	case agent.RouterKind:
 		return c.compileRouter(name, node)
 	case agent.SequentialKind, agent.LoopKind:
@@ -183,6 +220,31 @@ func (c *adkCompiler) compile(node *registry.ResolvedNode) (workflow.Node, error
 	}
 }
 
+func wrapADKCompileError(node *registry.ResolvedNode, err error) error {
+	return fmt.Errorf(
+		"compile %s %q (resource %q): %w",
+		node.Kind,
+		node.EffectiveID,
+		node.ResourceID,
+		err,
+	)
+}
+
+type leafExecutor func(context.Context, *registry.ResolvedNode, string) (nodeResult, error)
+
+func (c *adkCompiler) nativeLeafExecutor(kind agent.Kind) (leafExecutor, bool) {
+	switch kind {
+	case agent.RoleKind:
+		return c.run.role, true
+	case agent.ScriptKind:
+		return c.run.script, true
+	case agent.HumanKind:
+		return c.run.human, true
+	default:
+		return nil, false
+	}
+}
+
 type routerDispatchInput struct {
 	route   string
 	payload string
@@ -211,8 +273,13 @@ func (c *adkCompiler) compileRouter(name string, node *registry.ResolvedNode) (w
 		children = append(children, compiled)
 	}
 
+	dispatchName, err := c.helperName(adkNodeRoleRouterDispatch, node, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	dispatch := workflow.NewEmittingFunctionNode(
-		c.nextName(),
+		dispatchName,
 		func(ctx adkagent.Context, input routerDispatchInput, emit func(*session.Event) error) (any, error) {
 			event := session.NewEvent(ctx, ctx.InvocationID())
 			event.Routes = []string{input.route}
@@ -231,8 +298,14 @@ func (c *adkCompiler) compileRouter(name string, node *registry.ResolvedNode) (w
 
 	for index, child := range node.Children {
 		compiledChild := children[index]
+
+		branchName, err := c.helperName(adkNodeRoleRouterBranch, node, child)
+		if err != nil {
+			return nil, err
+		}
+
 		branch := workflow.NewDynamicNode(
-			c.nextName(),
+			branchName,
 			func(ctx adkagent.Context, payload string, _ func(*session.Event) error) (routerBranchOutput, error) {
 				childInput, err := c.run.childInput(node, child, index, payload, payload)
 				if err != nil {
@@ -489,10 +562,130 @@ func (c *adkCompiler) leaf(
 	)
 }
 
-func (c *adkCompiler) nextName() string {
-	c.next++
+func (c *adkCompiler) resourceName(node *registry.ResolvedNode) (string, error) {
+	name, err := c.nextNodeName(adkNodeRoleResource, string(node.Kind), node.EffectiveID)
+	if err != nil {
+		return "", err
+	}
 
-	return fmt.Sprintf("callee_node_%06d", c.next)
+	event := c.logger.Debug().
+		Str("adk_node", name).
+		Str("node_role", string(adkNodeRoleResource)).
+		Str("id", node.EffectiveID).
+		Str("kind", string(node.Kind))
+	if node.ResourceID != node.EffectiveID {
+		event = event.Str("ref", node.ResourceID)
+	}
+
+	event.Msg("compiled ADK resource node")
+
+	return name, nil
+}
+
+func (c *adkCompiler) helperName(
+	role adkNodeRole,
+	owner *registry.ResolvedNode,
+	child *registry.ResolvedNode,
+) (string, error) {
+	identity := []string{"root"}
+	if owner != nil {
+		identity = []string{owner.EffectiveID}
+		if child != nil {
+			identity = append(identity, child.EffectiveID)
+		}
+	}
+
+	name, err := c.nextNodeName(role, identity...)
+	if err != nil {
+		return "", err
+	}
+
+	event := c.logger.Debug().
+		Str("adk_node", name).
+		Str("node_role", string(role))
+	if owner != nil {
+		event = event.Str("owner_id", owner.EffectiveID)
+	}
+
+	if child != nil {
+		event = event.Str("child_id", child.EffectiveID)
+	}
+
+	event.Msg("compiled ADK helper node")
+
+	return name, nil
+}
+
+func (c *adkCompiler) nextNodeName(role adkNodeRole, identity ...string) (string, error) {
+	if c.exhausted {
+		return "", fmt.Errorf("ADK node ordinal exhausted")
+	}
+
+	c.next++
+	if c.next == math.MaxUint64 {
+		c.exhausted = true
+	}
+
+	prefix := fmt.Sprintf("callee_%016x_%s", c.next, sanitizeADKNodeNamePart(string(role)))
+
+	parts := make([]string, 0, len(identity))
+	for _, part := range identity {
+		parts = append(parts, sanitizeADKNodeNamePart(part))
+	}
+
+	suffix := strings.Join(parts, "_")
+	if suffix == "" {
+		return prefix, nil
+	}
+
+	remaining := maxADKNodeNameLength - len(prefix) - 1
+	if remaining <= 0 {
+		return "", fmt.Errorf("ADK node name prefix %q exceeds %d bytes", prefix, maxADKNodeNameLength)
+	}
+
+	if len(suffix) > remaining {
+		suffix = strings.TrimRight(suffix[:remaining], "_")
+		if suffix == "" {
+			suffix = "node"
+		}
+	}
+
+	return prefix + "_" + suffix, nil
+}
+
+func sanitizeADKNodeNamePart(raw string) string {
+	var result strings.Builder
+
+	pendingSeparator := false
+
+	for _, char := range raw {
+		switch {
+		case char >= 'a' && char <= 'z', char >= '0' && char <= '9':
+			if pendingSeparator && result.Len() > 0 {
+				result.WriteByte('_')
+			}
+
+			result.WriteRune(char)
+
+			pendingSeparator = false
+		case char >= 'A' && char <= 'Z':
+			if pendingSeparator && result.Len() > 0 {
+				result.WriteByte('_')
+			}
+
+			result.WriteRune(char + ('a' - 'A'))
+
+			pendingSeparator = false
+		default:
+			pendingSeparator = result.Len() > 0
+		}
+	}
+
+	if result.Len() == 0 {
+		return "node"
+	}
+
+	return result.String()
 }
 
 func (r *runState) sequentialADK(

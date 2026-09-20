@@ -82,7 +82,7 @@ func TestRunnerLogsAgentLifecycleAcrossLoopVisits(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	got, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task")
@@ -205,7 +205,7 @@ func assertRoleMetrics(t *testing.T, resources []agent.Resource, usage *runtime.
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}, Metrics: metrics}).Run(ctx, "task"); err != nil {
@@ -307,7 +307,7 @@ func TestRunnerLogsRoleProviderFieldsBeforeExecutionFailure(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: &scriptedProcess{}}}).Run(ctx, "task"); err == nil {
@@ -348,7 +348,7 @@ func TestRunnerLogsObservedRoleConfigurationAfterPrepareFailure(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	if _, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task"); err == nil {
@@ -486,7 +486,7 @@ func TestRunnerInteractiveOverrideSelectsLifecycleMode(t *testing.T) {
 
 			var output bytes.Buffer
 
-			logger := zerolog.New(&output)
+			logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 			ctx := logger.WithContext(context.Background())
 
 			_, err := (Runner{
@@ -529,7 +529,7 @@ func runREPLLifecycleTest(t *testing.T, test replLifecycleTest) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}, Interactor: interactor}).Run(ctx, "task")
@@ -644,7 +644,7 @@ func TestRunnerLogsAgentDeclaredFailure(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task")
@@ -671,7 +671,7 @@ func TestRunnerLogsRuntimeErrorWithoutDuplicatingDiagnostic(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	_, err := (Runner{Root: root, Factory: &scriptedFactory{process: process}}).Run(ctx, "task")
@@ -710,7 +710,7 @@ func TestRunnerLogsTurnHeartbeatForLongRunningTurn(t *testing.T) {
 
 	output := observedHeartbeatBuffer{heartbeats: make(chan struct{}, 2)}
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	done := make(chan error, 1)
@@ -774,7 +774,7 @@ func TestRunnerSkipsTurnHeartbeatForQuickTurn(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	nowCh <- time.Unix(2_000, 0).UTC()
@@ -807,7 +807,7 @@ func TestRunnerLogsSeparateHeartbeatForREPLTurns(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	done := make(chan error, 1)
@@ -869,7 +869,7 @@ func TestRunnerStopsHeartbeatAfterTurnError(t *testing.T) {
 
 	var output bytes.Buffer
 
-	logger := zerolog.New(&output)
+	logger := zerolog.New(&output).Level(zerolog.InfoLevel)
 	ctx := logger.WithContext(context.Background())
 
 	done := make(chan error, 1)

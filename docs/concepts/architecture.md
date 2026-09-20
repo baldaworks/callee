@@ -49,6 +49,42 @@ Escalation authority belongs to child edges, not resource definitions. A Role ma
 
 At runtime, the runner creates state with engine-owned `outputs` and `scripts` maps. Each node may render a state modifier against a pre-node snapshot. A Role renders its body and calls its provider session. A Script renders and executes a local validator step, then records its structured result under `State.scripts`. A Human displays its rendered body on the controlling terminal and records the response under its configured state key. Sequential and Loop composites activate children serially. Router uses the internal ADK 2 graph scheduler to activate exactly one `StringRoute` or `Default` edge; its route key and child payload are rendered separately. Every composite may render `spec.output` to transform the natural child result. See [Workflow semantics](../reference/workflow-semantics.md) for the precise data flow.
 
+## ADK graph compilation
+
+The workflow runner compiles every resolved Callee node into an ADK node before
+execution. Resource nodes receive deterministic internal names containing a
+traversal ordinal, their Callee kind, and a sanitized effective ID. Compiler
+helpers use distinct semantic roles for the root terminal, Router dispatch, and
+Router branches. The ordinal keeps names unique when a resource occurs more than
+once or two identifiers normalize to the same text; sanitization prevents
+resource paths from becoming ADK path separators.
+
+These ADK names are private diagnostic identities. They are not resource IDs,
+selectors, state keys, or a compatibility surface. Public behavior continues to
+use Callee resource and effective IDs.
+
+Role, Script, and Human are the current native leaf kinds. One private compiler
+boundary maps each leaf kind to its own executor, while Sequential, Loop, and
+Router retain their composite compilation paths. [ADR 0001](../adr/0001-native-jev-evaluation-node.md)
+provisionally reserves Jev as a future separate native leaf. Jev is not a
+supported kind yet, and this compiler boundary does not settle its schema,
+authentication, request, result, retry, or authorization contract.
+
+With debug logging enabled, compilation emits structured mapping events before
+ADK graph construction:
+
+- `compiled ADK resource node` contains `adk_node`, `node_role=resource`,
+  `id`, `kind`, and `ref` when the resource ID differs from the effective ID;
+- `compiled ADK helper node` contains `adk_node` and `node_role`; Router helpers
+  add `owner_id`, and Router branches add `child_id`.
+
+The events contain identities only. They exclude prompts, rendered input or
+evidence, route payloads, state, artifacts, responses, headers, credentials, and
+authorization values. They are absent at the default info level and never alter
+artifact-only stdout. A future native kind that owns new operational data must
+add explicit safe logs with that implementation. Metrics and aggregation are
+separate product decisions and are unchanged by graph compilation.
+
 ## Process and session ownership
 
 A root run reuses a provider process when Roles normalize to the same public provider type and command. Session configuration does not change that process identity: `model`, `mode`, and `reasoning` are applied when creating the Role visit session.
