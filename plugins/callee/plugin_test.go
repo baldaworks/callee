@@ -12,7 +12,7 @@ import (
 	"github.com/baldaworks/callee/internal/agent"
 )
 
-const releaseVersion = "0.20.1"
+const releaseVersion = "0.21.0"
 
 func TestSkillUsesOnlyTheCLI(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "run-agent", "SKILL.md"))
@@ -549,7 +549,7 @@ func TestREADMEPresentsProductBeforeSetup(t *testing.T) {
 		"setup <host>",
 		"coding host",
 		"Coding-host",
-		"@0.20.1 setup",
+		"@0.21.0 setup",
 		"Flat frontmatter",
 		"For Codex:",
 		"callee exec --role",
