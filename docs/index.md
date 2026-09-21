@@ -1,17 +1,19 @@
 # Callee documentation
 
-Callee runs repository-defined agents and deterministic workflows authored as
-versioned Markdown or YAML. Start with setup and a first run, then use the
-task-oriented guides and precise references as needed.
+Callee turns repeatable agent work into repository-defined, statically
+validated workflows authored as versioned Markdown or YAML. A workflow can mix
+model-backed Roles, local Scripts, Human decisions, typed evaluations, and
+deterministic control flow. Start with a first run, then use the task-oriented
+guides and precise references as needed.
 
 ## Get started
 
-- [Installation](getting-started/installation.md) covers prerequisites, coding-host setup, and direct CLI installation.
+- [Installation](getting-started/installation.md) covers prerequisites, coding-agent setup, and direct CLI installation.
 - [Quickstart](getting-started/quickstart.md) takes the installed starter workflow from discovery to a completed run.
 
 ## Guides
 
-- [Coding-host integrations](guides/coding-host-integrations.md) explains the six supported hosts, installed assets, and manual setup.
+- [Coding-agent integrations](guides/coding-agent-integrations.md) explains the six supported coding agents, installed assets, and manual setup.
 - [Running agents](guides/running-agents.md) covers run modes, parameters, permissions, terminal behavior, output, and failures.
 - [Importing agents](guides/importing-agents.md) copies and validates a catalog subtree from a remote git repository.
 - [PromptKit](guides/promptkit.md) discovers templates and generates validated Roles.

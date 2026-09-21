@@ -1,6 +1,6 @@
 # ACP provider configuration
 
-Each `Role` selects one ACP backend under `spec.provider`. Coding-host setup is separate: installing Callee skills into a host does not install a provider executable or authenticate it.
+Each `Role` selects one ACP backend under `spec.provider`. Coding-agent setup is separate: installing Callee skills for a coding agent does not install a Role provider executable or authenticate it.
 
 ## Supported providers
 

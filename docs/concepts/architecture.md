@@ -1,6 +1,11 @@
 # Concepts and architecture
 
-Callee turns repository-owned agent resources into a statically validated execution tree, then runs that tree through Agent Client Protocol (ACP) providers. The design separates host-facing authoring skills from the runtime provider that supplies each model session.
+Callee turns repository-owned agent resources into a statically validated
+execution tree, then runs each leaf through the executor defined by its kind.
+Roles use ACP provider sessions through Norma Runtime. Scripts run local
+commands, Human nodes use the controlling terminal, and typed evaluation nodes
+call HTTP services directly. Coding-agent integrations are an invocation and
+authoring layer above those runtime paths.
 
 ## Core concepts
 
@@ -37,11 +42,13 @@ resolved root tree + required parameter keys
         v
 workflow runner + one shared ephemeral state object
         |
-        v
-Norma Runtime -> ACP provider processes -> fresh Role visit sessions
+        +--> Role -> Norma Runtime -> ACP provider process -> fresh session
+        +--> Script -> local shell
+        +--> Human -> controlling terminal
+        +--> TypeSafeJev / OpenRouterDecision -> HTTP API
         |
         v
-one root artifact on stdout after provider cleanup
+composite coordination -> one root artifact on stdout
 ```
 
 Discovery loads the user and project roots together. Registry construction rejects invalid resources, unresolved references, cycles, duplicate resource IDs, and duplicate effective IDs in a resolved tree before execution begins. See [Agent resource format](../reference/agent-resources.md) for discovery and validation rules.
@@ -64,11 +71,13 @@ These ADK names are private diagnostic identities. They are not resource IDs,
 selectors, state keys, or a compatibility surface. Public behavior continues to
 use Callee resource and effective IDs.
 
-Role, Script, Human, TypeSafeJev, and OpenRouterDecision are the current native leaf kinds. One private compiler
-boundary maps each leaf kind to its own executor, while Sequential, Parallel, Loop, and
-Router retain their composite compilation paths. Parallel builds a nested fan-out/Join graph. [ADR 0003](../adr/0003-explicit-typesafe-jev-and-openrouter-decisions-nodes.md)
-defines the evaluation schema, service adapters, result, retry, authorization, and
-observability contract.
+Role, Script, Human, TypeSafeJev, and OpenRouterDecision are the current native
+leaf kinds. One private compiler boundary maps each leaf kind to its own
+executor, while Sequential, Parallel, Loop, and Router retain their composite
+compilation paths. Parallel builds a nested fan-out/Join graph.
+[ADR 0003](../adr/0003-explicit-typesafe-jev-and-openrouter-decisions-nodes.md)
+defines the evaluation schema, service adapters, result, retry, authorization,
+and observability contract.
 
 With debug logging enabled, compilation emits structured mapping events before
 ADK graph construction:
@@ -100,17 +109,38 @@ The runner owns one state object for the entire root run:
 ```yaml
 outputs: {}
 scripts: {}
+evaluations: {}
 ```
 
-Authored `spec.state` and child-edge `state` values add or replace top-level keys; they cannot author `outputs` or `scripts`. Edge state wins over resource state for the same key. All string leaves are templates rendered against one immutable pre-node snapshot, and the complete modifier commits atomically.
+Authored `spec.state` and child-edge `state` values add or replace top-level keys;
+they cannot author `outputs`, `scripts`, or `evaluations`. Edge state wins over
+resource state for the same key. All string leaves are templates rendered
+against one immutable pre-node snapshot, and the complete modifier commits
+atomically.
 
-Each successful, nonblank node artifact is promoted to `State.outputs[effectiveId]`. Completed Script visits also record `status`, `exitCode`, `stdout`, `stderr`, and `timedOut` at `State.scripts[effectiveId]`. Human visits additionally store their response at the top-level key selected by `spec.responseKey`. Repeated visits use last-successful-write-wins. State is neither persisted after the command exits nor shared across root runs.
+Each successful, nonblank node artifact is promoted to
+`State.outputs[effectiveId]`. Completed Script visits also record `status`,
+`exitCode`, `stdout`, `stderr`, and `timedOut` at
+`State.scripts[effectiveId]`. Evaluation visits store their validated result at
+`State.evaluations[effectiveId]`. Human visits additionally store their response
+at the top-level key selected by `spec.responseKey`. Repeated visits use
+last-successful-write-wins. State is neither persisted after the command exits
+nor shared across root runs.
 
-## Host integration versus runtime provider
+## Coding-agent integration versus runtime execution
 
-A coding-host integration installs instructions that let Codex, Claude Code, Grok Build, Copilot CLI, OpenCode, or Cursor discover, create, and run project-defined Callee resources. It does not provide the ACP runtime used by a `Role`.
+A coding-agent integration installs instructions that let Codex, Claude Code,
+Grok Build, Copilot CLI, OpenCode, or Cursor discover, create, and run
+project-defined Callee resources. The integration invokes the same CLI as a
+direct terminal user and does not change how any node executes.
 
-The Role's `spec.provider.type` independently selects an ACP backend. For example, a project may invoke Callee through the Codex plugin while a Role uses the `claude` provider. Each provider CLI, adapter, authentication method, and required credential remains external to host setup. See [Coding-host integrations](../guides/coding-host-integrations.md) and [ACP provider configuration](../guides/acp-providers.md).
+A Role's `spec.provider.type` independently selects an ACP backend. For example,
+a project may invoke Callee through the Codex plugin while a Role uses the
+`claude` provider. Scripts, Human nodes, and evaluation nodes do not use that
+ACP backend. Each external executable, service credential, and authentication
+method remains a runtime prerequisite for the node that needs it. See
+[Coding-agent integrations](../guides/coding-agent-integrations.md) and
+[ACP provider configuration](../guides/acp-providers.md).
 
 ## Package responsibilities
 
@@ -122,7 +152,7 @@ The Role's `spec.provider.type` independently selects an ACP backend. For exampl
 | [`internal/runtime`](../../internal/runtime) | Callee-to-Norma provider normalization, ACP process reuse, and Role visit sessions. |
 | [`internal/doctor`](../../internal/doctor) | Static graph rendering and provider/session readiness checks. |
 | [`internal/cli`](../../internal/cli) | Public command surface, TTY interaction, permissions, setup, and PromptKit integration. |
-| [`plugins/callee`](../../plugins/callee) | Marketplace plugin manifests and the create/run skills distributed to coding hosts. |
+| [`plugins/callee`](../../plugins/callee) | Marketplace plugin manifests and the create/run skills distributed to coding agents. |
 
 ## Deliberate limits
 

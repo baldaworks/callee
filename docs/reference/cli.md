@@ -87,9 +87,9 @@ specific resolved occurrence.
 
 ## Setup and generation
 
-`setup <codex|claude|grok|copilot|opencode|cursor>` installs one host integration
+`setup <codex|claude|grok|copilot|opencode|cursor>` installs one coding-agent integration
 and starter catalog. See [Installation](../getting-started/installation.md) and
-[Coding-host integrations](../guides/coding-host-integrations.md).
+[Coding-agent integrations](../guides/coding-agent-integrations.md).
 
 The `promptkit` catalog commands and `promptkit role create` generate Roles;
 see [PromptKit](../guides/promptkit.md).

@@ -5,7 +5,7 @@ and provider execution in the current project.
 
 ## Before you begin
 
-Complete one route in [Installation](installation.md). A host setup command must
+Complete one route in [Installation](installation.md). A coding-agent setup command must
 have created the starter resources, and the ACP provider selected by those Roles
 must be installed and authenticated.
 

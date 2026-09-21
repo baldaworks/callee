@@ -40,10 +40,10 @@ For every Role, inspect `authoredInteractive`, effective `interactive`,
 `authoredPermissions`, and effective `permissions`. Keep permissions and the
 Role protocol independent.
 
-Choose the host execution path from this matrix. Apply an explicit
+Choose the coding-agent execution path from this matrix. Apply an explicit
 `--interactive` row first; otherwise use the effective tree rows:
 
-| Condition | Whole-run mode and Role protocol | Host path |
+| Condition | Whole-run mode and Role protocol | Coding-agent path |
 | --- | --- | --- |
 | One-shot Roles with effective `ask`, no Human | Interactive run; Roles remain one-shot | Controlling PTY |
 | One-shot Roles with effective `allow` or `deny`, no Human | Non-interactive run | Direct, without a PTY |
@@ -58,7 +58,7 @@ same checks before creating a provider, including Human nodes beneath an
 unselected Router branch.
 
 For an interactive run, use a real controlling PTY. Keep terminal interaction separate from stdout and stderr. Verify `/dev/tty` in the same shell invocation
-before launching Callee; a host tool's `tty` option alone may not create a
+before launching Callee; a coding agent's shell tool `tty` option alone may not create a
 controlling terminal. If `test -r /dev/tty && test -w /dev/tty` fails on Linux,
 allocate one with util-linux `script` and unique capture paths:
 

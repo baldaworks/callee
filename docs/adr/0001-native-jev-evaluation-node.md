@@ -81,7 +81,7 @@ Resolve the API key at runtime, initially using the documented
 `TYPESAFE_API_KEY` environment convention. A credential profile or alternative
 secret reference remains an open authoring decision. Secrets must not become
 resource literals, template values, shared-state entries, artifacts, or trace
-fields. Host plugin installation and ACP provider login do not authenticate
+fields. Coding-agent plugin installation and ACP provider login do not authenticate
 TypeSafe calls.
 
 Keep the service destination fixed in the initial integration. Any future

@@ -182,7 +182,7 @@ At runtime, Callee renders `body`, displays the rendered text on the controlling
 ## TypeSafeJev and OpenRouterDecision
 
 Both kinds are typed remote judgment leaves. They batch every question into one
-request and never starts ACP, a shell, or a tool:
+request. Neither kind starts ACP, a shell, or a tool:
 
 ```yaml
 apiVersion: callee.metalagman.dev/v1alpha1

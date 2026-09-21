@@ -1,24 +1,26 @@
 # Installation
 
-Choose a coding-host setup when you want Callee exposed as create/run skills,
+Choose a coding-agent setup when you want Callee exposed as create/run skills,
 or install the executable when you want to call the CLI directly. Both routes
 use the same resource format and runtime.
 
 ## Prerequisites
 
-- For the npm launcher and one-command host setup, install Node.js with `npm`
+- For the npm launcher and one-command coding-agent setup, install Node.js with `npm`
   and `npx`.
 - For installation from source, install the Go version declared in
   [`go.mod`](../../go.mod).
 - Before running a provider-backed Role, install and authenticate its ACP
-  provider. Host setup does not satisfy this runtime prerequisite; see
+  provider. Coding-agent setup does not satisfy this runtime prerequisite; see
   [ACP provider configuration](../guides/acp-providers.md).
+- Before running a typed evaluation, configure the credential for its TypeSafe
+  or OpenRouter HTTP service; see [Agent resources](../reference/agent-resources.md#typesafejev-and-openrouterdecision).
 
-## Set up a coding host
+## Set up a coding agent
 
 Run one command from the project root:
 
-| Host | Command |
+| Coding agent | Command |
 | --- | --- |
 | Codex | `npx --yes @baldaworks/callee@latest setup codex` |
 | Claude Code | `npx --yes @baldaworks/callee@latest setup claude` |
@@ -27,12 +29,12 @@ Run one command from the project root:
 | OpenCode | `npx --yes @baldaworks/callee@latest setup opencode` |
 | Cursor | `npx --yes @baldaworks/callee@latest setup cursor` |
 
-Setup installs the host integration and six editable starter resources. Existing
+Setup installs the coding-agent integration and six editable starter resources. Existing
 managed files are preserved; `--force` replaces them. Use `--agent-root <dir>`
 to install starter resources under a different exclusive catalog root.
 
-For host invocation names, installed paths, and manual setup, see
-[Coding-host integrations](../guides/coding-host-integrations.md).
+For coding-agent invocation names, installed paths, and manual setup, see
+[Coding-agent integrations](../guides/coding-agent-integrations.md).
 
 ## Install the CLI with npm
 

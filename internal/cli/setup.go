@@ -38,7 +38,7 @@ func setupCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "setup <codex|claude|grok|copilot|opencode|cursor>",
-		Short: "Install a host integration and starter agents",
+		Short: "Install a coding-agent integration and starter agents",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target, err := setupTargetFor(args[0])

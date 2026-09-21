@@ -10,7 +10,7 @@ The collaboration covered:
   `Sequential`, `Parallel`, `Loop`, and `Router` resource model;
 - CLI commands, runtime behavior, validation, graph inspection, and readiness
   checks;
-- coding-host setup, starter resources, runnable examples, and documentation;
+- coding-agent setup, starter resources, runnable examples, and documentation;
 - repository user experience, packaging, and release presentation.
 
 This page records project history. It does not define current product behavior;

@@ -383,7 +383,7 @@ func TestCodexSkillMetadataUsesPublicNames(t *testing.T) {
 
 func TestPublicMetadataUsesAgentPositioning(t *testing.T) {
 	for path, want := range map[string]string{
-		filepath.Join("..", "..", "README.md"):                             "## Markdown-defined agents and deterministic workflows",
+		filepath.Join("..", "..", "README.md"):                             "## Put repeatable agent work in the repository",
 		filepath.Join(".claude-plugin", "plugin.json"):                     "Run Markdown-defined agents and deterministic workflows.",
 		filepath.Join(".codex-plugin", "plugin.json"):                      "Markdown agents and deterministic workflows.",
 		filepath.Join(".cursor-plugin", "plugin.json"):                     "Run Markdown-defined agents and deterministic workflows.",
@@ -517,47 +517,38 @@ func assertJSONString(t *testing.T, path string, object map[string]json.RawMessa
 	}
 }
 
-func TestREADMEPresentsHostsEqually(t *testing.T) {
+func TestREADMEPresentsProductBeforeSetup(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(data)
-	hosts := []struct {
-		name   string
-		target string
-	}{
-		{name: "Codex", target: "codex"},
-		{name: "Claude Code", target: "claude"},
-		{name: "Grok Build", target: "grok"},
-		{name: "Copilot CLI", target: "copilot"},
-		{name: "OpenCode", target: "opencode"},
-		{name: "Cursor", target: "cursor"},
+	productIndex := strings.Index(text, "## Put repeatable agent work in the repository")
+
+	setupIndex := strings.Index(text, "## Try it")
+	if productIndex < 0 || setupIndex < 0 || productIndex >= setupIndex {
+		t.Error("README must explain the product before setup")
 	}
 
-	previous := -1
-
-	for _, host := range hosts {
-		row := "| " + host.name + " | `npx --yes @baldaworks/callee@latest setup " + host.target + "` |"
-		index := strings.Index(text, row)
-
-		if index < 0 {
-			t.Errorf("README is missing setup row %q", row)
-
-			continue
+	for _, codingAgent := range []string{
+		"Codex",
+		"Claude Code",
+		"Grok Build",
+		"Copilot CLI",
+		"OpenCode",
+		"Cursor",
+	} {
+		if !strings.Contains(text, codingAgent) {
+			t.Errorf("README is missing supported coding agent %q", codingAgent)
 		}
-
-		if index <= previous {
-			t.Errorf("README places %s outside the canonical host order", host.name)
-		}
-
-		previous = index
 	}
 
 	for _, forbidden := range []string{
 		"--sparse",
 		"setup <host>",
+		"coding host",
+		"Coding-host",
 		"@0.20.1 setup",
 		"Flat frontmatter",
 		"For Codex:",
@@ -565,7 +556,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 		"{{ prompt }}",
 	} {
 		if strings.Contains(text, forbidden) {
-			t.Errorf("README contains host-biased or stale text %q", forbidden)
+			t.Errorf("README contains stale or internal text %q", forbidden)
 		}
 	}
 
@@ -573,6 +564,7 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 		"$callee Run workflows/investigate",
 		"docs/getting-started/quickstart.md",
 		"docs/guides/running-agents.md",
+		"docs/guides/coding-agent-integrations.md",
 		"docs/reference/agent-resources.md",
 		"docs/examples/index.md",
 	} {
@@ -600,6 +592,7 @@ func TestDocumentationInformationArchitecture(t *testing.T) {
 	required := []string{
 		"docs/getting-started/installation.md",
 		"docs/getting-started/quickstart.md",
+		"docs/guides/coding-agent-integrations.md",
 		"docs/guides/coding-host-integrations.md",
 		"docs/guides/running-agents.md",
 		"docs/guides/importing-agents.md",
@@ -630,6 +623,15 @@ func TestDocumentationInformationArchitecture(t *testing.T) {
 
 	if !strings.Contains(string(pointer), "../reference/cli.md") {
 		t.Error("legacy CLI guide does not point to the canonical CLI reference")
+	}
+
+	integrationPointer, err := os.ReadFile(filepath.Join(repositoryRoot, "docs", "guides", "coding-host-integrations.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(integrationPointer), "coding-agent-integrations.md") {
+		t.Error("legacy coding-host guide does not point to the coding-agent guide")
 	}
 }
 
@@ -720,7 +722,7 @@ func TestPluginHasNoLegacyCommands(t *testing.T) {
 	}
 }
 
-func TestPluginManifestsExposeHostAppropriateSkills(t *testing.T) {
+func TestPluginManifestsExposeCodingAgentAppropriateSkills(t *testing.T) {
 	for path, want := range map[string]string{
 		filepath.Join(".claude-plugin", "plugin.json"): `"skills": "./skills/"`,
 		filepath.Join(".codex-plugin", "plugin.json"):  `"skills": "./skills/"`,

@@ -7,78 +7,96 @@
 [![npm version](https://img.shields.io/npm/v/%40baldaworks%2Fcallee)](https://www.npmjs.com/package/@baldaworks/callee)
 [![License: MIT](https://img.shields.io/github/license/baldaworks/callee)](LICENSE)
 
-## Markdown-defined agents and deterministic workflows
+## Put repeatable agent work in the repository
 
-Callee lets a repository define reusable AI agents and workflows as versioned
-Markdown or YAML. Compose provider-backed Roles with local scripts, human
-approval, typed evaluations, sequencing, parallel work, bounded loops, and
-deterministic routing. Callee validates the complete tree before execution and
-returns one final artifact through a CLI that works directly or through a
-supported coding host.
+Useful agent workflows quickly outgrow a chat prompt. They need several roles,
+local checks, approval points, routing, bounded iteration, and shared context.
+When that logic lives in one conversation, it is difficult to review,
+reproduce, or improve as a team.
 
-## Set up your coding host
+Callee turns that logic into versioned Markdown or YAML resources. Compose AI
+roles, shell scripts, human decisions, and typed model judgments with
+sequential, parallel, loop, and router control flow. Callee validates the whole
+graph before execution, carries one explicit state object through the run, and
+returns one final artifact.
 
-Run the command for your host from the project root. Setup installs Callee's
-create/run skills and six editable starter agents; provider CLIs and credentials
-remain separate prerequisites.
+- **Review the workflow like code.** Prompts, models, permissions, inputs, and
+  control flow live beside the project that uses them.
+- **Use the right kind of step.** A workflow can call a coding model, run a
+  deterministic check, ask a person, or request a typed decision from TypeSafe
+  or OpenRouter.
+- **Run it anywhere.** Invoke the same resource from a terminal or through
+  Codex, Claude Code, Grok Build, Copilot CLI, OpenCode, or Cursor.
 
-| Host | Setup | Run Agent | Create Agent |
-| --- | --- | --- | --- |
-| Codex | `npx --yes @baldaworks/callee@latest setup codex` | `$callee:run-agent` | `$callee:create-agent` |
-| Claude Code | `npx --yes @baldaworks/callee@latest setup claude` | `/callee:run-agent` | `/callee:create-agent` |
-| Grok Build | `npx --yes @baldaworks/callee@latest setup grok` | `/callee-run-agent` | `/callee-create-agent` |
-| Copilot CLI | `npx --yes @baldaworks/callee@latest setup copilot` | `/callee-run-agent` | `/callee-create-agent` |
-| OpenCode | `npx --yes @baldaworks/callee@latest setup opencode` | `callee-run-agent` skill (`/callee` wrapper) | `callee-create-agent` skill (`/callee-create-agent` wrapper) |
-| Cursor | `npx --yes @baldaworks/callee@latest setup cursor` | `callee-run-agent` skill | `callee-create-agent` skill |
+## A workflow is a small, inspectable graph
 
-Then ask the host to run a project workflow. For example, in Codex:
+This workflow runs several reviewers concurrently, then gives their combined
+output to an architect:
+
+```yaml
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Sequential
+spec:
+  description: Collects independent reviews, then produces one plan.
+  body: "{{ .Input }}"
+  children:
+    - ref: workflows/parallel-review
+      alias: reviews
+    - ref: roles/architect
+      alias: architect
+      input: |
+        Task:
+        {{ .Input }}
+
+        Reviews:
+        {{ .State.outputs.reviews }}
+  output: "{{ .State.outputs.architect }}"
+```
+
+References resolve before the run starts. Each Role visit gets a fresh model
+session; Scripts run local commands; Human nodes collect an operator response;
+typed evaluation nodes call their own HTTP APIs. Composite nodes only control
+data flow and execution order, so a child can be any resource kind.
+
+## Try it
+
+Install six editable starter resources and the integration for your coding
+agent:
+
+```bash
+npx --yes @baldaworks/callee@latest setup codex
+```
+
+Replace `codex` with `claude`, `grok`, `copilot`, `opencode`, or `cursor` as
+needed. Then inspect and run a workflow directly:
+
+```bash
+npx --yes @baldaworks/callee@latest agent view workflows/investigate
+npx --yes @baldaworks/callee@latest agent run workflows/investigate \
+  --message "Explain this project's architecture and main entry points"
+```
+
+Or ask your coding agent to run it. In Codex:
 
 ```text
 $callee Run workflows/investigate to explain this project's architecture and main entry points.
 ```
 
-See [Coding-host integrations](docs/guides/coding-host-integrations.md) for
-installed files, manual setup, invocation names, and the boundary between a
-host integration and a runtime provider.
+Provider executables and credentials are separate runtime prerequisites for
+Roles. Scripts and Human nodes need no model provider; TypeSafeJev and
+OpenRouterDecision use their respective HTTP APIs. See the
+[Quickstart](docs/getting-started/quickstart.md) for the complete first run and
+[Installation](docs/getting-started/installation.md) for CLI-only and other
+coding-agent setup options.
 
-## Minimal CLI quickstart
+## Explore
 
-Node.js with npm provides the shortest direct CLI path. After running one setup
-command from the table above:
-
-```bash
-npx --yes @baldaworks/callee@latest agent list
-npx --yes @baldaworks/callee@latest agent view workflows/investigate
-npx --yes @baldaworks/callee@latest agent run workflows/investigate --message "Explain this project's architecture and main entry points"
-```
-
-The last command validates and resolves the selected tree, starts its configured
-providers, writes lifecycle diagnostics to stderr, and writes the successful
-root artifact to stdout. Provider executables and authentication must already
-be available. See the [Quickstart](docs/getting-started/quickstart.md) for
-expected output and common first-run failures, or
-[Installation](docs/getting-started/installation.md) for global npm and Go
-installation alternatives.
-
-## How it works
-
-Callee discovers resources below the project `.callee/` directory and the user
-configuration root, validates their schema and references, and resolves one
-execution tree. A root run owns one ephemeral shared state object. Every Role
-visit receives a fresh provider session, while compatible Roles may reuse an
-ACP provider process. Composite resources control ordering, routing, fan-out,
-and bounded iteration. The CLI remains the execution boundary: Callee does not
-run a server or persist workflow threads or state.
-
-## Documentation
-
-- [Documentation hub](docs/index.md)
 - [Run agents](docs/guides/running-agents.md)
-- [Import agents](docs/guides/importing-agents.md)
-- [Agent resource reference](docs/reference/agent-resources.md)
-- [Workflow semantics](docs/reference/workflow-semantics.md)
-- [CLI reference](docs/reference/cli.md)
-- [Examples](docs/examples/index.md)
+- [Browse runnable examples](docs/examples/index.md)
+- [Author agent resources](docs/reference/agent-resources.md)
+- [Understand workflow semantics](docs/reference/workflow-semantics.md)
+- [Set up coding-agent integrations](docs/guides/coding-agent-integrations.md)
+- [Read the documentation hub](docs/index.md)
 
 ## License and notices
 

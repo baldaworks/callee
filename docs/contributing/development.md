@@ -9,7 +9,7 @@ Install the Go version declared by [`go.mod`](../../go.mod), currently Go 1.26.6
 Some tests and integrations also exercise platform or external boundaries:
 
 - PTY integration tests run on Linux and macOS;
-- host setup commands require the corresponding external host CLI only when invoked for real;
+- coding-agent setup commands require the corresponding external coding-agent CLI only when invoked for real;
 - provider readiness checks require provider executables and credentials, but unit tests use controlled fakes.
 
 ## Repository layout
@@ -24,7 +24,7 @@ Some tests and integrations also exercise platform or external boundaries:
 | [`internal/cli`](../../internal/cli) | CLI commands, setup assets, TTY interaction, and PromptKit generation. |
 | [`internal/doctor`](../../internal/doctor) | Provider checks and graph renderers. |
 | [`examples`](../../examples) | Runnable resources; starter assets are expected to match the applicable examples. |
-| [`plugins/callee`](../../plugins/callee) | Multi-host plugin manifests and skill content. |
+| [`plugins/callee`](../../plugins/callee) | Coding-agent plugin manifests and skill content. |
 | [`docs`](..) | Canonical long-form engineering documentation. |
 
 ## Product guardrails
@@ -101,7 +101,7 @@ Keep examples executable and use the current `v1alpha1` envelope. Unknown fields
 
 Plugin tests verify:
 
-- supported hosts expose only the intended create/run skills;
+- supported coding agents expose only the intended create/run skills;
 - duplicated skill variants and workflow references remain synchronized;
 - plugin and marketplace manifests carry the release version and public metadata;
 - OpenCode command wrappers load the matching skill;
