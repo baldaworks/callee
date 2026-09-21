@@ -28,6 +28,24 @@ returns one final artifact.
 - **Run it anywhere.** Invoke the same resource from a terminal or through
   Codex, Claude Code, Grok Build, Copilot CLI, OpenCode, or Cursor.
 
+## Supported agent kinds
+
+All nine public `callee.metalagman.dev/v1alpha1` kinds fit into three groups.
+See [Choose an agent kind](docs/agent-kinds/index.md) for the complete chooser.
+
+- **Leaves:** [Role](docs/agent-kinds/role.md) gives a coding agent a task;
+  [Script](docs/agent-kinds/script.md) runs a deterministic local shell step;
+  [Human](docs/agent-kinds/human.md) pauses for one operator response.
+- **Typed evaluators:** [TypeSafeJev](docs/agent-kinds/typesafe-jev.md) is the
+  native TypeSafe System One/Jev evaluator;
+  [OpenRouterDecision](docs/agent-kinds/openrouter-decision.md) uses the
+  OpenRouter Decisions API with a selected model and is not Jev-only.
+- **Composite workflows:** [Sequential](docs/agent-kinds/sequential.md) orders
+  children; [Parallel](docs/agent-kinds/parallel.md) fans out and joins
+  unattended work; [Loop](docs/agent-kinds/loop.md) repeats children within a
+  bound; [Router](docs/agent-kinds/router.md) deterministically selects one
+  branch.
+
 ## A workflow is a small, inspectable graph
 
 This workflow runs several reviewers concurrently, then gives their combined
