@@ -62,8 +62,21 @@ export OPENROUTER_API_KEY="<your-key>"
 callee --agent-root examples agent view evaluations/openrouter-decision
 callee --agent-root examples agent run evaluations/openrouter-decision \
   --message "Authentication changed without a rollback test"
+```
+
+The checked-in `examples` root also contains TypeSafeJev resources and Roles.
+To run doctor over that full catalog, set both evaluation credentials and make
+every discovered Role's configured coding-agent runtime available:
+
+```bash
+export TYPESAFE_API_KEY="<your-key>"
+export OPENROUTER_API_KEY="<your-key>"
 callee --agent-root examples doctor
 ```
+
+Otherwise, expect doctor to report readiness failures unrelated to this
+OpenRouterDecision resource. Doctor still makes no evaluation inference
+request.
 
 Use the runnable [OpenRouter Decisions example](../../examples/evaluations/openrouter-decision.md).
 See [evaluation resource fields](../reference/agent-resources.md#typesafejev-and-openrouterdecision),
