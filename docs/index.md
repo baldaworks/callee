@@ -20,6 +20,15 @@ guides and precise references as needed.
 - [ACP provider configuration](guides/acp-providers.md) configures Role backends, sessions, timeouts, and readiness checks.
 - [ACP permission requests](guides/acp-permissions.md) defines interactive and automatic permission handling.
 
+## Agent kinds
+
+Start with [Choose an agent kind](agent-kinds/index.md) for a compact comparison,
+then use the page for the resource you are authoring:
+
+- Leaf kinds: [Role](agent-kinds/role.md), [Script](agent-kinds/script.md), and [Human](agent-kinds/human.md).
+- Typed evaluators: [TypeSafeJev](agent-kinds/typesafe-jev.md) and [OpenRouterDecision](agent-kinds/openrouter-decision.md).
+- Composite workflow kinds: [Sequential](agent-kinds/sequential.md), [Parallel](agent-kinds/parallel.md), [Loop](agent-kinds/loop.md), and [Router](agent-kinds/router.md).
+
 ## Concepts and reference
 
 - [Architecture](concepts/architecture.md) explains discovery, graph compilation, shared state, kind-specific execution, and Role process/session ownership.

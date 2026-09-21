@@ -1,6 +1,8 @@
 # Agent resource format
 
-Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Parallel|Loop|Router>` to print a standalone schema document for one kind.
+Use this reference when authoring or reviewing a Callee resource. If you have
+not selected a kind yet, start with [Choose an agent kind](../agent-kinds/index.md)
+and its task-oriented kind pages. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Parallel|Loop|Router>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 

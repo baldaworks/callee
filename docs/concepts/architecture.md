@@ -7,6 +7,9 @@ commands, Human nodes use the controlling terminal, and typed evaluation nodes
 call HTTP services directly. Coding-agent integrations are an invocation and
 authoring layer above those runtime paths.
 
+For a user-facing comparison and one page per public kind, see
+[Choose an agent kind](../agent-kinds/index.md).
+
 ## Core concepts
 
 | Concept | Meaning |

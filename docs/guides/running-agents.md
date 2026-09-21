@@ -1,5 +1,8 @@
 # Running agents
 
+If you are deciding what to author rather than running an existing resource,
+start with [Choose an agent kind](../agent-kinds/index.md).
+
 Use `agent run` to validate and resolve one resource tree, execute it, and
 receive its root artifact.
 
