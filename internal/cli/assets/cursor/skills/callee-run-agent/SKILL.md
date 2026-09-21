@@ -21,7 +21,7 @@ Resolve a naturally named agent against its exact agent ID or unambiguous descri
 callee agent view "<agent-id>" --json
 ```
 
-The selected ID may identify a `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router`. Treat all kinds as the same run boundary. Do not invent a separate workflow or evaluation command.
+The selected ID may identify a `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router`. Treat all kinds as the same run boundary. Do not invent a separate workflow or evaluation command.
 
 ## Select the execution path
 
@@ -111,7 +111,8 @@ Wait for automatic root completion. The sole successful root artifact is written
 
 For a Router, read the named-route or `default=true` selection from lifecycle diagnostics. A default child handles only a blank or unknown route key. A route-template error, no-match without default, or selected-child failure is a failed run; never retry another Router branch or describe default as failure failover.
 
-Callee v1alpha1 does not define `Parallel`; do not imply parallel workflow semantics or merge PTYs.
+For a Parallel, expect descendant Roles to run one-shot with automatic permissions, wait for all started branches to join, and preserve authored ordering in the final aggregate and diagnostics. State is live and shared: completed branch commits may become visible to siblings and remain after another branch fails. Report `parallel_branches`, `parallel_started`, `parallel_completed`, `parallel_failed`, and `parallel_joined` from its finish event when present.
+
 
 ## Report results
 

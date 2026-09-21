@@ -22,7 +22,7 @@ func (r *runState) script(
 	body, err := renderRestricted(node.ResourceID+" spec.body", node.Resource.Spec.Body, agent.TemplateData{
 		Prompt: r.prompt,
 		Input:  input,
-		State:  r.state,
+		State:  r.snapshotState(),
 	})
 	if err != nil {
 		return nodeResult{}, err
@@ -80,8 +80,6 @@ func (r *runState) script(
 		"stderr":   stderr.String(),
 		"timedOut": timedOut,
 	}
-	r.recordScript(node.EffectiveID, entry)
-
 	summary := summarizeScript(status, exitCode, timedOut)
 	result := nodeResult{
 		artifact:         summary,
@@ -92,17 +90,21 @@ func (r *runState) script(
 
 	switch {
 	case timedOut:
+		r.recordScript(node.EffectiveID, entry, "")
+
 		result.outcome = outcomeFail
 
 		return result, nil
 	case exitCode != 0 && node.Resource.NonZeroPolicy() == "fail":
+		r.recordScript(node.EffectiveID, entry, "")
+
 		result.outcome = outcomeFail
 
 		return result, nil
 	default:
 		result.outcome = outcomeReturn
 
-		r.promote(node.EffectiveID, summary)
+		r.recordScript(node.EffectiveID, entry, summary)
 
 		return result, nil
 	}
@@ -116,7 +118,7 @@ func (r *runState) renderScriptCwd(node *registry.ResolvedNode, input string) (s
 	return renderRestricted(node.ResourceID+" spec.cwd", node.Resource.Spec.Cwd, agent.TemplateData{
 		Prompt: r.prompt,
 		Input:  input,
-		State:  r.state,
+		State:  r.snapshotState(),
 	})
 }
 
@@ -143,7 +145,7 @@ func (r *runState) renderScriptEnv(node *registry.ResolvedNode, input string) ([
 		rendered, err := renderRestricted(node.ResourceID+" spec.env."+name, node.Resource.Spec.Env[name], agent.TemplateData{
 			Prompt: r.prompt,
 			Input:  input,
-			State:  r.state,
+			State:  r.snapshotState(),
 		})
 		if err != nil {
 			return nil, err
@@ -167,9 +169,17 @@ func (r *runState) renderScriptEnv(node *registry.ResolvedNode, input string) ([
 	return encoded, nil
 }
 
-func (r *runState) recordScript(effectiveID string, entry map[string]any) {
+func (r *runState) recordScript(effectiveID string, entry map[string]any, artifact string) {
+	r.stateMu.Lock()
+	defer r.stateMu.Unlock()
+
 	scripts := r.state["scripts"].(map[string]any)
 	scripts[effectiveID] = entry
+
+	if artifact != "" {
+		outputs := r.state["outputs"].(map[string]string)
+		outputs[effectiveID] = artifact
+	}
 }
 
 func summarizeScript(status string, exitCode int, timedOut bool) string {

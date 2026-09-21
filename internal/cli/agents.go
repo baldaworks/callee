@@ -245,12 +245,7 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (res
 		return err
 	}
 
-	overrides := workflow.PolicyOverrides{
-		Interactive: interactiveOverride,
-		Permissions: permissionOverride,
-	}
-
-	requiresInteraction, err := workflow.TreeRequiresInteraction(root, overrides)
+	overrides, requiresInteraction, err := resolveAgentRunPolicy(root, values, interactiveOverride, permissionOverride)
 	if err != nil {
 		return err
 	}
@@ -298,6 +293,22 @@ func runWorkflowAgent(cmd *cobra.Command, id string, opts *agentRunOptions) (res
 	_, resultErr = io.WriteString(cmd.OutOrStdout(), artifact)
 
 	return resultErr
+}
+
+func resolveAgentRunPolicy(
+	root *registry.ResolvedNode,
+	values map[string]string,
+	interactive *bool,
+	permissions *resource.PermissionMode,
+) (workflow.PolicyOverrides, bool, error) {
+	overrides := workflow.PolicyOverrides{Interactive: interactive, Permissions: permissions}
+	if err := workflow.ValidateParallelPreflight(root, values, overrides); err != nil {
+		return workflow.PolicyOverrides{}, false, err
+	}
+
+	requiresInteraction, err := workflow.TreeRequiresInteraction(root, overrides)
+
+	return overrides, requiresInteraction, err
 }
 
 func prepareAgentRun(
@@ -385,7 +396,7 @@ func validateNonInteractiveRun(
 }
 
 func nonInteractiveRoleIssues(node *registry.ResolvedNode, overrides workflow.PolicyOverrides) []string {
-	policy, err := workflow.ResolveRolePolicy(node.Resource, overrides)
+	policy, err := workflow.ResolveNodeRolePolicy(node, overrides)
 	if err != nil {
 		return []string{err.Error()}
 	}
@@ -493,7 +504,7 @@ func agentListCommand() *cobra.Command {
 			return out.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, or Router")
+	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the catalog as JSON")
 
 	return cmd
@@ -568,10 +579,10 @@ func parseKindFilter(value string) (resource.Kind, error) {
 	switch resource.Kind(value) {
 	case "":
 		return "", nil
-	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.TypeSafeJevKind, resource.OpenRouterDecisionKind, resource.SequentialKind, resource.LoopKind, resource.RouterKind:
+	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.TypeSafeJevKind, resource.OpenRouterDecisionKind, resource.SequentialKind, resource.ParallelKind, resource.LoopKind, resource.RouterKind:
 		return resource.Kind(value), nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, or Router)", value)
+		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router)", value)
 	}
 }
 
@@ -687,7 +698,7 @@ func projectResolvedTree(root *registry.ResolvedNode, overrides workflow.PolicyO
 
 	projected.Children = make([]*registry.ResolvedNode, len(root.Children))
 	if root.Kind == resource.RoleKind {
-		policy, err := workflow.ResolveRolePolicy(root.Resource, overrides)
+		policy, err := workflow.ResolveNodeRolePolicy(root, overrides)
 		if err != nil {
 			return nil, err
 		}

@@ -515,8 +515,8 @@ func TestAgentSchemaCommandReportsKindErrors(t *testing.T) {
 		},
 		{
 			name: "unsupported kind",
-			args: []string{"agent", "schema", "Parallel"},
-			want: `unsupported kind "Parallel" (want Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, or Router)`,
+			args: []string{"agent", "schema", "Unknown"},
+			want: `unsupported kind "Unknown" (want Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router)`,
 		},
 	}
 

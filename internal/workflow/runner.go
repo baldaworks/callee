@@ -2,11 +2,11 @@ package workflow
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
@@ -87,6 +87,7 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		evaluationEvaluator = evaluationapi.NewEvaluator()
 	}
 
+	processCtx, cancelProcessStarts := context.WithCancel(ctx)
 	run := &runState{
 		prompt: prompt,
 		state: map[string]any{
@@ -95,9 +96,12 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 			"evaluations": map[string]any{},
 		},
 		factory:                r.Factory,
+		processCtx:             processCtx,
+		cancelProcessStarts:    cancelProcessStarts,
 		interactor:             r.Interactor,
 		params:                 copyStrings(r.Params),
 		processes:              make(map[string]runtime.ProviderProcess),
+		processStarts:          make(map[string]*processStart),
 		visits:                 make(map[string]int),
 		pauses:                 r.Pauses,
 		metrics:                metrics,
@@ -112,7 +116,16 @@ func (r Runner) Run(ctx context.Context, prompt string) (artifact string, result
 		return "", err
 	}
 
+	if err := ValidateParallelPreflight(r.Root, run.params, PolicyOverrides{
+		Interactive: r.InteractiveOverride,
+		Permissions: r.PermissionOverride,
+	}); err != nil {
+		return "", err
+	}
+
 	defer func() {
+		run.cancelProcessStarts()
+
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 		defer cancel()
 
@@ -163,15 +176,26 @@ type processStartResult struct {
 	err     error
 }
 
+type processStart struct {
+	done   chan struct{}
+	result processStartResult
+}
+
 type runState struct {
 	prompt                 string
 	state                  map[string]any
+	stateMu                sync.RWMutex
 	factory                runtime.ProcessFactory
+	processCtx             context.Context
+	cancelProcessStarts    context.CancelFunc
 	interactor             Interactor
 	params                 map[string]string
 	processes              map[string]runtime.ProviderProcess
+	processStarts          map[string]*processStart
 	started                []startedProcess
+	processMu              sync.Mutex
 	visits                 map[string]int
+	visitMu                sync.Mutex
 	pauses                 *PauseController
 	metrics                *RunMetrics
 	interactiveOverrideSet bool
@@ -181,13 +205,31 @@ type runState struct {
 	evaluationEvaluator    evaluationapi.Evaluator
 }
 
+type visitOptions struct {
+	appendFinish func(*zerolog.Event) *zerolog.Event
+}
+
 func (r *runState) visit(
 	ctx context.Context,
 	node *registry.ResolvedNode,
 	input string,
 	execute func() (nodeResult, error),
 ) (result nodeResult, resultErr error) {
+	return r.visitWithOptions(ctx, node, input, visitOptions{}, execute)
+}
+
+func (r *runState) visitWithOptions(
+	ctx context.Context,
+	node *registry.ResolvedNode,
+	input string,
+	opts visitOptions,
+	execute func() (nodeResult, error),
+) (result nodeResult, resultErr error) {
+	r.visitMu.Lock()
 	r.visits[node.EffectiveID]++
+	visit := r.visits[node.EffectiveID]
+	r.visitMu.Unlock()
+
 	if node.Kind == agent.RoleKind {
 		result.roleMetrics = newRoleMetrics(node.Resource.Spec.Provider)
 	} else if node.Resource.IsEvaluation() {
@@ -196,13 +238,13 @@ func (r *runState) visit(
 		}
 	}
 
-	logger := r.lifecycleLogger(ctx, node)
+	logger := r.lifecycleLoggerForVisit(ctx, node, visit)
 	started := time.Now()
 
 	logger.Info().Msg("running agent")
 
 	defer func() {
-		writeLifecycleFinish(logger, "agent finished", result, resultErr, started, node.Kind == agent.RoleKind, node.Resource.IsEvaluation())
+		writeLifecycleFinish(logger, "agent finished", result, resultErr, started, node.Kind == agent.RoleKind, node.Resource.IsEvaluation(), opts.appendFinish)
 	}()
 
 	if err := r.applyState(node, input); err != nil {
@@ -213,10 +255,18 @@ func (r *runState) visit(
 }
 
 func (r *runState) lifecycleLogger(ctx context.Context, node *registry.ResolvedNode) zerolog.Logger {
+	r.visitMu.Lock()
+	visit := r.visits[node.EffectiveID]
+	r.visitMu.Unlock()
+
+	return r.lifecycleLoggerForVisit(ctx, node, visit)
+}
+
+func (r *runState) lifecycleLoggerForVisit(ctx context.Context, node *registry.ResolvedNode, visit int) zerolog.Logger {
 	logger := log.Ctx(ctx).With().
 		Str("id", node.EffectiveID).
 		Str("kind", string(node.Kind)).
-		Int("visit", r.visits[node.EffectiveID]).
+		Int("visit", visit).
 		Logger()
 	if node.EffectiveID != node.ResourceID {
 		logger = logger.With().Str("ref", node.ResourceID).Logger()
@@ -233,6 +283,7 @@ func writeLifecycleFinish(
 	started time.Time,
 	includeRoleMetrics bool,
 	includeEvaluationTrace bool,
+	appendFinish func(*zerolog.Event) *zerolog.Event,
 ) {
 	event := logger.Info()
 
@@ -265,6 +316,10 @@ func writeLifecycleFinish(
 
 	if includeEvaluationTrace {
 		event = appendEvaluationTrace(event, result.evaluationTrace)
+	}
+
+	if appendFinish != nil {
+		event = appendFinish(event)
 	}
 
 	event.Dur("duration", logging.RoundElapsed(time.Since(started))).Msg(message)
@@ -352,7 +407,7 @@ func (r *runState) role(
 	body, err := render(node.ResourceID+" spec.body", node.Resource.Spec.Body, agent.TemplateData{
 		Prompt: r.prompt,
 		Input:  input,
-		State:  r.state,
+		State:  r.snapshotState(),
 		Params: params,
 	})
 	if err != nil {
@@ -386,7 +441,7 @@ func (r *runState) role(
 		logger.Info().Msg("entering repl")
 
 		defer func() {
-			writeLifecycleFinish(logger, "exiting repl", result, resultErr, started, false, false)
+			writeLifecycleFinish(logger, "exiting repl", result, resultErr, started, false, false, nil)
 		}()
 	}
 
@@ -420,7 +475,7 @@ func (r *runState) rolePolicy(node *registry.ResolvedNode) RolePolicy {
 		overrides.Permissions = &r.permissionOverride
 	}
 
-	policy, _ := ResolveRolePolicy(node.Resource, overrides)
+	policy, _ := ResolveNodeRolePolicy(node, overrides)
 
 	return policy
 }
@@ -519,9 +574,11 @@ func (r *runState) newSession(
 	defer cancelSession()
 
 	role := node.Resource
-	if r.permissionOverrideSet {
-		role.Spec.Permissions = &agent.Permissions{Mode: r.permissionOverride}
-	}
+	policy := r.rolePolicy(node)
+	interactive := policy.Interactive
+	role.Spec.Interactive = &interactive
+	role.Spec.LegacyREPL = nil
+	role.Spec.Permissions = &agent.Permissions{Mode: policy.Permissions}
 
 	session, err := process.NewSession(sessionCtx, role, node.EffectiveID)
 	if err != nil {
@@ -539,7 +596,7 @@ func (r *runState) compositeInput(node *registry.ResolvedNode, input string) (st
 	localInput, err := render(node.ResourceID+" spec.body", node.Resource.Spec.Body, agent.TemplateData{
 		Prompt: r.prompt,
 		Input:  input,
-		State:  r.state,
+		State:  r.snapshotState(),
 	})
 	if err != nil {
 		return "", err
@@ -564,7 +621,7 @@ func (r *runState) childInput(parent, child *registry.ResolvedNode, index int, l
 	return render(parent.ResourceID+" child "+child.EffectiveID+" input", child.Edge.Input, agent.TemplateData{
 		Prompt: r.prompt,
 		Input:  localInput,
-		State:  r.state,
+		State:  r.snapshotState(),
 	})
 }
 
@@ -575,7 +632,7 @@ func (r *runState) finishComposite(node *registry.ResolvedNode, localInput, natu
 			Prompt: r.prompt,
 			Input:  localInput,
 			Output: naturalOutput,
-			State:  r.state,
+			State:  r.snapshotState(),
 		})
 		if err != nil {
 			return nodeResult{}, err
@@ -613,10 +670,7 @@ func (r *runState) applyState(node *registry.ResolvedNode, input string) error {
 		return nil
 	}
 
-	snapshot, err := cloneState(r.state)
-	if err != nil {
-		return err
-	}
+	snapshot := r.snapshotState()
 
 	rendered := make(map[string]any, len(effective))
 	for _, key := range sortedStateKeys(effective) {
@@ -634,9 +688,11 @@ func (r *runState) applyState(node *registry.ResolvedNode, input string) error {
 		rendered[key] = converted
 	}
 
+	r.stateMu.Lock()
 	for key, value := range rendered {
 		r.state[key] = value
 	}
+	r.stateMu.Unlock()
 
 	return nil
 }
@@ -656,7 +712,7 @@ func (r *runState) roleParams(ctx context.Context, node *registry.ResolvedNode, 
 			value, err := renderRestricted(node.ResourceID+" parameter "+name, binding, agent.TemplateData{
 				Prompt: r.prompt,
 				Input:  input,
-				State:  r.state,
+				State:  r.snapshotState(),
 			})
 			if err != nil {
 				return nil, err
@@ -675,6 +731,10 @@ func (r *runState) roleParams(ctx context.Context, node *registry.ResolvedNode, 
 
 		value, ok := r.params[key]
 		if !ok {
+			if node.WithinParallel {
+				return nil, fmt.Errorf("Parallel %q requires parameter %q before fan-out", node.ParallelBoundaryID, key)
+			}
+
 			if r.interactor == nil {
 				return nil, fmt.Errorf("agent %q requires parameter %q", node.EffectiveID, name)
 			}
@@ -700,19 +760,51 @@ func (r *runState) roleParams(ctx context.Context, node *registry.ResolvedNode, 
 }
 
 func (r *runState) process(ctx context.Context, role agent.Resource, provider runtime.Provider) (runtime.ProviderProcess, error) {
-	if process := r.processes[provider.Key()]; process != nil {
+	key := provider.Key()
+
+	r.processMu.Lock()
+	if process := r.processes[key]; process != nil {
+		r.processMu.Unlock()
+
 		return process, nil
 	}
 
-	process, cancel, err := startProviderProcess(ctx, role.ProviderTimeout(), r.factory, provider)
-	if err != nil {
-		return nil, fmt.Errorf("start agent %q provider: %w", role.ID, err)
+	start := r.processStarts[key]
+	if start == nil {
+		start = &processStart{done: make(chan struct{})}
+
+		r.processStarts[key] = start
+		go r.completeProcessStart(role, provider, start)
+	}
+	r.processMu.Unlock()
+
+	select {
+	case <-start.done:
+		if start.result.err != nil {
+			return nil, fmt.Errorf("start agent %q provider: %w", role.ID, start.result.err)
+		}
+
+		return start.result.process, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (r *runState) completeProcessStart(role agent.Resource, provider runtime.Provider, start *processStart) {
+	process, cancel, err := startProviderProcess(r.processCtx, role.ProviderTimeout(), r.factory, provider)
+	key := provider.Key()
+
+	r.processMu.Lock()
+
+	start.result = processStartResult{process: process, err: err}
+	if err == nil {
+		r.processes[key] = process
+		r.started = append(r.started, startedProcess{key: key, process: process, cancel: cancel})
 	}
 
-	r.processes[provider.Key()] = process
-	r.started = append(r.started, startedProcess{key: provider.Key(), process: process, cancel: cancel})
-
-	return process, nil
+	close(start.done)
+	delete(r.processStarts, key)
+	r.processMu.Unlock()
 }
 
 func startProviderProcess(ctx context.Context, timeout time.Duration, factory runtime.ProcessFactory, provider runtime.Provider) (runtime.ProviderProcess, context.CancelFunc, error) {
@@ -753,28 +845,66 @@ func closeLateProcess(started <-chan processStartResult) {
 }
 
 func (r *runState) close(ctx context.Context) error {
-	var errs []error
+	waitErr := r.waitForProcessStarts(ctx)
 
-	for index := len(r.started) - 1; index >= 0; index-- {
-		started := r.started[index]
+	r.processMu.Lock()
+	startedProcesses := append([]startedProcess(nil), r.started...)
+	r.processMu.Unlock()
+
+	type keyedError struct {
+		key string
+		err error
+	}
+
+	keyed := make([]keyedError, 0, len(startedProcesses))
+
+	for index := len(startedProcesses) - 1; index >= 0; index-- {
+		started := startedProcesses[index]
 
 		closeErr := closeProcess(ctx, started.process)
 		started.cancel()
 
 		if closeErr != nil {
-			errs = append(errs, fmt.Errorf("close provider group %q: %w", started.key, closeErr))
-		}
-
-		if ctx.Err() != nil {
-			if !errors.Is(closeErr, ctx.Err()) {
-				errs = append(errs, ctx.Err())
-			}
-
-			break
+			keyed = append(keyed, keyedError{key: started.key, err: closeErr})
 		}
 	}
 
+	sort.Slice(keyed, func(i, j int) bool { return keyed[i].key < keyed[j].key })
+
+	errs := make([]error, 0, len(keyed)+1)
+	if waitErr != nil {
+		errs = append(errs, fmt.Errorf("wait for provider starts: %w", waitErr))
+	}
+
+	for _, item := range keyed {
+		errs = append(errs, fmt.Errorf("close provider group %q: %w", item.key, item.err))
+	}
+
 	return errors.Join(errs...)
+}
+
+func (r *runState) waitForProcessStarts(ctx context.Context) error {
+	for {
+		r.processMu.Lock()
+
+		starts := make([]*processStart, 0, len(r.processStarts))
+		for _, start := range r.processStarts {
+			starts = append(starts, start)
+		}
+		r.processMu.Unlock()
+
+		if len(starts) == 0 {
+			return nil
+		}
+
+		for _, start := range starts {
+			select {
+			case <-start.done:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
 }
 
 func closeProcess(ctx context.Context, process runtime.ProviderProcess) error {
@@ -793,8 +923,18 @@ func closeProcess(ctx context.Context, process runtime.ProviderProcess) error {
 }
 
 func (r *runState) promote(effectiveID, artifact string) {
+	r.stateMu.Lock()
+	defer r.stateMu.Unlock()
+
 	outputs := r.state["outputs"].(map[string]string)
 	outputs[effectiveID] = artifact
+}
+
+func (r *runState) snapshotState() map[string]any {
+	r.stateMu.RLock()
+	defer r.stateMu.RUnlock()
+
+	return cloneState(r.state)
 }
 
 // ValidateRuntimeParams validates supplied qualified parameter values.
@@ -895,18 +1035,38 @@ func renderStateValue(name string, value any, data agent.TemplateData) (any, err
 	}
 }
 
-func cloneState(state map[string]any) (map[string]any, error) {
-	encoded, err := json.Marshal(state)
-	if err != nil {
-		return nil, fmt.Errorf("snapshot workflow state: %w", err)
-	}
+func cloneState(state map[string]any) map[string]any {
+	return cloneStateValue(state).(map[string]any)
+}
 
-	var cloned map[string]any
-	if err := json.Unmarshal(encoded, &cloned); err != nil {
-		return nil, fmt.Errorf("restore workflow state snapshot: %w", err)
-	}
+func cloneStateValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		cloned := make(map[string]any, len(typed))
+		for key, item := range typed {
+			cloned[key] = cloneStateValue(item)
+		}
 
-	return cloned, nil
+		return cloned
+	case map[string]string:
+		cloned := make(map[string]string, len(typed))
+		for key, item := range typed {
+			cloned[key] = item
+		}
+
+		return cloned
+	case []any:
+		cloned := make([]any, len(typed))
+		for index, item := range typed {
+			cloned[index] = cloneStateValue(item)
+		}
+
+		return cloned
+	case []string:
+		return append([]string(nil), typed...)
+	default:
+		return typed
+	}
 }
 
 func copyStrings(values map[string]string) map[string]string {

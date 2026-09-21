@@ -43,11 +43,12 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"Keep terminal interaction separate from stdout and stderr.",
 		"mktemp -d",
 		"callee_capture_dir",
-		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router`",
+		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router`",
 		"Read Human prompts, Human responses",
 		"Do not send `quit`, `exit`, `/done`",
 		"artifact is written to stdout only after provider cleanup succeeds",
-		"does not define `Parallel`",
+		"For a Parallel",
+		"`parallel_joined`",
 		"setup <codex|claude|grok|copilot|opencode|cursor>",
 		"Do not add Gemini",
 	} {
@@ -119,7 +120,7 @@ func TestCreateAgentSkillAuthorsEverySupportedKind(t *testing.T) {
 		"{{ .Input }}",
 		"{{ .Params.focus }}",
 		"exactly one unconditional bare",
-		"For every `Sequential`, `Loop`, `Router`, or nested-composite request",
+		"For every `Sequential`, `Parallel`, `Loop`, `Router`, or nested-composite request",
 		"[references/workflows.md](references/workflows.md)",
 		"callee agent validate \"<written-agent-path>\"",
 		"actual generated `.md`, `.yaml`, or `.yml` path",
@@ -190,6 +191,7 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"[Place and represent files](#place-and-represent-files)",
 		"[Compose the resolved tree](#compose-the-resolved-tree)",
 		"[Author a Sequential workflow](#author-a-sequential-workflow)",
+		"[Author a Parallel workflow](#author-a-parallel-workflow)",
 		"[Author a Router workflow](#author-a-router-workflow)",
 		"[Author a Loop workflow](#author-a-loop-workflow)",
 		"[Finish the workflow](#finish-the-workflow)",
@@ -197,9 +199,10 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"`.md`, `.yaml`, or `.yml`",
 		"do not also write `spec.body`",
 		"kind: Sequential",
+		"kind: Parallel",
 		"kind: Router",
 		"kind: Loop",
-		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router`",
+		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`",
 		"workflow child may reference any supported kind",
 		"unique across the entire resolved tree",
 		"`params` only when that child resolves directly to a `Role`",
@@ -226,10 +229,6 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("workflow reference is missing %q", want)
 		}
-	}
-
-	if strings.Contains(text, "kind: Parallel") {
-		t.Error("workflow reference authors unsupported Parallel syntax")
 	}
 }
 
@@ -265,11 +264,11 @@ func TestCreateAgentWorkflowReferenceExamplesValidate(t *testing.T) {
 	}
 
 	sections := strings.Split(string(data), "```markdown\n")
-	if len(sections) != 4 {
-		t.Fatalf("workflow reference contains %d Markdown examples, want 3", len(sections)-1)
+	if len(sections) != 5 {
+		t.Fatalf("workflow reference contains %d Markdown examples, want 4", len(sections)-1)
 	}
 
-	wantKinds := []agent.Kind{agent.SequentialKind, agent.RouterKind, agent.LoopKind}
+	wantKinds := []agent.Kind{agent.SequentialKind, agent.ParallelKind, agent.RouterKind, agent.LoopKind}
 
 	for index, section := range sections[1:] {
 		example, _, ok := strings.Cut(section, "\n```")

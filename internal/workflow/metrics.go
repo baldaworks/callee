@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/baldaworks/callee/internal/agent"
@@ -10,6 +11,7 @@ import (
 
 // RunMetrics accumulates provider usage for one resolved agent run.
 type RunMetrics struct {
+	mu    sync.Mutex
 	usage runtime.UsageMetrics
 }
 
@@ -19,14 +21,23 @@ func (m *RunMetrics) Usage() runtime.UsageMetrics {
 		return runtime.UsageMetrics{}
 	}
 
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return m.usage
 }
 
 func (m *RunMetrics) reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.usage = runtime.UsageMetrics{}
 }
 
 func (m *RunMetrics) add(usage runtime.UsageMetrics) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.usage.Add(usage)
 }
 

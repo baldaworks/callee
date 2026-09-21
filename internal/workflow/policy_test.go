@@ -223,3 +223,63 @@ func permissionModePointer(mode agent.PermissionMode) *agent.PermissionMode {
 func boolPointer(value bool) *bool {
 	return &value
 }
+
+func TestParallelPolicyAndParameterPreflight(t *testing.T) {
+	t.Parallel()
+
+	role := roleResource(t, "roles/worker", true, map[string]string{"focus": "Review focus"}, "{{ .Input }}")
+	root := resolvedRoot(t,
+		role,
+		compositeResource(t, "workflows/parallel", agent.ParallelKind, []agent.Child{{Ref: role.ID, Alias: "worker"}}, 0, "{{ .Input }}", ""),
+	)
+
+	requiresInteraction, err := TreeRequiresInteraction(root, PolicyOverrides{})
+	if err != nil {
+		t.Fatalf("TreeRequiresInteraction() error: %v", err)
+	}
+
+	if requiresInteraction {
+		t.Fatal("TreeRequiresInteraction() = true, want automatic Parallel subtree")
+	}
+
+	err = ValidateParallelPreflight(root, nil, PolicyOverrides{})
+	if err == nil || !strings.Contains(err.Error(), `requires parameter "worker.focus"`) {
+		t.Fatalf("ValidateParallelPreflight() error = %v, want missing parameter", err)
+	}
+
+	interactive := true
+
+	err = ValidateParallelPreflight(root, map[string]string{"worker.focus": "security"}, PolicyOverrides{Interactive: &interactive})
+	if err == nil || !strings.Contains(err.Error(), "interactive=true") {
+		t.Fatalf("ValidateParallelPreflight(interactive) error = %v", err)
+	}
+
+	ask := agent.PermissionModeAsk
+
+	err = ValidateParallelPreflight(root, map[string]string{"worker.focus": "security"}, PolicyOverrides{Permissions: &ask})
+	if err == nil || !strings.Contains(err.Error(), "permissions=ask") {
+		t.Fatalf("ValidateParallelPreflight(ask) error = %v", err)
+	}
+}
+
+func TestRunnerRejectsParallelInteractiveOverrideBeforeFactoryStart(t *testing.T) {
+	t.Parallel()
+
+	role := roleResource(t, "roles/worker", false, nil, "{{ .Input }}")
+	root := resolvedRoot(t,
+		role,
+		compositeResource(t, "workflows/parallel", agent.ParallelKind, []agent.Child{{Ref: role.ID, Alias: "worker"}}, 0, "{{ .Input }}", ""),
+	)
+	process := &scriptedProcess{visits: map[string][][]string{"worker": {{"done"}}}}
+	factory := &scriptedFactory{process: process}
+	interactive := true
+
+	_, err := (Runner{Root: root, Factory: factory, InteractiveOverride: &interactive}).Run(context.Background(), "work")
+	if err == nil || !strings.Contains(err.Error(), "interactive=true") {
+		t.Fatalf("Runner.Run() error = %v, want Parallel interactive override diagnostic", err)
+	}
+
+	if factory.starts != 0 {
+		t.Errorf("factory starts = %d, want zero", factory.starts)
+	}
+}

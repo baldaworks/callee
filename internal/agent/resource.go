@@ -29,6 +29,8 @@ const (
 	OpenRouterDecisionKind Kind = "OpenRouterDecision"
 	// SequentialKind identifies an ordered composite agent.
 	SequentialKind Kind = "Sequential"
+	// ParallelKind identifies a concurrent composite agent.
+	ParallelKind Kind = "Parallel"
 	// LoopKind identifies a bounded repeated composite agent.
 	LoopKind Kind = "Loop"
 	// RouterKind identifies a deterministic routed composite agent.
@@ -383,7 +385,7 @@ func (r Resource) validateKind() error {
 		return r.validateHuman()
 	case TypeSafeJevKind, OpenRouterDecisionKind:
 		return r.validateEvaluation()
-	case SequentialKind, LoopKind, RouterKind:
+	case SequentialKind, ParallelKind, LoopKind, RouterKind:
 		if _, err := ParseTemplate(r.ID+" spec.body", r.Spec.Body); err != nil {
 			return err
 		}

@@ -8,8 +8,8 @@ synthesizes their write-ups.
 
 Callee differs from Rejudge in two important ways:
 
-- Callee does not define `Parallel`, so the reviewers run sequentially even
-  though each visit gets a fresh OpenCode session.
+- This example intentionally runs its reviewers sequentially even though
+  `Parallel` is available; each visit still gets a fresh OpenCode session.
 - Callee does not provide a judge-side follow-up tool such as `ask_panel`, so
   the judge sees only the saved reviewer outputs.
 

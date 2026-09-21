@@ -31,6 +31,11 @@ func TestDecodeMarkdownKinds(t *testing.T) {
 			kind: SequentialKind,
 		},
 		{
+			name: "parallel",
+			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Parallel\nspec:\n  description: parallel\n  children: [roles/worker]\n---\n{{ .Input }}\n",
+			kind: ParallelKind,
+		},
+		{
 			name: "loop",
 			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Loop\nspec:\n  description: goalkeeper\n  children: [roles/worker, roles/validator]\n  maxIterations: 5\n---\n{{ .Input }}\n",
 			kind: LoopKind,
@@ -80,6 +85,11 @@ func TestDecodeYAMLKinds(t *testing.T) {
 			name: "sequential",
 			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Sequential\nspec:\n  description: pipeline\n  children: [roles/worker]\n  body: |\n    {{ .Input }}\n",
 			kind: SequentialKind,
+		},
+		{
+			name: "parallel",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Parallel\nspec:\n  description: parallel\n  children: [roles/worker]\n  body: |\n    {{ .Input }}\n",
+			kind: ParallelKind,
 		},
 		{
 			name: "loop",
@@ -677,8 +687,8 @@ func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 		},
 		{
 			name: "unsupported kind",
-			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Parallel\nspec: {}\n---\n{{ .Input }}",
-			want: `unsupported kind "Parallel"; supported kinds: Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Loop, Router`,
+			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Unknown\nspec: {}\n---\n{{ .Input }}",
+			want: `unsupported kind "Unknown"; supported kinds: Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, Router`,
 		},
 		{
 			name: "wrong field case",

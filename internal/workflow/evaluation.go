@@ -20,14 +20,14 @@ func (r *runState) evaluation(ctx context.Context, node *registry.ResolvedNode, 
 		return result, fmt.Errorf("agent %q has no evaluation service", node.EffectiveID)
 	}
 
-	snapshot, err := cloneState(r.state)
-	if err != nil {
-		return result, err
-	}
+	snapshot := r.snapshotState()
 
 	templateData := agent.TemplateData{Prompt: r.prompt, Input: input, State: snapshot}
 
-	var evidence any
+	var (
+		evidence any
+		err      error
+	)
 	if strings.TrimSpace(node.Resource.Spec.Body) != "" {
 		evidence, err = renderRestricted(node.ResourceID+" spec.body", node.Resource.Spec.Body, templateData)
 	} else {
@@ -89,6 +89,9 @@ func (r *runState) evaluation(ctx context.Context, node *registry.ResolvedNode, 
 	if err := json.Unmarshal(artifact, &structured); err != nil {
 		return result, fmt.Errorf("agent %q decode evaluation state result: %w", node.EffectiveID, err)
 	}
+
+	r.stateMu.Lock()
+	defer r.stateMu.Unlock()
 
 	evaluations, ok := r.state["evaluations"].(map[string]any)
 	if !ok {

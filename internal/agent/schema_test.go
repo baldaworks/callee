@@ -35,6 +35,7 @@ func TestSchemaForKindReturnsStandaloneSchema(t *testing.T) {
 		{kind: TypeSafeJevKind, definition: "typeSafeJev"},
 		{kind: OpenRouterDecisionKind, definition: "openRouterDecision"},
 		{kind: SequentialKind, definition: "sequential"},
+		{kind: ParallelKind, definition: "parallel"},
 		{kind: LoopKind, definition: "loop"},
 		{kind: RouterKind, definition: "router"},
 	}
@@ -56,8 +57,8 @@ func TestSchemaForKindReturnsStandaloneSchema(t *testing.T) {
 func TestSchemaForKindRejectsUnsupportedKind(t *testing.T) {
 	t.Parallel()
 
-	if _, err := SchemaForKind("Parallel"); err == nil {
-		t.Fatal("SchemaForKind(Parallel) error = nil, want unsupported kind")
+	if _, err := SchemaForKind("Unknown"); err == nil {
+		t.Fatal("SchemaForKind(Unknown) error = nil, want unsupported kind")
 	}
 }
 

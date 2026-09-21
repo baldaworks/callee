@@ -21,7 +21,7 @@ func (r *runState) human(
 	body, err := renderRestricted(node.ResourceID+" spec.body", node.Resource.Spec.Body, agent.TemplateData{
 		Prompt: r.prompt,
 		Input:  input,
-		State:  r.state,
+		State:  r.snapshotState(),
 	})
 	if err != nil {
 		return nodeResult{}, err
@@ -40,8 +40,10 @@ func (r *runState) human(
 		return nodeResult{}, fmt.Errorf("agent %q response must not be blank", node.EffectiveID)
 	}
 
+	r.stateMu.Lock()
 	r.state[node.Resource.Spec.ResponseKey] = answer
-	r.promote(node.EffectiveID, answer)
+	r.state["outputs"].(map[string]string)[node.EffectiveID] = answer
+	r.stateMu.Unlock()
 
 	return nodeResult{
 		outcome:          outcomeReturn,

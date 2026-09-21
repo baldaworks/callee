@@ -90,6 +90,16 @@ Authorized escalation is sticky beneath a Sequential. When a child escalates, Se
 
 Without sticky escalation, the natural output is the last child's artifact. An optional `spec.output` renders a replacement from the composite local `.Input`, natural `.Output`, root `.Prompt`, and final `.State`.
 
+## Parallel execution
+
+A Parallel applies its node state modifier, renders its body, and pre-renders every direct-child input from one coherent state snapshot before starting any child. A child without explicit `input` receives the Parallel local input. The pinned ADK graph fans out all direct children without a concurrency limit and joins every started branch before the Parallel finishes. Nested Role, Script, TypeSafeJev, OpenRouterDecision, Sequential, Loop, Router, and Parallel nodes use their ordinary executors and identities.
+
+Parallel is an unattended boundary. `Human` is rejected anywhere in its resolved subtree. Descendant Roles use `interactive=false`; default or authored `permissions: ask` resolves to `allow`, while authored `deny` and explicit whole-run `allow` or `deny` retain their normal precedence. Explicit `--interactive=true`, explicit `--permissions=ask`, and missing unbound Role parameters fail before provider startup.
+
+The root run retains one live shared state. Template reads use coherent point-in-time snapshots and related publications commit atomically. A branch may observe a sibling value after that sibling commits it. Concurrent writes to the same key use actual commit order; no branch merge, conflict diagnostic, or rollback occurs. A branch failure leaves earlier child commits in state but suppresses the Parallel node's own output.
+
+On success, the natural output is compact JSON keyed by direct-child effective ID in authored order, with each artifact represented as a JSON string. Optional `spec.output` renders after Join against current shared state. Errors, failures, and escalation precedence are evaluated in authored child order, independent of completion order. Parallel lifecycle finish logs add `parallel_branches`, `parallel_started`, `parallel_completed`, `parallel_failed`, and `parallel_joined`; no Parallel-specific metrics are emitted.
+
 ## Router execution
 
 A Router applies normal node-entry state first, then renders `spec.route` from the immutable `.Prompt`, incoming `.Input`, and current shared `.State`. It trims surrounding whitespace and compares the resulting key case-sensitively with the authored `children[].route` values.

@@ -36,21 +36,24 @@ type RequiredParam struct {
 
 // ResolvedNode is one occurrence in a selected root execution tree.
 type ResolvedNode struct {
-	EffectiveID         string             `json:"effectiveId"`
-	ResourceID          string             `json:"resourceId"`
-	Kind                agent.Kind         `json:"kind"`
-	CanEscalate         bool               `json:"canEscalate"`
-	WithinLoop          bool               `json:"-"`
-	Permissions         *agent.Permissions `json:"permissions,omitempty"`
-	AuthoredPermissions *agent.Permissions `json:"authoredPermissions,omitempty"`
-	AuthoredInteractive *bool              `json:"authoredInteractive,omitempty"`
-	Interactive         *bool              `json:"interactive,omitempty"`
-	REPL                *bool              `json:"repl,omitempty"`
-	MaxIterations       *int               `json:"maxIterations,omitempty"`
-	OnExhausted         string             `json:"onExhausted,omitempty"`
-	Route               string             `json:"route,omitempty"`
-	Default             bool               `json:"default,omitempty"`
-	Children            []*ResolvedNode    `json:"children"`
+	EffectiveID          string             `json:"effectiveId"`
+	ResourceID           string             `json:"resourceId"`
+	Kind                 agent.Kind         `json:"kind"`
+	CanEscalate          bool               `json:"canEscalate"`
+	WithinLoop           bool               `json:"-"`
+	WithinParallel       bool               `json:"-"`
+	ParallelBoundaryID   string             `json:"-"`
+	ParallelBoundaryPath []string           `json:"-"`
+	Permissions          *agent.Permissions `json:"permissions,omitempty"`
+	AuthoredPermissions  *agent.Permissions `json:"authoredPermissions,omitempty"`
+	AuthoredInteractive  *bool              `json:"authoredInteractive,omitempty"`
+	Interactive          *bool              `json:"interactive,omitempty"`
+	REPL                 *bool              `json:"repl,omitempty"`
+	MaxIterations        *int               `json:"maxIterations,omitempty"`
+	OnExhausted          string             `json:"onExhausted,omitempty"`
+	Route                string             `json:"route,omitempty"`
+	Default              bool               `json:"default,omitempty"`
+	Children             []*ResolvedNode    `json:"children"`
 
 	Resource agent.Resource `json:"-"`
 	Edge     agent.Child    `json:"-"`
@@ -185,7 +188,7 @@ func (r *AgentRegistry) Resolve(id string) (*ResolvedNode, error) {
 	effectiveIDs := make(map[string]string)
 	stack := make(map[string]string)
 
-	return r.resolve(resource, agent.Child{}, effectiveIDs, stack, nil, false, false)
+	return r.resolve(resource, agent.Child{}, effectiveIDs, stack, nil, false, false, false, "", nil)
 }
 
 func (r *AgentRegistry) staticRoots() []string {
@@ -245,7 +248,9 @@ func (r *AgentRegistry) resolve(
 	edge agent.Child,
 	effectiveIDs, stack map[string]string,
 	parentPath []string,
-	withinLoop, canEscalate bool,
+	withinLoop, canEscalate, withinParallel bool,
+	parallelBoundaryID string,
+	parallelBoundaryPath []string,
 ) (*ResolvedNode, error) {
 	if stack[resource.ID] != "" {
 		return nil, fmt.Errorf("agent graph cycle: %s -> %s", stack[resource.ID], resource.ID)
@@ -257,6 +262,15 @@ func (r *AgentRegistry) resolve(
 	}
 
 	path := append(append([]string(nil), parentPath...), effectiveID)
+	if resource.Kind == agent.HumanKind && withinParallel {
+		return nil, fmt.Errorf(
+			"Parallel %q at %q contains Human %q at %q",
+			parallelBoundaryID,
+			strings.Join(parallelBoundaryPath, " -> "),
+			effectiveID,
+			strings.Join(path, " -> "),
+		)
+	}
 
 	if previous := effectiveIDs[effectiveID]; previous != "" {
 		return nil, fmt.Errorf("resolved agent tree has duplicate effective ID %q at %s and %s", effectiveID, previous, resource.ID)
@@ -266,27 +280,25 @@ func (r *AgentRegistry) resolve(
 	stack[resource.ID] = effectiveID
 
 	node := &ResolvedNode{
-		EffectiveID: effectiveID,
-		ResourceID:  resource.ID,
-		Kind:        resource.Kind,
-		CanEscalate: canEscalate,
-		WithinLoop:  withinLoop,
-		Route:       edge.Route,
-		Default:     edge.Default,
-		Children:    make([]*ResolvedNode, 0, len(resource.Spec.Children)),
-		Resource:    resource,
-		Edge:        edge,
-		Path:        path,
+		EffectiveID:          effectiveID,
+		ResourceID:           resource.ID,
+		Kind:                 resource.Kind,
+		CanEscalate:          canEscalate,
+		WithinLoop:           withinLoop,
+		WithinParallel:       withinParallel,
+		ParallelBoundaryID:   parallelBoundaryID,
+		ParallelBoundaryPath: append([]string(nil), parallelBoundaryPath...),
+		Route:                edge.Route,
+		Default:              edge.Default,
+		Children:             make([]*ResolvedNode, 0, len(resource.Spec.Children)),
+		Resource:             resource,
+		Edge:                 edge,
+		Path:                 path,
 	}
 
 	switch resource.Kind {
 	case agent.RoleKind:
-		interactive := resource.Interactive()
-		node.AuthoredInteractive = &interactive
-		node.Interactive = &interactive
-		node.REPL = &interactive
-		node.Permissions = &agent.Permissions{Mode: resource.EffectivePermissionMode()}
-		node.AuthoredPermissions = resource.Spec.Permissions
+		projectRolePolicy(node, resource, withinParallel)
 	case agent.LoopKind:
 		node.MaxIterations = resource.Spec.MaxIterations
 		node.OnExhausted = resource.ExhaustionPolicy()
@@ -295,10 +307,19 @@ func (r *AgentRegistry) resolve(
 	for index, child := range resource.Spec.Children {
 		childWithinLoop := withinLoop
 		childCanEscalate := canEscalate && child.CanEscalate
+		childWithinParallel := withinParallel
+		childParallelBoundaryID := parallelBoundaryID
+		childParallelBoundaryPath := parallelBoundaryPath
 
 		if resource.Kind == agent.LoopKind {
 			childWithinLoop = true
 			childCanEscalate = child.CanEscalate
+		}
+
+		if resource.Kind == agent.ParallelKind {
+			childWithinParallel = true
+			childParallelBoundaryID = effectiveID
+			childParallelBoundaryPath = path
 		}
 
 		if child.CanEscalate && !childWithinLoop {
@@ -314,7 +335,18 @@ func (r *AgentRegistry) resolve(
 			return nil, err
 		}
 
-		resolved, err := r.resolve(childResource, child, effectiveIDs, stack, path, childWithinLoop, childCanEscalate)
+		resolved, err := r.resolve(
+			childResource,
+			child,
+			effectiveIDs,
+			stack,
+			path,
+			childWithinLoop,
+			childCanEscalate,
+			childWithinParallel,
+			childParallelBoundaryID,
+			childParallelBoundaryPath,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("agent %q child %d: %w", resource.ID, index, err)
 		}
@@ -325,6 +357,26 @@ func (r *AgentRegistry) resolve(
 	delete(stack, resource.ID)
 
 	return node, nil
+}
+
+func projectRolePolicy(node *ResolvedNode, resource agent.Resource, withinParallel bool) {
+	interactive := resource.Interactive()
+	effectiveInteractive := interactive
+	effectivePermission := resource.EffectivePermissionMode()
+
+	if withinParallel {
+		effectiveInteractive = false
+
+		if effectivePermission == agent.PermissionModeAsk {
+			effectivePermission = agent.PermissionModeAllow
+		}
+	}
+
+	node.AuthoredInteractive = &interactive
+	node.Interactive = &effectiveInteractive
+	node.REPL = &effectiveInteractive
+	node.Permissions = &agent.Permissions{Mode: effectivePermission}
+	node.AuthoredPermissions = resource.Spec.Permissions
 }
 
 // RequiredParams returns every statically unbound Role parameter in preorder.

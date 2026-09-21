@@ -1,6 +1,6 @@
 # Agent resource format
 
-Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Loop|Router>` to print a standalone schema document for one kind.
+Use this reference when authoring or reviewing a Callee resource. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Parallel|Loop|Router>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 
@@ -29,7 +29,7 @@ kind: Role
 spec: {}
 ```
 
-The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router`. Unknown fields are rejected at every schema-defined object boundary.
+The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`. Unknown fields are rejected at every schema-defined object boundary.
 
 ## Markdown and YAML representations
 
@@ -73,25 +73,25 @@ All kinds require a nonblank `description`. Evaluation kinds require exactly one
 
 The supported fields differ by kind:
 
-| Field | Role | Script | Human | TypeSafeJev | OpenRouterDecision | Sequential | Loop | Router |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `description` | Required | Required | Required | Required | Required | Required | Required | Required |
-| `body` | Required | Required | Required | One of body/evidence | One of body/evidence | Required | Required | Required |
-| `evidence` | Not allowed | Not allowed | Not allowed | One of body/evidence | One of body/evidence | Not allowed | Not allowed | Not allowed |
-| `model` | Not allowed | Not allowed | Not allowed | Optional | Required | Not allowed | Not allowed | Not allowed |
-| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Optional positive Go duration | Optional positive Go duration | Not allowed | Not allowed | Not allowed |
-| `questions` | Not allowed | Not allowed | Not allowed | Required, nonempty | Required, nonempty | Not allowed | Not allowed | Not allowed |
-| `state` | Optional | Optional | Optional | Optional | Optional | Optional | Optional | Optional |
-| `provider` | Required | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `permissions` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `interactive` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `params` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `responseKey` | Not allowed | Not allowed | Required, nonblank | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `shell`, `cwd`, `env`, `onNonZero` | Not allowed | Kind-specific optional fields | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
-| `children` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required | Required | Required mappings |
-| `route` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required |
-| `output` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Optional | Optional | Optional |
-| `maxIterations`, `onExhausted` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Loop fields | Not allowed |
+| Field | Role | Script | Human | TypeSafeJev | OpenRouterDecision | Sequential | Parallel | Loop | Router |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `description` | Required | Required | Required | Required | Required | Required | Required | Required | Required |
+| `body` | Required | Required | Required | One of body/evidence | One of body/evidence | Required | Required | Required | Required |
+| `evidence` | Not allowed | Not allowed | Not allowed | One of body/evidence | One of body/evidence | Not allowed | Not allowed | Not allowed | Not allowed |
+| `model` | Not allowed | Not allowed | Not allowed | Optional | Required | Not allowed | Not allowed | Not allowed | Not allowed |
+| `timeout` | Not allowed | Optional positive Go duration | Not allowed | Optional positive Go duration | Optional positive Go duration | Not allowed | Not allowed | Not allowed | Not allowed |
+| `questions` | Not allowed | Not allowed | Not allowed | Required, nonempty | Required, nonempty | Not allowed | Not allowed | Not allowed | Not allowed |
+| `state` | Optional | Optional | Optional | Optional | Optional | Optional | Optional | Optional | Optional |
+| `provider` | Required | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `permissions` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `interactive` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `params` | Optional | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `responseKey` | Not allowed | Not allowed | Required, nonblank | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `shell`, `cwd`, `env`, `onNonZero` | Not allowed | Kind-specific optional fields | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed |
+| `children` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required | Required | Required | Required mappings |
+| `route` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Required |
+| `output` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Optional | Optional | Optional | Optional |
+| `maxIterations`, `onExhausted` | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Not allowed | Loop fields | Not allowed |
 
 ## Role
 
@@ -229,7 +229,7 @@ no run metrics.
 
 ## Composite children
 
-`Sequential`, `Loop`, and `Router` require at least one child. Sequential and Loop children may be scalar references:
+`Sequential`, `Parallel`, `Loop`, and `Router` require at least one child. Sequential, Parallel, and Loop children may be scalar references:
 
 ```yaml
 children:
@@ -331,6 +331,32 @@ spec:
 ```
 
 The detailed ordering and escalation rules are in [Sequential execution](workflow-semantics.md#sequential-execution). A runnable version is checked in as [`examples/workflows/investigate.md`](../../examples/workflows/investigate.md).
+
+## Parallel
+
+`Parallel` uses the same fields and child occurrence shape as `Sequential`, but every direct child receives input prepared before fan-out and runs concurrently:
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Parallel
+spec:
+  description: Explores a task and classifies its urgency independently.
+  children:
+    - ref: roles/explorer
+      alias: exploration
+    - ref: evaluations/typesafe-jev
+      alias: triage
+  output: |
+    Findings: {{ index .State.outputs "exploration" }}
+    Triage: {{ index .State.outputs "triage" }}
+---
+{{ .Input }}
+```
+
+Any supported kind except `Human` may appear below Parallel. Descendant Roles always use the one-shot protocol; default or authored `permissions: ask` becomes `allow`, while `deny` remains `deny`. Missing Role parameters and incompatible explicit interactive overrides fail before fan-out.
+
+All branches use the root run's live shared state. Each template sees a coherent snapshot, related state entries publish atomically, and a later read may observe a sibling's completed commit. Same-key writes follow actual commit order. Child commits are retained if another branch fails; the failed Parallel does not publish its own output. Natural aggregate JSON and failure diagnostics use authored child order. See [Parallel execution](workflow-semantics.md#parallel-execution) and the runnable [`parallel-review`](../../examples/workflows/parallel-review.md) and [`parallel-then-plan`](../../examples/workflows/parallel-then-plan.md) examples.
 
 ## Loop
 

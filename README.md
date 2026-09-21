@@ -9,7 +9,7 @@
 
 ## Markdown-defined agents and deterministic workflows
 
-Callee lets a repository define `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
+Callee lets a repository define `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router` agents as versioned Markdown or YAML. Markdown is the base authoring and generation format; YAML represents the same complete schema object with `spec.body` inline. Every kind has the same node boundary: it receives input, may update one root-run state object, and returns one artifact or a structured orchestration outcome.
 
 Callee remains CLI-only. It uses [Norma Runtime](https://github.com/normahq/runtime) for ACP provider processes and Go ADK-aligned escalation semantics. It has no server, durable thread store, or handle binding.
 
@@ -25,8 +25,8 @@ Callee installs two complementary skills in your coding host:
 
 | Skill | What it does | Result |
 | --- | --- | --- |
-| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by emitted lifecycle data and Role execution metrics. |
-| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, or `Router` in Markdown or YAML. For a `Role`, it uses an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
+| **Run Agent** | Discovers project-defined agents, resolves the selected tree and required parameters, and runs a `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router` agent through its controlling terminal. | The completed root artifact and a concise capability trace, followed by emitted lifecycle data and Role execution metrics. |
+| **Create Agent** | Authors a reusable `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router` in Markdown or YAML. For a `Role`, it uses an embedded PromptKit template when one fits, then validates the file and resolved tree. | A validated agent or deterministic workflow below `.callee/`. |
 
 These skills are host integrations: they teach Codex, Claude Code, Grok Build,
 Copilot CLI, OpenCode, or Cursor how to create and run Callee agents. Runtime
@@ -515,6 +515,30 @@ spec:
 
 `Sequential` runs children in source order. Without an explicit child `input`, the first child receives the composite input and later children receive their predecessor's output. Escalation is sticky across the remaining sequential children and propagates upward after they finish. See the runnable [`investigate`](examples/workflows/investigate.md) example.
 
+### Parallel
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Parallel
+spec:
+  description: Explores a task and classifies its urgency independently.
+  children:
+    - ref: roles/explorer
+      alias: exploration
+    - ref: evaluations/typesafe-jev
+      alias: triage
+  output: |
+    Findings: {{ index .State.outputs "exploration" }}
+    Triage: {{ index .State.outputs "triage" }}
+---
+{{ .Input }}
+```
+
+`Parallel` renders its body and every child input before fan-out, starts all direct children through the ADK graph, and waits at Join. Every supported kind may be a child, including nested workflows; `Human` is rejected anywhere below Parallel. Descendant Roles are forced to one-shot execution, default or authored `permissions: ask` becomes `allow`, and explicit `deny` remains `deny`. Missing Role parameters and incompatible `--interactive=true` or `--permissions=ask` overrides fail before provider startup.
+
+The root run has one live shared state. A completed branch commit may be visible to another branch; same-key writes follow actual commit order, and committed child state is not rolled back when a sibling fails. Template reads use coherent snapshots and related publications commit atomically. Aggregate artifacts and failure diagnostics remain in authored child order. See [`parallel-review`](examples/workflows/parallel-review.md) and its [`Sequential` composition](examples/workflows/parallel-then-plan.md).
+
 ### Loop
 
 ```markdown
@@ -556,7 +580,7 @@ spec:
 {{ .Input }}
 ```
 
-A `Loop` repeats its ordered children up to `maxIterations`. A normal Role return is a recoverable result: the Loop continues through its remaining children and later iterations. An authorized escalation returned by a direct child completes the Loop immediately and skips later Loop children; a nested `Sequential` first finishes its own remaining children before propagating sticky escalation. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. Reserve `fail` for unrecoverable conditions because it aborts the entire workflow. `onExhausted` is `fail` by default or may be `complete`. `Parallel` is not part of v1alpha1. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
+A `Loop` repeats its ordered children up to `maxIterations`. A normal Role return is a recoverable result: the Loop continues through its remaining children and later iterations. An authorized escalation returned by a direct child completes the Loop immediately and skips later Loop children; a nested `Sequential` first finishes its own remaining children before propagating sticky escalation. Set `canEscalate: true` on every edge from the nearest `Loop` to the Role that may finish it; omitted values default to `false`. Reserve `fail` for unrecoverable conditions because it aborts the entire workflow. `onExhausted` is `fail` by default or may be `complete`. See the runnable [`goalkeeper`](examples/workflows/goalkeeper.md) example.
 
 ### Router
 
@@ -591,7 +615,7 @@ Children may reference any supported kind, including another composite. A child 
 
 Markdown is the canonical authoring format: its physical body becomes `spec.body` and `spec.body` must not also appear in frontmatter. A `.yaml` or `.yml` file represents the same complete resource object and must author `spec.body` inline.
 
-Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Loop|Router>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
+Callee validates both representations against the checked-in [Draft 2020-12 JSON Schema](internal/agent/schema.json), whose exact bytes are embedded in the binary. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Parallel|Loop|Router>` when you want a standalone schema document for one kind. For editor integration, use the raw schema from the repository:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json
@@ -788,7 +812,7 @@ Callee was built during OpenAI Build Week using Codex and GPT-5.6 as the primary
 
 Codex and GPT-5.6 were used to:
 
-- design the `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router` agent model;
+- design the `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router` agent model;
 - implement CLI commands, runtime behavior, and validation flows;
 - build graph inspection, doctor checks, and setup integrations;
 - create starter agents, examples, and user-facing documentation;

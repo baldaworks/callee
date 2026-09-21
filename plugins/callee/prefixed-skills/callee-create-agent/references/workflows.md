@@ -1,12 +1,13 @@
 # Author Callee workflows
 
-Read this reference before creating any `Sequential`, `Loop`, `Router`, or nested workflow.
+Read this reference before creating any `Sequential`, `Parallel`, `Loop`, `Router`, or nested workflow.
 
 ## Contents
 
 - [Place and represent files](#place-and-represent-files)
 - [Compose the resolved tree](#compose-the-resolved-tree)
 - [Author a Sequential workflow](#author-a-sequential-workflow)
+- [Author a Parallel workflow](#author-a-parallel-workflow)
 - [Author a Router workflow](#author-a-router-workflow)
 - [Author a Loop workflow](#author-a-loop-workflow)
 - [Finish the workflow](#finish-the-workflow)
@@ -28,9 +29,9 @@ complete resource object and must include `spec.body` explicitly.
 
 ## Compose the resolved tree
 
-Use only `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Loop`, and `Router`. A workflow child may reference
+Use only `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`. A workflow child may reference
 any supported kind, so workflows may nest other workflows. Do not author
-`Parallel`, fan-out, Join, or arbitrary graph edges.
+standalone Join or arbitrary graph edges.
 
 Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
 `state`, and `params` fields.
@@ -125,6 +126,32 @@ be bound with:
 
 A nested `Sequential` is itself an ordinary child and receives its
 parent-rendered input in the same way.
+
+## Author a Parallel workflow
+
+A `Parallel` runs every direct child concurrently and waits for all started children at Join. Use the same child shape as Sequential. Every child input is prepared before fan-out; without explicit `input`, every child receives the Parallel local input.
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Parallel
+spec:
+  description: Explores a task and classifies urgency independently.
+  children:
+    - ref: roles/explorer
+      alias: exploration
+    - ref: evaluations/typesafe-jev
+      alias: triage
+  output: |
+    Findings: {{ index .State.outputs "exploration" }}
+    Triage: {{ index .State.outputs "triage" }}
+---
+{{ .Input }}
+```
+
+Do not place a `Human` anywhere in a Parallel subtree. Descendant Roles are one-shot; default or authored `permissions: ask` becomes `allow`, while `deny` remains `deny`. Supply every unbound descendant Role parameter before running.
+
+Parallel branches use one live shared state. A later template may observe a sibling's completed commit, same-key writes follow commit order, and committed child state remains if another branch fails. Do not promise a deterministic winner for concurrent same-key writes. Natural aggregate JSON, propagated outcomes, and diagnostics follow authored child order. Parallel adds no concurrency-limit or custom-edge fields.
 
 ## Author a Router workflow
 

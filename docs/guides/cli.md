@@ -64,6 +64,7 @@ callee agent list
 callee agent list --kind Role
 callee agent list --kind TypeSafeJev
 callee agent list --kind OpenRouterDecision
+callee agent list --kind Parallel
 callee agent list --kind Router
 callee agent list --json
 ```
@@ -98,6 +99,7 @@ callee agent schema Human
 callee agent schema TypeSafeJev
 callee agent schema OpenRouterDecision
 callee agent schema Sequential
+callee agent schema Parallel
 callee agent schema Loop
 callee agent schema Router
 ```
@@ -194,7 +196,7 @@ successful artifact is written to stdout after cleanup.
 
 If one provider turn stays active for at least 10 seconds, Callee emits `agent turn heartbeat` on stderr with `turn_duration=<elapsed>`. This heartbeat is per provider turn only: it excludes pre-turn rendering and prepare work, REPL idle time between turns, and composite node execution.
 
-See [ACP permission requests](acp-permissions.md) for the permission-selection contract, [Workflow semantics](../reference/workflow-semantics.md) for exact input, output, Loop, Router, REPL, and failure behavior, and [Execution metrics](../reference/execution-metrics.md) for emitted run and Role measurements.
+See [ACP permission requests](acp-permissions.md) for the permission-selection contract, [Workflow semantics](../reference/workflow-semantics.md) for exact input, output, Parallel, Loop, Router, REPL, and failure behavior, and [Execution metrics](../reference/execution-metrics.md) for emitted lifecycle data and run and Role measurements.
 
 ## Generate Roles with PromptKit
 

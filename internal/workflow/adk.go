@@ -36,6 +36,9 @@ const (
 	adkNodeRoleTerminal       adkNodeRole = "terminal"
 	adkNodeRoleRouterDispatch adkNodeRole = "router_dispatch"
 	adkNodeRoleRouterBranch   adkNodeRole = "router_branch"
+	adkNodeRoleParallelGraph  adkNodeRole = "parallel_graph"
+	adkNodeRoleParallelBranch adkNodeRole = "parallel_branch"
+	adkNodeRoleParallelJoin   adkNodeRole = "parallel_join"
 )
 
 // nodeExecution carries Callee execution errors as workflow data. ADK wraps
@@ -189,6 +192,8 @@ func (c *adkCompiler) compileNode(name string, node *registry.ResolvedNode) (wor
 	switch node.Kind {
 	case agent.RouterKind:
 		return c.compileRouter(name, node)
+	case agent.ParallelKind:
+		return c.compileParallel(name, node)
 	case agent.SequentialKind, agent.LoopKind:
 		children := make([]workflow.Node, 0, len(node.Children))
 		for _, child := range node.Children {
@@ -377,7 +382,7 @@ func (n *routerNode) execute(ctx adkagent.Context, input string) (nodeResult, er
 	route, err := render(n.node.ResourceID+" spec.route", n.node.Resource.Spec.Route, agent.TemplateData{
 		Prompt: n.run.prompt,
 		Input:  input,
-		State:  n.run.state,
+		State:  n.run.snapshotState(),
 	})
 	if err != nil {
 		return nodeResult{}, err

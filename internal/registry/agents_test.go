@@ -624,3 +624,114 @@ func routerAgent(description, children string) string {
 func yamlRoleAgent(description string) string {
 	return "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: " + description + "\n  provider:\n    type: codex\n  body: |\n    {{ .Input }}\n"
 }
+
+func TestResolveParallelProjectsRolePolicy(t *testing.T) {
+	t.Parallel()
+
+	interactive := decodeAgent(t, "roles/interactive", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: interactive
+  provider: {type: codex}
+  interactive: true
+  permissions: {mode: ask}
+---
+{{ .Input }}
+`)
+	denied := decodeAgent(t, "roles/denied", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Role
+spec:
+  description: denied
+  provider: {type: codex}
+  permissions: {mode: deny}
+---
+{{ .Input }}
+`)
+	parallel := decodeAgent(t, "workflows/parallel", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Parallel
+spec:
+  description: parallel
+  children:
+    - ref: roles/interactive
+      alias: interactive
+    - ref: roles/denied
+      alias: denied
+---
+{{ .Input }}
+`)
+
+	registry, err := NewAgentRegistry([]agent.Resource{interactive, denied, parallel})
+	if err != nil {
+		t.Fatalf("NewAgentRegistry() error: %v", err)
+	}
+
+	root, err := registry.Resolve(parallel.ID)
+	if err != nil {
+		t.Fatalf("Resolve() error: %v", err)
+	}
+
+	first, second := root.Children[0], root.Children[1]
+	if !first.WithinParallel || first.ParallelBoundaryID != root.EffectiveID {
+		t.Fatalf("first Parallel metadata = within=%t boundary=%q", first.WithinParallel, first.ParallelBoundaryID)
+	}
+
+	if first.AuthoredInteractive == nil || !*first.AuthoredInteractive || first.Interactive == nil || *first.Interactive {
+		t.Errorf("first interactive policy = authored=%v effective=%v, want true/false", first.AuthoredInteractive, first.Interactive)
+	}
+
+	if first.Permissions == nil || first.Permissions.Mode != agent.PermissionModeAllow {
+		t.Errorf("first permissions = %+v, want allow", first.Permissions)
+	}
+
+	if second.Permissions == nil || second.Permissions.Mode != agent.PermissionModeDeny {
+		t.Errorf("second permissions = %+v, want deny", second.Permissions)
+	}
+}
+
+func TestResolveParallelRejectsNestedHuman(t *testing.T) {
+	t.Parallel()
+
+	human := decodeAgent(t, "humans/approval", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Human
+spec:
+  description: approval
+  responseKey: approval
+---
+Approve {{ .Input }}
+`)
+	nested := decodeAgent(t, "workflows/nested", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Sequential
+spec:
+  description: nested
+  children: [humans/approval]
+---
+{{ .Input }}
+`)
+	parallel := decodeAgent(t, "workflows/parallel", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: Parallel
+spec:
+  description: parallel
+  children:
+    - ref: workflows/nested
+      alias: nested
+---
+{{ .Input }}
+`)
+
+	_, err := NewAgentRegistry([]agent.Resource{human, nested, parallel})
+	if err == nil {
+		t.Fatal("NewAgentRegistry() error = nil, want nested Human rejection")
+	}
+
+	for _, fragment := range []string{`Parallel "workflows/parallel"`, `Human "humans/approval"`, `workflows/parallel -> nested -> humans/approval`} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Errorf("NewAgentRegistry() error = %q, want %q", err, fragment)
+		}
+	}
+}
