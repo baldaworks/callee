@@ -40,6 +40,8 @@ callee agent validate .callee/scripts/test.md
 callee agent run scripts/test --message "Run the checks"
 ```
 
-See the runnable [state-check Script](../../testdata/smoke/callee-human/scripts/assert-clarification.md),
+See the runnable [Human-loop smoke workflow](../../testdata/smoke/callee-human/workflows/human-loop.md),
+which supplies the `State.clarification` value required by its state-check
+Script child. Also see the
 [Script fields](../reference/agent-resources.md#script), and
 [Script execution](../reference/workflow-semantics.md#script-execution).

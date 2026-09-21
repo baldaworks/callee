@@ -20,8 +20,9 @@ spec:
 ## Inputs, artifacts, and state
 
 The body reads `.Prompt`, `.Input`, and `.State`. Callee displays the rendered
-body, prompts once, returns the response as the artifact, writes it to the
-top-level `State[responseKey]`, and also publishes it at
+body and prompts until the operator enters a nonblank response. It returns that
+response as the artifact, writes it to the top-level `State[responseKey]`, and
+also publishes it at
 `State.outputs[effectiveId]`. `responseKey` cannot be blank or use the reserved
 `outputs`, `scripts`, or `evaluations` keys.
 
@@ -31,8 +32,9 @@ A Human may appear under Sequential, Loop, or Router. Its presence anywhere in
 the resolved tree makes the whole run interactive unless mode was explicitly
 overridden; `--interactive=false` rejects the tree during preflight, even when
 the Human is in an unselected Router branch. Human is prohibited anywhere
-below Parallel. A missing terminal/interactor, display or prompt error, timeout,
-or blank response fails the visit; `/abort` aborts the workflow.
+below Parallel. Blank input re-prompts; it does not fail the visit. A missing
+terminal/interactor, display or prompt error, timeout, or terminal closure fails
+the visit; `/abort` aborts the workflow.
 
 ## Inspect and run
 

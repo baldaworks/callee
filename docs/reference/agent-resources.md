@@ -179,7 +179,10 @@ The body uses the restricted template surface: `.Prompt`, `.Input`, and `.State`
 
 `spec.responseKey` names the top-level shared-state entry that receives the collected operator response. The key must be nonblank and cannot be the reserved `outputs`, `scripts`, or `evaluations` keys.
 
-At runtime, Callee renders `body`, displays the rendered text on the controlling terminal, prompts once for a nonblank response, stores that string at `State[responseKey]`, and also promotes it to `State.outputs[effectiveId]`.
+At runtime, Callee renders `body`, displays the rendered text on the controlling
+terminal, and prompts until the operator enters a nonblank response. It stores
+that string at `State[responseKey]` and also promotes it to
+`State.outputs[effectiveId]`.
 
 ## TypeSafeJev and OpenRouterDecision
 

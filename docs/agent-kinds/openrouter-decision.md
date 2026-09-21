@@ -62,7 +62,7 @@ export OPENROUTER_API_KEY="<your-key>"
 callee --agent-root examples agent view evaluations/openrouter-decision
 callee --agent-root examples agent run evaluations/openrouter-decision \
   --message "Authentication changed without a rollback test"
-callee doctor
+callee --agent-root examples doctor
 ```
 
 Use the runnable [OpenRouter Decisions example](../../examples/evaluations/openrouter-decision.md).

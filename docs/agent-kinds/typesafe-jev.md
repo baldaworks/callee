@@ -63,7 +63,7 @@ export TYPESAFE_API_KEY="<your-key>"
 callee --agent-root examples agent view evaluations/typesafe-jev
 callee --agent-root examples agent run evaluations/typesafe-jev \
   --message "Checkout is failing for every customer"
-callee doctor
+callee --agent-root examples doctor
 ```
 
 Use the runnable [TypeSafe example](../../examples/evaluations/typesafe-jev.md).

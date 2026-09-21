@@ -48,6 +48,9 @@ to use it:
 - [OpenAI Build Week](project/build-week.md)
 - [Architecture decision records](adr/)
 
+Older repository links remain available through the [moved CLI guide](guides/cli.md)
+and [renamed coding-agent integration page](guides/coding-host-integrations.md).
+
 The checked-in [JSON Schema](../internal/agent/schema.json), CLI help,
 implementation, and tests are authoritative for current behavior. The public
 resource API is `callee.metalagman.dev/v1alpha1`; removed legacy commands and
