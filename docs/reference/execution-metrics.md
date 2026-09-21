@@ -2,14 +2,19 @@
 
 Use the lifecycle fields emitted by `callee agent run` to inspect a complete command or an individual Role visit. Run-wide fields use the `agent_` prefix; per-visit fields use `role_`.
 
-Metrics are INFO-level structured fields on stderr events. They do not alter stdout: a successful run writes only the root artifact to stdout, after provider cleanup succeeds and after the final metrics event is emitted. A nonempty stderr stream is expected, so use the command exit status to determine success.
+Metrics are INFO-level structured fields on stderr events. They do not alter
+stdout: a successful run writes only the root artifact to stdout, after
+workflow execution and cleanup succeed and after the final metrics event is
+emitted. A nonempty stderr stream is expected, so use the command exit status
+to determine success.
 
 ## Events and scopes
 
 | Event | Metrics | Scope |
 | --- | --- | --- |
 | `agent finished` for a `Role` | `role_*` | One visit to that Role occurrence. Repeated Loop visits have separate scopes. |
-| `agent finished` for `Script`, `Human`, `Sequential`, `Parallel`, `Loop`, or `Router` | None | Non-Role lifecycle events retain their general `duration` field but do not receive `role_*` fields. Parallel additionally reports bounded `parallel_*` lifecycle fields. |
+| `agent finished` for `TypeSafeJev` or `OpenRouterDecision` | None | Evaluation visits retain general lifecycle fields and add bounded `evaluation_*` operational fields. These fields are not metrics and are not aggregated. |
+| `agent finished` for `Script`, `Human`, `Sequential`, `Parallel`, `Loop`, or `Router` | None | Other non-Role lifecycle events retain their general `duration` field but do not receive `role_*` fields. Parallel additionally reports bounded `parallel_*` lifecycle fields. |
 | `agent run finished` | `agent_*` | The complete `agent run` command, including every Role visit reached by the selected root. |
 
 A Role selected directly as the root has the same `role_*` behavior as a Role nested under `Sequential`, `Parallel`, `Loop`, or `Router`. Aliases and repeated visits do not change the field meanings. Each Role visit reports separately, while the final `agent_*` token fields aggregate all attempted provider turns across all visits.
@@ -65,6 +70,27 @@ Callee resolves model and reasoning independently. For each field, the latest co
 
 These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router` events do not receive any `role_*` fields. Evaluation operational data appears only as `evaluation_*` lifecycle log fields and is not aggregated into run metrics.
 
+## Evaluation operational fields
+
+A TypeSafeJev or OpenRouterDecision `agent finished` event adds safe
+request-level fields when the corresponding value is available:
+
+| Field | Meaning |
+| --- | --- |
+| `evaluation_service` | Stable service discriminator: `typesafe` or `openrouter`. |
+| `evaluation_requested_model` | Model selected by the resource and environment resolution rules. |
+| `evaluation_attempts` | Number of HTTP attempts made during this visit. |
+| `evaluation_model` | Actual model reported by the service. |
+| `evaluation_provider` | Provider metadata returned by OpenRouter. |
+| `evaluation_request_id` | Bounded request identifier returned by the service. |
+| `evaluation_input_tokens`, `evaluation_output_tokens` | Service-reported token usage for this request. |
+| `evaluation_cost` | Service-reported cost when supplied. |
+| `evaluation_error_class` | Bounded `configuration`, `authentication`, `rate_limit`, `transport`, `timeout`, `provider`, `response`, or `canceled` class on failure. |
+
+These are lifecycle log fields rather than `role_*` or `agent_*` metrics.
+They never include evidence, questions, answers, credentials, headers, state,
+artifacts, sensitive endpoints, or raw provider errors.
+
 ## Token fields and aggregation
 
 Callee reads provider usage metadata from a turn's final response. It records one attempted turn whenever a provider turn returns, whether or not that turn supplied usage or ended with an error. For every reported turn, Callee independently sums the provider's input, output, total, and cached-read values; it does not derive one token field from another.
@@ -108,7 +134,9 @@ A Role that fails during parameter resolution, rendering, provider startup, sess
 INF agent finished id=roles/worker kind=Role visit=1 status=error role_provider=codex role_model=backend-default role_reasoning=high role_token_usage=unavailable duration=0s
 ```
 
-The exact error is reported separately. A containing `Script`, `Human`, `Sequential`, `Parallel`, `Loop`, or `Router` finish event retains its unprefixed lifecycle `duration` but does not copy these `role_*` fields.
+The exact error is reported separately. A non-Role `agent finished` event
+retains its unprefixed lifecycle `duration` but does not copy these `role_*`
+fields.
 
 Parallel finish events add `parallel_branches`, `parallel_started`, `parallel_completed`, `parallel_failed`, and `parallel_joined`. These fields describe one activation after its branches drain. They contain counts and a boolean only; prompts, state, artifacts, and permission payloads are excluded. Parallel adds no metrics.
 

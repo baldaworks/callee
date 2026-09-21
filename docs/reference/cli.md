@@ -79,7 +79,9 @@ callee doctor --graph dot
 Plain doctor performs static validation, then initializes configured Role
 providers and disposable sessions without sending a model prompt. It also
 validates reachable TypeSafe and OpenRouter evaluation configuration without
-making inference calls. `--timeout` applies to each provider group.
+making inference calls. `--timeout` applies to each Role provider process
+group. Plain doctor requires at least one Role or evaluation resource because
+Script, Human, and composite resources have no external readiness check.
 
 Graph modes are static-only and never start providers. Their edges show the
 authored `canEscalate` value; `agent view` shows the effective capability for a

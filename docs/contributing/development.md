@@ -22,7 +22,7 @@ Some tests and integrations also exercise platform or external boundaries:
 | [`internal/workflow`](../../internal/workflow) | Runtime execution and control protocol. |
 | [`internal/runtime`](../../internal/runtime) | Norma Runtime and ACP adaptation. |
 | [`internal/cli`](../../internal/cli) | CLI commands, setup assets, TTY interaction, and PromptKit generation. |
-| [`internal/doctor`](../../internal/doctor) | Provider checks and graph renderers. |
+| [`internal/doctor`](../../internal/doctor) | Role-provider readiness, evaluation configuration checks, and graph renderers. |
 | [`examples`](../../examples) | Runnable resources; starter assets are expected to match the applicable examples. |
 | [`plugins/callee`](../../plugins/callee) | Coding-agent plugin manifests and skill content. |
 | [`docs`](..) | Canonical long-form engineering documentation. |

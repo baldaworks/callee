@@ -90,7 +90,7 @@ func NewRootCommand() *cobra.Command {
 
 	root := &cobra.Command{
 		Use:           "callee",
-		Short:         "Run provider-aware agents and workflows defined in Markdown or YAML.",
+		Short:         "Run repository-defined agents and workflows from Markdown or YAML.",
 		Version:       Version,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -229,7 +229,7 @@ func doctorCommand() *cobra.Command {
 			return runAgentDoctor(cmd.Context(), configured.Agents(), runtime.NormaFactory{Stderr: cmd.ErrOrStderr()}, timeout, cmd.OutOrStdout())
 		},
 	}
-	cmd.Flags().DurationVar(&timeout, "timeout", time.Minute, "maximum initialization time for each Role runtime")
+	cmd.Flags().DurationVar(&timeout, "timeout", time.Minute, "maximum readiness-check time for each Role provider group")
 	cmd.Flags().StringVar(&graph, "graph", "", "render the static agent graph as text, mermaid, or dot")
 
 	return cmd

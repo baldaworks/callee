@@ -22,7 +22,7 @@ guides and precise references as needed.
 
 ## Concepts and reference
 
-- [Architecture](concepts/architecture.md) explains discovery, graph compilation, state, processes, and sessions.
+- [Architecture](concepts/architecture.md) explains discovery, graph compilation, shared state, kind-specific execution, and Role process/session ownership.
 - [CLI reference](reference/cli.md) maps the public commands and inspection surfaces.
 - [Agent resources](reference/agent-resources.md) defines discovery, the versioned envelope, every kind, templates, and validation.
 - [Workflow semantics](reference/workflow-semantics.md) defines node data flow, composition, escalation, control records, and cleanup.

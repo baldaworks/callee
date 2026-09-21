@@ -47,7 +47,7 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router`",
 		"Read Human prompts, Human responses",
 		"Do not send `quit`, `exit`, `/done`",
-		"artifact is written to stdout only after provider cleanup succeeds",
+		"artifact is written to stdout only after workflow execution and cleanup succeed",
 		"For a Parallel",
 		"`parallel_joined`",
 		"setup <codex|claude|grok|copilot|opencode|cursor>",

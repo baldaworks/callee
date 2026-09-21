@@ -107,7 +107,7 @@ Use `--param-file "<effective-node-id>.<name>=<path>"` for exact multiline value
 
 Read Human prompts, Human responses, Role questions, and permission requests through the same terminal. A Role inside a workflow may enter REPL mode; its stderr lifecycle has one `entering repl` / `exiting repl` pair, with every `await` turn inside that pair. Do not send `quit`, `exit`, `/done`, or a synthetic completion marker; the Role selects control through Callee's injected protocol.
 
-Wait for automatic root completion. The sole successful root artifact is written to stdout only after provider cleanup succeeds. Info lifecycle events and diagnostics are written to stderr, so use the exit status rather than stderr emptiness to determine success. Treat empty stdout on failure as intentional.
+Wait for automatic root completion. The sole successful root artifact is written to stdout only after workflow execution and cleanup succeed. Info lifecycle events and diagnostics are written to stderr, so use the exit status rather than stderr emptiness to determine success. Treat empty stdout on failure as intentional.
 
 For a Router, read the named-route or `default=true` selection from lifecycle diagnostics. A default child handles only a blank or unknown route key. A route-template error, no-match without default, or selected-child failure is a failed run; never retry another Router branch or describe default as failure failover.
 

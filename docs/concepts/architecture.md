@@ -48,7 +48,7 @@ workflow runner + one shared ephemeral state object
         +--> TypeSafeJev / OpenRouterDecision -> HTTP API
         |
         v
-composite coordination -> one root artifact on stdout
+one root artifact on stdout after successful cleanup
 ```
 
 Discovery loads the user and project roots together. Registry construction rejects invalid resources, unresolved references, cycles, duplicate resource IDs, and duplicate effective IDs in a resolved tree before execution begins. See [Agent resource format](../reference/agent-resources.md) for discovery and validation rules.

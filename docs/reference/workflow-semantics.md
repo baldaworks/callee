@@ -9,12 +9,16 @@ missing prompt from the controlling terminal; non-interactive mode requires an
 explicit nonblank `--message`. The run owns:
 
 - one immutable original prompt;
-- one shared, ephemeral state object initialized with empty `outputs` and `scripts` maps;
+- one shared, ephemeral state object initialized with empty `outputs`, `scripts`, and `evaluations` maps;
 - one set of runtime parameter values;
-- reusable provider processes;
+- reusable ACP provider processes when Roles are reached;
 - fresh provider sessions for individual Role visits.
 
-The run succeeds only when the root produces a nonblank artifact and every started provider closes successfully. Callee writes that artifact once to stdout after cleanup. Lifecycle and provider diagnostics use stderr. A nonempty stderr stream is therefore not by itself a failure signal; use the process exit status.
+The run succeeds only when the root produces a nonblank artifact and any
+started provider processes close successfully. Callee writes that artifact
+once to stdout after workflow execution and cleanup. Lifecycle and runtime
+diagnostics use stderr. A nonempty stderr stream is therefore not by itself a
+failure signal; use the process exit status.
 
 ## Node entry and state
 

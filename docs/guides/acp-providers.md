@@ -107,7 +107,12 @@ callee doctor
 callee doctor --timeout 90s
 ```
 
-Doctor groups Roles by provider process identity, starts each distinct process, and creates disposable sessions for distinct model/mode/reasoning configurations. It verifies session binding without sending a model prompt, then closes the process. Successful output names every Role and ends with `callee doctor: ok`.
+Doctor groups Roles by provider process identity, starts each distinct process,
+and creates disposable sessions for distinct model/mode/reasoning
+configurations. It verifies session binding without sending a model prompt,
+checks evaluation configuration without inference, then closes each process.
+Successful output names every checked Role and evaluation resource and ends
+with `callee doctor: ok`.
 
 Graph-only doctor modes do not check providers:
 

@@ -212,6 +212,8 @@ then `TYPESAFE_DEFAULT_MODEL`, then `jev-latest`; its API root resolves from
 `OPENROUTER_API_KEY`, requires `spec.model`, and uses `/api/alpha/decisions`,
 not chat completions. Callee does not restrict its model to TypeSafe or Jev.
 The explicit evidence and questions are sent to the selected remote service.
+For either kind, `spec.timeout` is the total request-and-retry budget and
+defaults to `30s`.
 
 Use exactly one evidence representation: Markdown body for a string, or
 `spec.evidence` for a JSON-compatible string, object, or array. String leaves in
@@ -416,7 +418,9 @@ Callee exposes a deterministic positive allowlist from Sprig v3.3.0 plus explici
 
 ## State modifiers
 
-`spec.state` and child `state` accept JSON-compatible strings, booleans, finite numbers, arrays, and string-keyed objects. Null is not supported. The top-level `outputs` and `scripts` keys are reserved.
+`spec.state` and child `state` accept JSON-compatible strings, booleans, finite
+numbers, arrays, and string-keyed objects. Null is not supported. The top-level
+`outputs`, `scripts`, and `evaluations` keys are reserved.
 
 State application is shallow. Resource state is combined with edge state, with edge values replacing resource values at the same top-level key. String leaves are templates. Callee renders every value against the same immutable pre-node snapshot and commits the whole modifier only if every render succeeds.
 
@@ -431,7 +435,7 @@ callee agent validate .callee/roles/reviewer.md
 # Load both discovery roots and resolve one complete tree.
 callee agent view workflows/investigate
 
-# Validate the complete registry and check every Role runtime.
+# Validate the complete registry and check Role and evaluation readiness.
 callee doctor
 ```
 

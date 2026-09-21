@@ -29,9 +29,10 @@ Run one command from the project root:
 | OpenCode | `npx --yes @baldaworks/callee@latest setup opencode` |
 | Cursor | `npx --yes @baldaworks/callee@latest setup cursor` |
 
-Setup installs the coding-agent integration and six editable starter resources. Existing
-managed files are preserved; `--force` replaces them. Use `--agent-root <dir>`
-to install starter resources under a different exclusive catalog root.
+Setup installs the coding-agent integration and six editable starter resources.
+Existing managed files are preserved; `--force` replaces them. Use
+`--agent-root <dir>` to install starter resources under a different exclusive
+catalog root.
 
 For coding-agent invocation names, installed paths, and manual setup, see
 [Coding-agent integrations](../guides/coding-agent-integrations.md).
@@ -66,5 +67,8 @@ Ensure the Go installation directory, normally `$GOBIN` or `$GOPATH/bin`, is on
 
 ## Next step
 
-Continue with the [Quickstart](quickstart.md) to inspect and run the starter
-workflow.
+If you ran coding-agent setup, continue with the [Quickstart](quickstart.md) to
+inspect and run its starter workflow. A CLI-only installation does not create a
+catalog; author an [agent resource](../reference/agent-resources.md) or
+[import one](../guides/importing-agents.md) before following the
+[running guide](../guides/running-agents.md).

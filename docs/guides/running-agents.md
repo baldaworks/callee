@@ -60,7 +60,8 @@ for the REPL control protocol.
 
 ## Read output and lifecycle data
 
-The successful root artifact is written once to stdout after provider cleanup.
+The successful root artifact is written once to stdout after workflow execution
+and cleanup succeed.
 Lifecycle events, provider diagnostics, permission events, heartbeats, and
 metrics go to stderr. Determine success from the process exit status.
 

@@ -5,9 +5,9 @@ and provider execution in the current project.
 
 ## Before you begin
 
-Complete one route in [Installation](installation.md). A coding-agent setup command must
-have created the starter resources, and the ACP provider selected by those Roles
-must be installed and authenticated.
+Run one coding-agent setup command from [Installation](installation.md). A
+CLI-only installation does not create the starter catalog used here. The ACP
+provider selected by the starter Roles must also be installed and authenticated.
 
 ## Inspect the starter catalog
 

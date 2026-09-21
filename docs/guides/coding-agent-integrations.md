@@ -112,4 +112,8 @@ callee agent view workflows/investigate
 callee agent validate .callee/roles/reviewer.md
 ```
 
-Run `callee doctor` only after the selected provider CLI and credentials are available. To validate checked-in plugin assets during development, use the project checks in [Development and validation](../contributing/development.md).
+Run `callee doctor` only after required Role provider CLIs and evaluation
+credentials are available. Plain doctor has no readiness work for a catalog
+containing only Script, Human, and composite resources. To validate checked-in
+plugin assets during development, use the project checks in
+[Development and validation](../contributing/development.md).
