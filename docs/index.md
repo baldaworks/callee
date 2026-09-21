@@ -1,30 +1,43 @@
-# Callee engineering documentation
+# Callee documentation
 
-Callee is a CLI runtime for provider-backed agents and deterministic workflows defined as versioned Markdown or YAML resources. This documentation is the canonical long-form reference for engineers who author agents, operate the CLI, integrate coding hosts, or maintain the project. For the shortest installation and first-run path, start with the [repository README](../README.md).
+Callee runs repository-defined agents and deterministic workflows authored as
+versioned Markdown or YAML. Start with setup and a first run, then use the
+task-oriented guides and precise references as needed.
 
-## Understand the system
+## Get started
 
-- [Concepts and architecture](concepts/architecture.md) explains the resource, registry, runtime, state, and ACP process model.
-- [Agent resource format](reference/agent-resources.md) defines discovery, the versioned envelope, kind-specific fields, templates, parameters, and validation rules.
-- [Workflow semantics](reference/workflow-semantics.md) defines Role, Script, Human, TypeSafeJev, and OpenRouterDecision leaf execution; Sequential, Parallel, Loop, and Router composition; node input and output; state updates; edge-authorized Loop escalation; failure; REPL control; and lifecycle behavior.
-- [Execution metrics](reference/execution-metrics.md) defines `agent_*` and `role_*` duration, operator-wait, provider-selection, and token fields, including presence, fallback, and aggregation rules.
+- [Installation](getting-started/installation.md) covers prerequisites, coding-host setup, and direct CLI installation.
+- [Quickstart](getting-started/quickstart.md) takes the installed starter workflow from discovery to a completed run.
 
-## Install and operate Callee
+## Guides
 
-- [CLI installation and usage](guides/cli.md) covers installation choices, catalog inspection, validation, execution, graph inspection, diagnostics, and PromptKit role generation.
-- [ACP provider configuration](guides/acp-providers.md) covers supported providers, command resolution, session settings, timeouts, permissions, and troubleshooting.
-- [ACP permission requests](guides/acp-permissions.md) defines Role permission modes, automatic ACP option selection, controlling-TTY interaction, failures, and timeout behavior.
-- [Coding-host integrations](guides/coding-host-integrations.md) explains the installed skills, setup targets, generated project files, and the boundary between a coding host and a runtime provider.
+- [Coding-host integrations](guides/coding-host-integrations.md) explains the six supported hosts, installed assets, and manual setup.
+- [Running agents](guides/running-agents.md) covers run modes, parameters, permissions, terminal behavior, output, and failures.
+- [Importing agents](guides/importing-agents.md) copies and validates a catalog subtree from a remote git repository.
+- [PromptKit](guides/promptkit.md) discovers templates and generates validated Roles.
+- [ACP provider configuration](guides/acp-providers.md) configures Role backends, sessions, timeouts, and readiness checks.
+- [ACP permission requests](guides/acp-permissions.md) defines interactive and automatic permission handling.
 
-## Maintain the project
+## Concepts and reference
 
-- [ADR 0001: Native Jev evaluation node](adr/0001-native-jev-evaluation-node.md) records a provisional integration proposal intended for later supersession; it does not describe a shipped node kind.
-- [ADR 0003: Explicit TypeSafe Jev and OpenRouter Decisions nodes](adr/0003-explicit-typesafe-jev-and-openrouter-decisions-nodes.md) records the current evaluation resource and service boundaries.
-- [Development and validation](contributing/development.md) covers the repository layout, toolchain, local checks, focused validation, and documentation maintenance.
-- [Release process](contributing/release.md) records the tag-triggered release sequence, versioned surfaces, remote quality gate, artifact publication, and post-release verification.
+- [Architecture](concepts/architecture.md) explains discovery, graph compilation, state, processes, and sessions.
+- [CLI reference](reference/cli.md) maps the public commands and inspection surfaces.
+- [Agent resources](reference/agent-resources.md) defines discovery, the versioned envelope, every kind, templates, and validation.
+- [Workflow semantics](reference/workflow-semantics.md) defines node data flow, composition, escalation, control records, and cleanup.
+- [Execution metrics](reference/execution-metrics.md) defines lifecycle measurement fields and aggregation boundaries.
+- [Examples](examples/index.md) indexes runnable packs and individual resources.
 
-## Scope and compatibility
+## Project and contributor material
 
-The current resource API is `callee.metalagman.dev/v1alpha1`. It supports `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`. Callee is CLI-only and intentionally has no Gemini provider, server transport, durable thread store, or handle binding. Treat the Workflows API as a clean break: removed legacy command and resource forms are not compatibility surfaces.
+The following pages describe how Callee is built and maintained rather than how
+to use it:
 
-The checked-in [JSON Schema](../internal/agent/schema.json) is the machine-readable resource contract. `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Parallel|Loop|Router>` prints standalone per-kind schema documents derived from that same embedded source. Source, tests, CLI help, manifests, and repository instructions remain authoritative when implementation behavior changes.
+- [Development and validation](contributing/development.md)
+- [Release process](contributing/release.md)
+- [OpenAI Build Week](project/build-week.md)
+- [Architecture decision records](adr/)
+
+The checked-in [JSON Schema](../internal/agent/schema.json), CLI help,
+implementation, and tests are authoritative for current behavior. The public
+resource API is `callee.metalagman.dev/v1alpha1`; removed legacy commands and
+unversioned resources are not compatibility surfaces.

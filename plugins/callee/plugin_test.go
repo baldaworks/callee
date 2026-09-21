@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -569,108 +570,112 @@ func TestREADMEPresentsHostsEqually(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"apiVersion: callee.metalagman.dev/v1alpha1",
-		"kind: Role",
-		"npx --yes @baldaworks/callee@latest agent run workflows/goalkeeper",
-		"Current Callee executable with `bridge codex`",
-		"The Codex ACP bridge is built into Callee",
-		"callee doctor --graph mermaid",
+		"$callee Run workflows/investigate",
+		"docs/getting-started/quickstart.md",
+		"docs/guides/running-agents.md",
+		"docs/reference/agent-resources.md",
+		"docs/examples/index.md",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("README is missing audited text %q", want)
 		}
 	}
+
+	for _, forbidden := range []string{
+		"## Agent format",
+		"## PromptKit",
+		"## Doctor and graphs",
+		"## OpenAI Build Week",
+		"go test ./...",
+		"TYPESAFE_API_KEY",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("README contains long-form or contributor detail %q", forbidden)
+		}
+	}
 }
 
-func TestREADMEAgentExamplesMatchCodec(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+func TestDocumentationInformationArchitecture(t *testing.T) {
+	repositoryRoot := filepath.Join("..", "..")
+	required := []string{
+		"docs/getting-started/installation.md",
+		"docs/getting-started/quickstart.md",
+		"docs/guides/coding-host-integrations.md",
+		"docs/guides/running-agents.md",
+		"docs/guides/importing-agents.md",
+		"docs/guides/promptkit.md",
+		"docs/guides/acp-providers.md",
+		"docs/guides/acp-permissions.md",
+		"docs/concepts/architecture.md",
+		"docs/reference/cli.md",
+		"docs/reference/agent-resources.md",
+		"docs/reference/workflow-semantics.md",
+		"docs/reference/execution-metrics.md",
+		"docs/examples/index.md",
+		"docs/contributing/development.md",
+		"docs/contributing/release.md",
+		"docs/project/build-week.md",
+	}
+
+	for _, relative := range required {
+		if _, err := os.Stat(filepath.Join(repositoryRoot, relative)); err != nil {
+			t.Errorf("required documentation path %s: %v", relative, err)
+		}
+	}
+
+	pointer, err := os.ReadFile(filepath.Join(repositoryRoot, "docs", "guides", "cli.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	text := string(data)
-	headings := []string{
-		"### Role",
-		"### Script",
-		"### Human",
-		"### TypeSafeJev and OpenRouterDecision",
-		"### Sequential",
-		"### Loop",
-		"### Router",
-		"## YAML representation and JSON Schema",
+	if !strings.Contains(string(pointer), "../reference/cli.md") {
+		t.Error("legacy CLI guide does not point to the canonical CLI reference")
 	}
+}
 
-	previous := -1
+func TestDocumentationLocalLinksResolve(t *testing.T) {
+	repositoryRoot := filepath.Join("..", "..")
+	linkPattern := regexp.MustCompile(`\[[^]]*\]\(([^)[:space:]]+)`)
+	paths := []string{filepath.Join(repositoryRoot, "README.md")}
 
-	for _, heading := range headings {
-		index := strings.Index(text, heading)
-		if index < 0 {
-			t.Fatalf("README is missing heading %q", heading)
-		}
-
-		if index <= previous {
-			t.Fatalf("README heading %q is out of kind-first order", heading)
-		}
-
-		previous = index
-	}
-
-	markdownExamples := []struct {
-		id           string
-		startHeading string
-		endHeading   string
-		wantKind     agent.Kind
-	}{
-		{id: "roles/reviewer", startHeading: "### Role", endHeading: "### ACP provider configuration", wantKind: agent.RoleKind},
-		{id: "scripts/validator", startHeading: "### Script", endHeading: "### Human", wantKind: agent.ScriptKind},
-		{id: "humans/approver", startHeading: "### Human", endHeading: "### TypeSafeJev and OpenRouterDecision", wantKind: agent.HumanKind},
-		{id: "judges/urgent", startHeading: "### TypeSafeJev and OpenRouterDecision", endHeading: "### Sequential", wantKind: agent.OpenRouterDecisionKind},
-		{id: "workflows/pipeline", startHeading: "### Sequential", endHeading: "### Loop", wantKind: agent.SequentialKind},
-		{id: "workflows/goalkeeper", startHeading: "### Loop", endHeading: "### Router", wantKind: agent.LoopKind},
-		{id: "workflows/task-router", startHeading: "### Router", endHeading: "### Children and composition", wantKind: agent.RouterKind},
-	}
-
-	var markdownRole agent.Resource
-
-	for _, example := range markdownExamples {
-		encoded := readmeFence(t, text, example.startHeading, example.endHeading, "markdown")
-
-		resource, err := agent.DecodeMarkdown(example.id, example.id+".md", []byte(encoded))
+	err := filepath.WalkDir(filepath.Join(repositoryRoot, "docs"), func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
-			t.Fatalf("decode README %s example: %v", example.wantKind, err)
+			return err
 		}
 
-		if resource.Kind != example.wantKind {
-			t.Errorf("README %s example kind = %s", example.wantKind, resource.Kind)
+		if !entry.IsDir() && filepath.Ext(path) == ".md" {
+			paths = append(paths, path)
 		}
 
-		if resource.Kind == agent.RoleKind {
-			markdownRole = resource
-		}
-	}
-
-	yamlExample := readmeFence(t, text, "## YAML representation and JSON Schema", "## Templates and state", "yaml")
-
-	yamlRole, err := agent.DecodeYAML("roles/reviewer", "roles/reviewer.yaml", []byte(yamlExample))
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("decode README YAML Role example: %v", err)
+		t.Fatal(err)
 	}
 
-	markdownRole.Source = ""
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	yamlRole.Source = ""
-	if !reflect.DeepEqual(yamlRole, markdownRole) {
-		t.Errorf("README YAML Role does not match Markdown Role:\nYAML:     %#v\nMarkdown: %#v", yamlRole, markdownRole)
-	}
+		for _, match := range linkPattern.FindAllStringSubmatch(string(data), -1) {
+			target := strings.Trim(match[1], "<>")
+			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "mailto:") || strings.HasPrefix(target, "#") {
+				continue
+			}
 
-	const rawSchemaURL = "https://raw.githubusercontent.com/baldaworks/callee/main/internal/agent/schema.json"
-	if !strings.Contains(text, rawSchemaURL) {
-		t.Errorf("README is missing raw schema URL %q", rawSchemaURL)
-	}
+			if filepath.IsAbs(target) {
+				t.Errorf("%s contains non-portable absolute link %q", path, target)
 
-	const unavailableSchemaURL = "https://callee.metalagman.dev/schema/v1alpha1/agent.json"
-	if strings.Contains(text, unavailableSchemaURL) {
-		t.Errorf("README contains unavailable schema URL %q", unavailableSchemaURL)
+				continue
+			}
+
+			target, _, _ = strings.Cut(target, "#")
+			if _, err := os.Stat(filepath.Join(filepath.Dir(path), filepath.FromSlash(target))); err != nil {
+				t.Errorf("%s contains unresolved local link %q: %v", path, match[1], err)
+			}
+		}
 	}
 }
 
