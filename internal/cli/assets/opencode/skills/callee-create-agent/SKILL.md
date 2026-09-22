@@ -5,7 +5,7 @@ description: Create project-defined Callee Role, DynamicRole, Script, Human, Typ
 
 # Create a Callee agent
 
-Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.21.0` for every command in the task.
+Use `callee` when available. Otherwise use the pinned fallback `npx --yes @baldaworks/callee@0.22.0` for every command in the task.
 
 ## Choose the kind and ID
 
