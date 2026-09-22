@@ -4,9 +4,9 @@ kind: Sequential
 spec:
   description: Uses TypeSafe Jev to select a model, then runs a DynamicRole review.
   children:
-    - ref: evaluations/typesafe-model-selector
+    - ref: codex/jev-model-selector/evaluations/model-selector
       alias: model_selector
-    - ref: roles/dynamic-reviewer
+    - ref: codex/jev-model-selector/roles/dynamic-reviewer
       alias: reviewer
       input: "{{ .Prompt }}"
       state:

@@ -63,7 +63,7 @@ static Role when process selection does not genuinely need runtime state.
 
 Run the checked-in
 [dynamic reviewer example](../../examples/roles/dynamic-reviewer.md), or the
-[Sequential Jev model selector](../../examples/workflows/jev-model-selected-review.md)
+[self-contained Sequential Jev model-selector pack](../../examples/codex/jev-model-selector/README.md)
 that feeds a validated Choice answer into its provider model. See
 [DynamicRole fields](../reference/agent-resources.md#dynamicrole),
 [DynamicRole execution](../reference/workflow-semantics.md#dynamicrole-execution),

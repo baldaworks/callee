@@ -1,8 +1,8 @@
 # Typed evaluation examples
 
-These resources are runnable directly from the repository root. Evaluation
-leaves call the native TypeSafe System One or OpenRouter Decisions API. The
-model-selector workflow then starts the ACP provider selected by TypeSafe Jev.
+These resources are runnable directly from the repository root. They call the
+native TypeSafe System One or OpenRouter Decisions API; no ACP provider is
+started.
 
 List and inspect the examples:
 
@@ -10,7 +10,6 @@ List and inspect the examples:
 callee --agent-root examples agent list --kind TypeSafeJev
 callee --agent-root examples agent list --kind OpenRouterDecision
 callee --agent-root examples agent view evaluations/typesafe-triage
-callee --agent-root examples agent view workflows/jev-model-selected-review
 ```
 
 ## TypeSafe Jev
@@ -41,18 +40,6 @@ Its final stdout artifact is the second typed evaluation. During the run,
 structured results are also available at `.State.evaluations.triage` and
 `.State.evaluations.recommendation`; their compact JSON forms are stored at the
 matching `.State.outputs` keys.
-
-The model-selector workflow asks TypeSafe Jev to choose `gpt-5.6-luna`,
-`gpt-5.6-terra`, or `gpt-5.6-sol`. Its `Sequential` passes the validated Choice
-answer through child state, and the following `DynamicRole` renders that value
-as `spec.provider.model` before starting Codex:
-
-```bash
-callee --agent-root examples agent run workflows/jev-model-selected-review \
-  --message "Review the authentication changes in this repository"
-```
-
-This run requires both `TYPESAFE_API_KEY` and a working Codex provider.
 
 ## OpenRouter Decisions
 
