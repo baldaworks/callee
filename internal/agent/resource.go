@@ -19,6 +19,8 @@ const (
 
 	// RoleKind identifies a provider-backed leaf agent.
 	RoleKind Kind = "Role"
+	// DynamicRoleKind identifies a provider-backed leaf whose provider is rendered per visit.
+	DynamicRoleKind Kind = "DynamicRole"
 	// ScriptKind identifies a deterministic local validator leaf.
 	ScriptKind Kind = "Script"
 	// HumanKind identifies an operator-backed interactive leaf.
@@ -57,6 +59,11 @@ var aliasPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // Kind is a supported agent resource kind.
 type Kind string
+
+// IsRoleKind reports whether kind uses the provider-backed Role contract.
+func IsRoleKind(kind Kind) bool {
+	return kind == RoleKind || kind == DynamicRoleKind
+}
 
 // PermissionMode controls how a Role handles ACP permission requests.
 type PermissionMode string
@@ -379,6 +386,8 @@ func (r Resource) validateKind() error {
 	switch r.Kind {
 	case RoleKind:
 		return r.validateRole()
+	case DynamicRoleKind:
+		return r.validateDynamicRole()
 	case ScriptKind:
 		return r.validateScript()
 	case HumanKind:
@@ -634,6 +643,31 @@ func (r Resource) validateRole() error {
 		return fmt.Errorf("agent %q: Role requires spec.provider", r.ID)
 	}
 
+	if err := r.validateConcreteProvider(); err != nil {
+		return err
+	}
+
+	return r.validateRoleBehavior()
+}
+
+func (r Resource) validateDynamicRole() error {
+	if r.Spec.Provider == nil {
+		return fmt.Errorf("agent %q: DynamicRole requires spec.provider", r.ID)
+	}
+
+	if err := r.validateDynamicProviderTemplates(); err != nil {
+		return err
+	}
+
+	return r.validateRoleBehavior()
+}
+
+func (r Resource) validateConcreteProvider() error {
+	provider := r.Spec.Provider
+	if provider == nil {
+		return fmt.Errorf("agent %q: missing spec.provider", r.ID)
+	}
+
 	if _, ok := RuntimeType(provider.Type); !ok {
 		return fmt.Errorf("agent %q: unsupported spec.provider.type %q", r.ID, provider.Type)
 	}
@@ -665,6 +699,10 @@ func (r Resource) validateRole() error {
 		}
 	}
 
+	return nil
+}
+
+func (r Resource) validateRoleBehavior() error {
 	for name, description := range r.Spec.Params {
 		if !parameterName.MatchString(name) {
 			return fmt.Errorf("agent %q: invalid parameter name %q", r.ID, name)

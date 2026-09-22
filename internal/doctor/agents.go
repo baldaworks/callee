@@ -28,17 +28,18 @@ type sessionGroup struct {
 	roles []resource.Resource
 }
 
-// RunAgents checks every versioned Role provider group without sending a model
-// prompt and verifies evaluation configuration without inference. Static
-// resource and graph validation must already have succeeded.
+// RunAgents checks every static Role provider group without sending a model
+// prompt, defers DynamicRole provider checks until runtime, and verifies
+// evaluation configuration without inference. Static resource and graph
+// validation must already have succeeded.
 func RunAgents(ctx context.Context, resources []resource.Resource, factory runtime.ProcessFactory, timeout time.Duration, stdout io.Writer) error {
 	if timeout <= 0 {
 		return fmt.Errorf("callee doctor: timeout must be greater than zero")
 	}
 
-	roles, evaluations := executableResources(resources)
-	if len(roles) == 0 && len(evaluations) == 0 {
-		return fmt.Errorf("callee doctor: no Role or evaluation resources found")
+	roles, dynamicRoles, evaluations := executableResources(resources)
+	if len(roles) == 0 && len(dynamicRoles) == 0 && len(evaluations) == 0 {
+		return fmt.Errorf("callee doctor: no Role, DynamicRole, or evaluation resources found")
 	}
 
 	if len(roles) > 0 && factory == nil {
@@ -50,7 +51,7 @@ func RunAgents(ctx context.Context, resources []resource.Resource, factory runti
 
 	var failures []error
 
-	checked := append(append([]resource.Resource(nil), roles...), evaluations...)
+	checked := append(append(append([]resource.Resource(nil), roles...), dynamicRoles...), evaluations...)
 	sort.Slice(checked, func(i, j int) bool { return checked[i].ID < checked[j].ID })
 
 	for _, item := range checked {
@@ -66,7 +67,11 @@ func RunAgents(ctx context.Context, resources []resource.Resource, factory runti
 	var report bytes.Buffer
 
 	for _, item := range checked {
-		_, _ = fmt.Fprintf(&report, "agent %q: ok\n", item.ID)
+		if item.Kind == resource.DynamicRoleKind {
+			_, _ = fmt.Fprintf(&report, "agent %q: deferred (provider resolves at runtime)\n", item.ID)
+		} else {
+			_, _ = fmt.Fprintf(&report, "agent %q: ok\n", item.ID)
+		}
 	}
 
 	_, _ = fmt.Fprintln(&report, "callee doctor: ok")
@@ -78,23 +83,27 @@ func RunAgents(ctx context.Context, resources []resource.Resource, factory runti
 	return nil
 }
 
-func executableResources(resources []resource.Resource) ([]resource.Resource, []resource.Resource) {
+func executableResources(resources []resource.Resource) ([]resource.Resource, []resource.Resource, []resource.Resource) {
 	roles := make([]resource.Resource, 0)
+	dynamicRoles := make([]resource.Resource, 0)
 	evaluations := make([]resource.Resource, 0)
 
 	for _, item := range resources {
 		switch item.Kind {
 		case resource.RoleKind:
 			roles = append(roles, item)
+		case resource.DynamicRoleKind:
+			dynamicRoles = append(dynamicRoles, item)
 		case resource.TypeSafeJevKind, resource.OpenRouterDecisionKind:
 			evaluations = append(evaluations, item)
 		}
 	}
 
 	sort.Slice(roles, func(i, j int) bool { return roles[i].ID < roles[j].ID })
+	sort.Slice(dynamicRoles, func(i, j int) bool { return dynamicRoles[i].ID < dynamicRoles[j].ID })
 	sort.Slice(evaluations, func(i, j int) bool { return evaluations[i].ID < evaluations[j].ID })
 
-	return roles, evaluations
+	return roles, dynamicRoles, evaluations
 }
 
 func checkEvaluationConfig(resources []resource.Resource) map[string]error {

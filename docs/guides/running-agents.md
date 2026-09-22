@@ -29,12 +29,13 @@ callee agent run workflows/review \
 ```
 
 Both parameter flags are repeatable. Interactive mode prompts for missing
-values. Non-interactive mode requires all values before provider startup.
+values. DynamicRole parameters use the same keys. Non-interactive mode requires
+all values before provider startup.
 
 ## Choose run mode and permissions
 
 Without an explicit override, the complete effective tree selects interactive
-mode when it contains an interactive Role, an effective `ask` permission, or a
+mode when it contains an interactive Role or DynamicRole, an effective `ask` permission, or a
 Human. Otherwise it selects non-interactive mode.
 
 Override Role protocol and ACP permissions independently:
@@ -44,9 +45,9 @@ callee agent run workflows/investigate --message "Ask for the target" --interact
 callee agent run workflows/investigate --message "Return one artifact" --interactive=false --permissions=deny
 ```
 
-`--interactive=true` forces every Role visit in the resolved tree into its REPL
-protocol. `--interactive=false` forces one-shot Roles. The root-persistent
-`--permissions=ask|allow|deny` flag overrides every Role's ACP permission policy
+`--interactive=true` forces every Role and DynamicRole visit in the resolved tree into its REPL
+protocol. `--interactive=false` forces one-shot provider-backed leaves. The root-persistent
+`--permissions=ask|allow|deny` flag overrides every Role-family ACP permission policy
 without rewriting resources. `--interactive=false --permissions=ask` is
 invalid.
 
@@ -71,7 +72,8 @@ metrics go to stderr. Determine success from the process exit status.
 If one provider turn remains active for at least 10 seconds, Callee emits an
 `agent turn heartbeat` event with its current `turn_duration`. The final
 `agent run finished` event contains run-wide metrics, while each completed Role
-visit emits Role-scoped measurements. See
+visit emits Role-scoped measurements. A DynamicRole that fails before provider
+rendering emits unavailable token status without claiming provider selections. See
 [Execution metrics](../reference/execution-metrics.md).
 
 ## Common failures

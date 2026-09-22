@@ -1,6 +1,8 @@
 # ACP provider configuration
 
-Each `Role` selects one ACP backend under `spec.provider`. Coding-agent setup is separate: installing Callee skills for a coding agent does not install a Role provider executable or authenticate it.
+Each `Role` or `DynamicRole` selects one ACP backend under `spec.provider`.
+Coding-agent setup is separate: installing Callee skills for a coding agent
+does not install a provider executable or authenticate it.
 
 ## Supported providers
 
@@ -44,11 +46,33 @@ provider:
 
 Provider configuration must remain nested. Flat provider fields in `spec` are not supported.
 
+## Static and dynamic provider configuration
+
+Use `Role` when these fields are concrete. Static Roles retain the strongest
+startup guarantee because registry validation and doctor can inspect and start
+their providers before a workflow runs.
+
+Use `DynamicRole` when runtime state must select provider configuration. Every
+field in the table above, including each `extraArgs` element, is then a template
+over `.Prompt`, `.Input`, `.State`, and `.Params`. Callee renders the complete
+provider once per visit from one snapshot and validates it before process
+lookup. Later visits render again. `.Output` and external or non-deterministic
+template helpers are unavailable.
+
+State-driven `cmd` and `extraArgs` can select executable code. Do not copy
+untrusted model output into them without constraining it through authored
+template logic. `cmd` is still one executable and `extraArgs` remains an argv
+list; neither is passed through a shell.
+
 ## Command resolution and reuse
 
 Norma Runtime supplies the built-in command defaults for `claude`, `opencode`, `copilot`, and `grok`. Callee sets the Cursor default explicitly and replaces the Codex default with its own current executable plus `bridge codex`. A `cmd` override replaces the default executable while `extraArgs` remain ordered appended arguments.
 
-Within one root run, Roles with the same public provider type and fully resolved command reuse one provider process. Model, mode, and reasoning select fresh session configuration and do not contribute to provider process identity. Every Role visit still creates and prepares a fresh session.
+Within one root run, Roles and DynamicRoles with the same effective public
+provider type and fully resolved command reuse one provider process. Model,
+mode, and reasoning select fresh session configuration and do not contribute
+to provider process identity. Every visit still creates and prepares a fresh
+session.
 
 ## Codex bridge
 
@@ -79,10 +103,10 @@ Pin external packages in durable resources when reproducibility matters.
 
 ## Timeout behavior
 
-The effective provider timeout applies independently to:
+The static or visit-rendered effective provider timeout applies independently to:
 
 - starting the provider process;
-- creating and preparing a Role visit session;
+- creating and preparing a Role or DynamicRole visit session;
 - each provider turn.
 
 It does not bound an entire root run. Repeated Loop visits and REPL turns each receive their own turn timeout. Operator interaction has a separate CLI timeout controlled by `--repl-timeout`; permission waits pause active turn timeout accounting.
@@ -107,12 +131,14 @@ callee doctor
 callee doctor --timeout 90s
 ```
 
-Doctor groups Roles by provider process identity, starts each distinct process,
+Doctor groups static Roles by provider process identity, starts each distinct process,
 and creates disposable sessions for distinct model/mode/reasoning
 configurations. It verifies session binding without sending a model prompt,
 checks evaluation configuration without inference, then closes each process.
-Successful output names every checked Role and evaluation resource and ends
-with `callee doctor: ok`.
+Successful output names every checked resource and ends with `callee doctor:
+ok`. DynamicRoles are reported as deferred because doctor has no visit-time
+state; this validates their authored templates and graph, not executable
+readiness. Their provider starts lazily only if execution reaches the node.
 
 Graph-only doctor modes do not check providers:
 

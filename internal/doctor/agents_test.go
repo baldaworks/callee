@@ -54,6 +54,51 @@ func TestRunAgentsGroupsProvidersAndSessionConfigurations(t *testing.T) {
 	}
 }
 
+func TestRunAgentsDefersDynamicRolesWithoutStartingProviders(t *testing.T) {
+	t.Parallel()
+
+	dynamic := doctorDynamicRole("roles/dynamic")
+
+	var stdout bytes.Buffer
+
+	if err := RunAgents(context.Background(), []agent.Resource{dynamic}, nil, time.Second, &stdout); err != nil {
+		t.Fatalf("RunAgents() error: %v", err)
+	}
+
+	for _, want := range []string{`agent "roles/dynamic": deferred (provider resolves at runtime)`, "callee doctor: ok"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout %q does not contain %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunAgentsChecksStaticRolesAndDefersDynamicRoles(t *testing.T) {
+	t.Parallel()
+
+	process := &doctorProcess{}
+	factory := &doctorFactory{process: process}
+
+	var stdout bytes.Buffer
+
+	err := RunAgents(context.Background(), []agent.Resource{
+		doctorDynamicRole("roles/dynamic"),
+		doctorRole("roles/static", ""),
+	}, factory, time.Second, &stdout)
+	if err != nil {
+		t.Fatalf("RunAgents() error: %v", err)
+	}
+
+	if factory.starts != 1 || process.sessions != 1 {
+		t.Fatalf("starts/sessions = %d/%d, want 1/1", factory.starts, process.sessions)
+	}
+
+	for _, want := range []string{`agent "roles/dynamic": deferred (provider resolves at runtime)`, `agent "roles/static": ok`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout %q does not contain %q", stdout.String(), want)
+		}
+	}
+}
+
 func TestRunAgentsAttributesGroupFailure(t *testing.T) {
 	t.Parallel()
 
@@ -204,7 +249,7 @@ func TestRunAgentsValidatesTypeSafeEnvironmentWithoutInference(t *testing.T) {
 func TestWriteGraphFormats(t *testing.T) {
 	t.Parallel()
 
-	worker := doctorRole("roles/worker", "")
+	worker := doctorDynamicRole("roles/worker")
 	maxIterations := 2
 	pipeline := agent.Resource{
 		APIVersion: agent.APIVersion,
@@ -241,6 +286,10 @@ func TestWriteGraphFormats(t *testing.T) {
 
 			if !strings.Contains(output.String(), test.want) {
 				t.Errorf("WriteGraph() = %q, want containing %q", output.String(), test.want)
+			}
+
+			if !strings.Contains(output.String(), "roles/worker [DynamicRole]") {
+				t.Errorf("WriteGraph() = %q, want DynamicRole node", output.String())
 			}
 		})
 	}
@@ -366,6 +415,15 @@ func doctorRole(id, model string) agent.Resource {
 			Body:        "{{ .Input }}",
 		},
 	}
+}
+
+func doctorDynamicRole(id string) agent.Resource {
+	role := doctorRole(id, "")
+	role.Kind = agent.DynamicRoleKind
+	role.Spec.Provider.Type = `{{ .State.provider }}`
+	role.Spec.State = map[string]any{"provider": "codex"}
+
+	return role
 }
 
 func doctorEvaluation(id, apiType string) agent.Resource {

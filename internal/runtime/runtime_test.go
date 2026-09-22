@@ -99,6 +99,23 @@ func TestProviderForAgentUsesRuntimeCommands(t *testing.T) {
 	}
 }
 
+func TestProviderForAgentAcceptsMaterializedDynamicRole(t *testing.T) {
+	t.Parallel()
+
+	role := testAgentRole("generic_acp")
+	role.Kind = resource.DynamicRoleKind
+	role.Spec.Provider.Cmd = "dynamic-agent"
+
+	provider, err := ProviderForAgent(role)
+	if err != nil {
+		t.Fatalf("ProviderForAgent() error: %v", err)
+	}
+
+	if want := []string{"dynamic-agent"}; !reflect.DeepEqual(provider.command, want) {
+		t.Errorf("provider command = %#v, want %#v", provider.command, want)
+	}
+}
+
 func TestProviderForAgentPreservesCodexOverrides(t *testing.T) {
 	t.Parallel()
 

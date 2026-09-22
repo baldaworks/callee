@@ -239,7 +239,7 @@ type leafExecutor func(context.Context, *registry.ResolvedNode, string) (nodeRes
 
 func (c *adkCompiler) nativeLeafExecutor(kind agent.Kind) (leafExecutor, bool) {
 	switch kind {
-	case agent.RoleKind:
+	case agent.RoleKind, agent.DynamicRoleKind:
 		return c.run.role, true
 	case agent.ScriptKind:
 		return c.run.script, true

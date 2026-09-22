@@ -1,6 +1,6 @@
 ---
 name: callee-create-agent
-description: Create project-defined Callee Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, and Router agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
+description: Create project-defined Callee Role, DynamicRole, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, and Router agents in Markdown or YAML. Use when the user asks to generate, scaffold, compose, or author a Callee agent or deterministic workflow.
 ---
 
 # Create a Callee agent
@@ -18,6 +18,7 @@ callee agent list --json
 Choose exactly one supported kind:
 
 - `Role`: one provider-backed leaf agent.
+- `DynamicRole`: Role behavior with provider fields rendered from visit-time state.
 - `Script`: one deterministic local validator leaf.
 - `Human`: one operator-backed interactive leaf.
 - `TypeSafeJev`: one typed judgment through TypeSafe's native Jev API.
@@ -95,6 +96,53 @@ Focus:
 ```
 
 Keep provider configuration under `spec.provider`. Configure ACP permission handling separately with Role-only `spec.permissions.mode`: `ask` makes the whole agent interactive and uses the controlling TTY, `allow` automatically selects a compatible allow option, and `deny` automatically selects a compatible reject option. Omission defaults to `ask`. Permission policy does not select the Role protocol: set `spec.interactive: true` only when the Role must continue in the same provider session across operator turns. Keep exactly one unconditional bare `{{ .Input }}` insertion in a generated Role body. Use Go `text/template` syntax on every template surface.
+
+## Author a DynamicRole
+
+Use `DynamicRole` only when provider selection depends on state available at
+visit time. It otherwise follows the Role contract. Every provider field is a
+template: `type`, `cmd`, `model`, `reasoning`, `mode`, `timeout`, and each
+`extraArgs` entry.
+
+```markdown
+---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: DynamicRole
+spec:
+  description: Runs a state-selected ACP reviewer.
+  provider:
+    type: '{{ .State.provider }}'
+    cmd: '{{ .State.command }}'
+    model: '{{ .Params.model }}'
+    reasoning: '{{ .State.reasoning }}'
+    mode: '{{ .State.mode }}'
+    extraArgs:
+      - '--workspace={{ .State.workspace }}'
+    timeout: '{{ .State.timeout }}'
+  permissions:
+    mode: ask
+  params:
+    model: Runtime model selection
+  state:
+    provider: generic_acp
+    command: my-acp-agent
+    reasoning: high
+    mode: review
+    workspace: project
+    timeout: 20m
+---
+Review this request:
+
+{{ .Input }}
+```
+
+Provider templates may read `.Prompt`, `.Input`, one coherent `.State`
+snapshot, and resolved `.Params`; `.Output` is unavailable. Callee renders and
+validates the full provider before lazy startup and rerenders it on a later
+visit. `cmd` stays one executable and `extraArgs` stays an argument vector, not
+a shell command. Never route untrusted model output directly into `cmd` or
+`extraArgs`; constrain it through authored template logic. Prefer static Role
+whenever provider configuration is known before the run.
 
 ## Author a Script
 
@@ -182,4 +230,4 @@ callee agent validate "<written-agent-path>"
 callee agent view "<agent-id>" --json
 ```
 
-Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. Confirm the top-level `specDrivenInteractive` and effective `interactive` values in `agent view --json`. Treat the former as the authored baseline and the latter as the agent's default execution path. For every Role, confirm `authoredInteractive`, effective `interactive`, `authoredPermissions`, and effective `permissions`; these are independent axes. Confirm that supervised and conversational profiles are effectively interactive. Confirm that unattended profiles are effectively non-interactive, contain no Human, and expose every required parameter for explicit runtime input. Confirm that every Human has the intended `responseKey` without Role-only fields. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.
+Use the actual generated `.md`, `.yaml`, or `.yml` path for validation. Confirm the top-level `specDrivenInteractive` and effective `interactive` values in `agent view --json`. Treat the former as the authored baseline and the latter as the agent's default execution path. For every Role and DynamicRole, confirm `authoredInteractive`, effective `interactive`, `authoredPermissions`, and effective `permissions`; these are independent axes. A DynamicRole text view must show `provider=runtime`; JSON must retain its authored provider templates. Confirm that supervised and conversational profiles are effectively interactive. Confirm that unattended profiles are effectively non-interactive, contain no Human, and expose every required parameter for explicit runtime input. Confirm that every Human has the intended `responseKey` without Role-only fields. Fix every schema, template, missing-child, duplicate-ID, and duplicate-alias error before reporting success. Do not add Gemini, legacy flat provider fields, a server transport, or thread persistence.

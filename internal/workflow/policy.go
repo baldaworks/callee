@@ -44,7 +44,7 @@ func ResolveRolePolicy(role agent.Resource, overrides PolicyOverrides) (RolePoli
 // ResolveNodeRolePolicy resolves policy from a node's registry-projected
 // defaults and then applies explicit whole-run overrides.
 func ResolveNodeRolePolicy(node *registry.ResolvedNode, overrides PolicyOverrides) (RolePolicy, error) {
-	if node == nil || node.Kind != agent.RoleKind {
+	if node == nil || !agent.IsRoleKind(node.Kind) {
 		return RolePolicy{}, fmt.Errorf("Role node is required")
 	}
 
@@ -88,7 +88,7 @@ func ValidateParallelPreflight(root *registry.ResolvedNode, values map[string]st
 	)
 
 	visit = func(node *registry.ResolvedNode) {
-		if node.Kind == agent.RoleKind && node.WithinParallel {
+		if agent.IsRoleKind(node.Kind) && node.WithinParallel {
 			boundary := node.ParallelBoundaryID
 			if overrides.Interactive != nil && *overrides.Interactive {
 				issues = append(issues, fmt.Sprintf("Parallel %q contains Role %q but interactive=true was requested", boundary, node.EffectiveID))
@@ -154,7 +154,7 @@ func treeRequiresInteraction(node *registry.ResolvedNode, overrides PolicyOverri
 	switch node.Kind {
 	case agent.HumanKind:
 		return true
-	case agent.RoleKind:
+	case agent.RoleKind, agent.DynamicRoleKind:
 		policy, err := ResolveNodeRolePolicy(node, overrides)
 		if err != nil {
 			return false

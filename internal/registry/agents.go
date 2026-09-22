@@ -296,10 +296,10 @@ func (r *AgentRegistry) resolve(
 		Path:                 path,
 	}
 
-	switch resource.Kind {
-	case agent.RoleKind:
+	switch {
+	case agent.IsRoleKind(resource.Kind):
 		projectRolePolicy(node, resource, withinParallel)
-	case agent.LoopKind:
+	case resource.Kind == agent.LoopKind:
 		node.MaxIterations = resource.Spec.MaxIterations
 		node.OnExhausted = resource.ExhaustionPolicy()
 	}
@@ -386,7 +386,7 @@ func RequiredParams(root *ResolvedNode) []RequiredParam {
 	var visit func(*ResolvedNode)
 
 	visit = func(node *ResolvedNode) {
-		if node.Kind == agent.RoleKind {
+		if agent.IsRoleKind(node.Kind) {
 			names := make([]string, 0, len(node.Resource.Spec.Params))
 			for name := range node.Resource.Spec.Params {
 				if _, bound := node.Edge.Params[name]; !bound {
@@ -422,7 +422,7 @@ func validateChildParams(parentID string, index int, child agent.Child, resource
 		return nil
 	}
 
-	if resource.Kind != agent.RoleKind {
+	if !agent.IsRoleKind(resource.Kind) {
 		return fmt.Errorf("agent %q child %d: params are valid only when %q resolves to Role", parentID, index, child.Ref)
 	}
 

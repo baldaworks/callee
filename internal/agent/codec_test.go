@@ -21,6 +21,11 @@ func TestDecodeMarkdownKinds(t *testing.T) {
 			kind: RoleKind,
 		},
 		{
+			name: "dynamic role",
+			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: DynamicRole\nspec:\n  description: dynamic worker\n  provider:\n    type: '{{ .State.provider }}'\n    model: '{{ .Params.model }}'\n---\nDo this:\n{{ .Input }}\n",
+			kind: DynamicRoleKind,
+		},
+		{
 			name: "script",
 			body: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Script\nspec:\n  description: validator\n---\necho {{ .Input }}\n",
 			kind: ScriptKind,
@@ -75,6 +80,11 @@ func TestDecodeYAMLKinds(t *testing.T) {
 			name: "role",
 			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: Role\nspec:\n  description: worker\n  provider:\n    type: codex\n  body: |\n    Do this:\n    {{ .Input }}\n",
 			kind: RoleKind,
+		},
+		{
+			name: "dynamic role",
+			data: "apiVersion: callee.metalagman.dev/v1alpha1\nkind: DynamicRole\nspec:\n  description: dynamic worker\n  provider:\n    type: '{{ .State.provider }}'\n    model: '{{ .Params.model }}'\n  body: |\n    Do this:\n    {{ .Input }}\n",
+			kind: DynamicRoleKind,
 		},
 		{
 			name: "script",
@@ -688,7 +698,7 @@ func TestDecodeMarkdownRejectsFrontmatterBodyAndLegacySyntax(t *testing.T) {
 		{
 			name: "unsupported kind",
 			data: "---\napiVersion: callee.metalagman.dev/v1alpha1\nkind: Unknown\nspec: {}\n---\n{{ .Input }}",
-			want: `unsupported kind "Unknown"; supported kinds: Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, Router`,
+			want: `unsupported kind "Unknown"; supported kinds: Role, DynamicRole, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, Router`,
 		},
 		{
 			name: "wrong field case",

@@ -4,6 +4,9 @@ Use a Role when a coding agent must reason, use tools, or change a repository.
 A Role renders instructions and sends them through an ACP provider. Every Role
 visit creates and prepares a fresh provider session, including repeated visits
 inside a Loop; compatible Roles may reuse the underlying provider process.
+Use [DynamicRole](dynamic-role.md) instead only when provider fields must render
+from visit-time state. A Role's provider configuration is always concrete and
+is never interpreted as a template.
 
 ## Minimal resource
 

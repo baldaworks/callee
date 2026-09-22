@@ -44,7 +44,7 @@ func TestSkillUsesOnlyTheCLI(t *testing.T) {
 		"Keep terminal interaction separate from stdout and stderr.",
 		"mktemp -d",
 		"callee_capture_dir",
-		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router`",
+		"`Role`, `DynamicRole`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router`",
 		"Read Human prompts, Human responses",
 		"Do not send `quit`, `exit`, `/done`",
 		"artifact is written to stdout only after workflow execution and cleanup succeed",
@@ -162,6 +162,24 @@ func TestCreateAgentHumanExampleValidates(t *testing.T) {
 	}
 }
 
+func TestCreateAgentDynamicRoleExampleValidates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded := readmeFence(t, string(data), "## Author a DynamicRole", "## Author a Script", "markdown")
+
+	resource, err := agent.DecodeMarkdown("roles/dynamic", "roles/dynamic.md", []byte(encoded))
+	if err != nil {
+		t.Fatalf("decode Create Agent DynamicRole example: %v", err)
+	}
+
+	if resource.Kind != agent.DynamicRoleKind {
+		t.Errorf("Create Agent DynamicRole example kind = %s, want %s", resource.Kind, agent.DynamicRoleKind)
+	}
+}
+
 func TestCreateAgentEvaluationExampleValidates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("skills", "create-agent", "SKILL.md"))
 	if err != nil {
@@ -203,10 +221,10 @@ func TestCreateAgentWorkflowReferenceCoversSupportedSemantics(t *testing.T) {
 		"kind: Parallel",
 		"kind: Router",
 		"kind: Loop",
-		"`Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`",
+		"`Role`, `DynamicRole`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`",
 		"workflow child may reference any supported kind",
 		"unique across the entire resolved tree",
-		"`params` only when that child resolves directly to a `Role`",
+		"`params` only when that child resolves directly to a `Role` or `DynamicRole`",
 		"Never author the reserved `outputs`, `scripts`, or `evaluations` keys",
 		"selected by `spec.responseKey`",
 		"{{ index .State.outputs \"validator\" }}",

@@ -1,6 +1,6 @@
 # Execution metrics
 
-Use the lifecycle fields emitted by `callee agent run` to inspect a complete command or an individual Role visit. Run-wide fields use the `agent_` prefix; per-visit fields use `role_`.
+Use the lifecycle fields emitted by `callee agent run` to inspect a complete command or an individual Role or DynamicRole visit. Run-wide fields use the `agent_` prefix; per-visit fields use `role_`.
 
 Metrics are INFO-level structured fields on stderr events. They do not alter
 stdout: a successful run writes only the root artifact to stdout, after
@@ -12,12 +12,12 @@ to determine success.
 
 | Event | Metrics | Scope |
 | --- | --- | --- |
-| `agent finished` for a `Role` | `role_*` | One visit to that Role occurrence. Repeated Loop visits have separate scopes. |
+| `agent finished` for a `Role` or `DynamicRole` | `role_*` | One visit to that provider-backed occurrence. Repeated Loop visits have separate scopes. |
 | `agent finished` for `TypeSafeJev` or `OpenRouterDecision` | None | Evaluation visits retain general lifecycle fields and add bounded `evaluation_*` operational fields. These fields are not metrics and are not aggregated. |
-| `agent finished` for `Script`, `Human`, `Sequential`, `Parallel`, `Loop`, or `Router` | None | Other non-Role lifecycle events retain their general `duration` field but do not receive `role_*` fields. Parallel additionally reports bounded `parallel_*` lifecycle fields. |
-| `agent run finished` | `agent_*` | The complete `agent run` command, including every Role visit reached by the selected root. |
+| `agent finished` for `Script`, `Human`, `Sequential`, `Parallel`, `Loop`, or `Router` | None | Other lifecycle events retain their general `duration` field but do not receive `role_*` fields. Parallel additionally reports bounded `parallel_*` lifecycle fields. |
+| `agent run finished` | `agent_*` | The complete `agent run` command, including every Role or DynamicRole visit reached by the selected root. |
 
-A Role selected directly as the root has the same `role_*` behavior as a Role nested under `Sequential`, `Parallel`, `Loop`, or `Router`. Aliases and repeated visits do not change the field meanings. Each Role visit reports separately, while the final `agent_*` token fields aggregate all attempted provider turns across all visits.
+A Role or DynamicRole selected directly as the root has the same `role_*` behavior as one nested under `Sequential`, `Parallel`, `Loop`, or `Router`. Aliases and repeated visits do not change the field meanings. Each visit reports separately, while the final `agent_*` token fields aggregate all attempted provider turns across all visits.
 
 The final `agent run finished` event also has `status=completed` or `status=error` for work inside the agent metric boundary. A successful artifact is written afterward, so a stdout write failure can still make the command exit unsuccessfully after the metrics event reported `status=completed`; always use the command exit status as the final automation signal.
 
@@ -27,7 +27,7 @@ Durations are wall-clock measurements rounded to the nearest second at the loggi
 
 | Field | Start | End | Presence |
 | --- | --- | --- | --- |
-| `role_duration` | Immediately before the first provider turn in one Role visit, after parameter resolution, rendering, process startup, and session creation and preparation. | When the visit returns an artifact or control outcome, or when the in-scope turn or REPL processing returns an error. | Present only if the visit reaches its first provider turn. |
+| `role_duration` | Immediately before the first provider turn in one provider-backed visit, after parameter resolution, rendering, process startup, and session creation and preparation. | When the visit returns an artifact or control outcome, or when the in-scope turn or REPL processing returns an error. | Present only if the visit reaches its first provider turn. |
 | `role_wait_duration` | Same boundary as `role_duration`. | Same boundary as `role_duration`. | Present with `role_duration`; `0s` is valid. |
 | `agent_duration` | Entry to the `agent run` command handler. | After workflow execution and cleanup of started providers, immediately before the final metrics event and any successful stdout artifact. | Always present on `agent run finished`. |
 | `agent_wait_duration` | Same boundary as `agent_duration`. | Same boundary as `agent_duration`. | Always present on `agent run finished`; `0s` is valid. |
@@ -47,7 +47,7 @@ and every reached one-shot Role has zero Role wait.
 `agent_wait_duration` accumulates every operator prompt reached by the command:
 
 - the initial prompt when `--message` is omitted;
-- missing Role parameters;
+- missing Role or DynamicRole parameters;
 - Human-node responses;
 - responses requested by a REPL Role after `callee.control.v1.await`;
 - numbered ACP permission selections under `permissions.mode: ask`.
@@ -58,17 +58,24 @@ Automatic `allow` and `deny` permission decisions do not prompt and add no wait.
 
 ## Provider-selection fields
 
-Every Role `agent finished` event identifies the effective provider selections for that visit:
+Every successfully resolved Role-family `agent finished` event identifies the effective provider selections for that visit:
 
 | Field | Meaning |
 | --- | --- |
-| `role_provider` | The Role's required public `spec.provider.type`, such as `codex` or `generic_acp`. This value comes from the Role, not ACP session configuration. |
+| `role_provider` | The visit's validated public provider type, such as `codex` or `generic_acp`. This value comes from the effective resource, not ACP session configuration. |
 | `role_model` | The latest concrete model selection observed in ACP session configuration during preparation or a turn; otherwise the Role's explicit `spec.provider.model`. |
 | `role_reasoning` | The latest concrete reasoning selection observed in ACP session configuration during preparation or a turn; otherwise the Role's explicit `spec.provider.reasoning`. ACP providers can report this selection as `reasoning`, `reasoning_effort`, or `thought_level`. |
 
-Callee resolves model and reasoning independently. For each field, the latest concrete ACP value wins over the explicit Role value. If ACP does not report a concrete value, the explicit Role selection remains the fallback. Only when neither source supplies a concrete value does Callee emit `backend-default`. This marker does not identify or make a claim about the backend's private default. `role_provider` is always the validated Role provider type and does not use the marker.
+Callee resolves model and reasoning independently. For each field, the latest concrete ACP value wins over the effective resource value. If ACP does not report a concrete value, the static or rendered selection remains the fallback. Only when neither source supplies a concrete value does Callee emit `backend-default`. This marker does not identify or make a claim about the backend's private default. `role_provider` is always the validated effective provider type and does not use the marker.
 
-These three fields are present even when a Role fails before its first provider turn. In that case, each model or reasoning value reflects any ACP configuration already observed during preparation, then the Role fallback; if no session configuration was observed, only the Role fallback is available. Root and nested Roles use the same resolution rules. `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router` events do not receive any `role_*` fields. Evaluation operational data appears only as `evaluation_*` lifecycle log fields and is not aggregated into run metrics.
+These three fields are present even when a static Role fails before its first
+provider turn. A DynamicRole reports them after provider rendering succeeds,
+using the effective rendered values. If rendering or validation fails before an
+effective provider exists, its event omits these three fields rather than
+logging authored template text. It still reports `role_token_usage=unavailable`.
+Root and nested provider-backed leaves use the same resolution rules. Other
+kinds do not receive `role_*` fields. Evaluation operational data appears only
+as `evaluation_*` lifecycle log fields and is not aggregated into run metrics.
 
 ## Evaluation operational fields
 
@@ -103,7 +110,7 @@ Callee reads provider usage metadata from a turn's final response. It records on
 | `role_total_tokens` | `agent_total_tokens` | Sum of provider-reported total tokens. |
 | `role_cached_read_tokens` | `agent_cached_read_tokens` | Sum of provider-reported cached-read tokens. |
 
-The Role fields aggregate attempted turns within one visit, including multiple turns in a REPL session. The run fields merge every Role visit reached by the root, including repeated visits and nested Roles.
+The Role fields aggregate attempted turns within one visit, including multiple turns in a REPL session. The run fields merge every Role or DynamicRole visit reached by the root, including repeated and nested visits.
 
 ### Reporting status and optional fields
 
@@ -113,7 +120,9 @@ The Role fields aggregate attempted turns within one visit, including multiple t
 | `partial` | At least one attempted turn reported usage and at least one did not. | Input, output, and total fields contain sums from reported turns only. |
 | `unavailable` | No attempted turn reported usage, including a scope with no attempted turns. | Input, output, total, and cached-read fields are absent. |
 
-`role_token_usage` is present on every Role `agent finished` event, even when the visit fails before its first provider turn and Role duration fields are absent. `agent_token_usage` is always present on `agent run finished`.
+`role_token_usage` is present on every Role and DynamicRole `agent finished`
+event, even when the visit fails before its first provider turn and Role
+duration fields are absent. `agent_token_usage` is always present on `agent run finished`.
 
 When at least one turn reports usage, input, output, and total fields are emitted even when their aggregate value is zero. The cached-read field is more selective: `role_cached_read_tokens` or `agent_cached_read_tokens` appears only when its aggregate is nonzero. Its absence does not change the reporting status.
 

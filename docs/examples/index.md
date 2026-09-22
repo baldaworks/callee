@@ -10,11 +10,13 @@ workflow without inventing a schema from scratch. Examples use the current
 | --- | --- |
 | [Codex Sol + Luna](../../examples/codex/sol-luna/README.md) | A plan-then-implement workflow with explicit model and reasoning choices. |
 | [OpenCode rejudge](../../examples/opencode/rejudge/README.md) | A repository-authored multi-reviewer panel and diff-focused variant. |
-| [Typed evaluations](../../examples/evaluations/README.md) | Direct TypeSafe and OpenRouter judgments plus a two-step TypeSafe Sequential workflow. |
+| [Typed evaluations](../../examples/evaluations/README.md) | Direct judgments, a two-step TypeSafe workflow, and Jev-driven DynamicRole model selection. |
 
 ## Individual resources
 
 - [Reviewer Role](../../examples/roles/reviewer.md)
+- [Dynamic reviewer](../../examples/roles/dynamic-reviewer.md)
+- [Jev model-selected review](../../examples/workflows/jev-model-selected-review.md)
 - [Investigate Sequential](../../examples/workflows/investigate.md)
 - [GoalKeeper Loop](../../examples/workflows/goalkeeper.md)
 - [Parallel review](../../examples/workflows/parallel-review.md)

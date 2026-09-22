@@ -3,6 +3,7 @@
   "$id": "https://callee.metalagman.dev/schema/v1alpha1/agent.json",
   "oneOf": [
     { "$ref": "#/$defs/role" },
+    { "$ref": "#/$defs/dynamicRole" },
     { "$ref": "#/$defs/script" },
     { "$ref": "#/$defs/human" },
     { "$ref": "#/$defs/typeSafeJev" },
@@ -26,6 +27,20 @@
       "required": ["type"],
       "properties": {
         "type": { "enum": ["codex", "claude", "opencode", "copilot", "grok", "cursor", "generic_acp"] },
+        "cmd": { "type": "string" },
+        "model": { "type": "string" },
+        "reasoning": { "type": "string" },
+        "mode": { "type": "string" },
+        "extraArgs": { "type": "array", "items": { "type": "string" } },
+        "timeout": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "dynamicProvider": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
         "cmd": { "type": "string" },
         "model": { "type": "string" },
         "reasoning": { "type": "string" },
@@ -260,6 +275,30 @@
           "properties": {
             "description": { "type": "string" },
             "provider": { "$ref": "#/$defs/provider" },
+            "permissions": { "$ref": "#/$defs/permissions" },
+            "interactive": { "type": "boolean" },
+            "repl": { "type": "boolean", "deprecated": true },
+            "params": { "$ref": "#/$defs/params" },
+            "state": { "$ref": "#/$defs/state" },
+            "body": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "dynamicRole": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "spec"],
+      "properties": {
+        "apiVersion": { "const": "callee.metalagman.dev/v1alpha1" },
+        "kind": { "const": "DynamicRole" },
+        "spec": {
+          "type": "object",
+          "required": ["description", "provider", "body"],
+          "properties": {
+            "description": { "type": "string" },
+            "provider": { "$ref": "#/$defs/dynamicProvider" },
             "permissions": { "$ref": "#/$defs/permissions" },
             "interactive": { "type": "boolean" },
             "repl": { "type": "boolean", "deprecated": true },

@@ -378,7 +378,7 @@ func validateNonInteractiveRun(
 		switch node.Kind {
 		case resource.HumanKind:
 			issues = append(issues, fmt.Sprintf("Human %q requires operator input", node.EffectiveID))
-		case resource.RoleKind:
+		case resource.RoleKind, resource.DynamicRoleKind:
 			issues = append(issues, nonInteractiveRoleIssues(node, overrides)...)
 		}
 
@@ -504,7 +504,7 @@ func agentListCommand() *cobra.Command {
 			return out.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router")
+	cmd.Flags().StringVar(&kind, "kind", "", "filter by Role, DynamicRole, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output the catalog as JSON")
 
 	return cmd
@@ -579,10 +579,10 @@ func parseKindFilter(value string) (resource.Kind, error) {
 	switch resource.Kind(value) {
 	case "":
 		return "", nil
-	case resource.RoleKind, resource.ScriptKind, resource.HumanKind, resource.TypeSafeJevKind, resource.OpenRouterDecisionKind, resource.SequentialKind, resource.ParallelKind, resource.LoopKind, resource.RouterKind:
+	case resource.RoleKind, resource.DynamicRoleKind, resource.ScriptKind, resource.HumanKind, resource.TypeSafeJevKind, resource.OpenRouterDecisionKind, resource.SequentialKind, resource.ParallelKind, resource.LoopKind, resource.RouterKind:
 		return resource.Kind(value), nil
 	default:
-		return "", fmt.Errorf("unsupported kind %q (want Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router)", value)
+		return "", fmt.Errorf("unsupported kind %q (want Role, DynamicRole, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router)", value)
 	}
 }
 
@@ -637,7 +637,7 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 	}
 
 	switch node.Kind {
-	case resource.RoleKind:
+	case resource.RoleKind, resource.DynamicRoleKind:
 		permissionMode := resource.PermissionModeAsk
 		if node.Permissions != nil {
 			permissionMode = node.Permissions.Mode
@@ -655,6 +655,9 @@ func writeResolvedNode(output io.Writer, node *registry.ResolvedNode, indent str
 			permissionMode,
 			authoredPermissionMode,
 		)
+		if node.Kind == resource.DynamicRoleKind {
+			policy += " provider=runtime"
+		}
 	case resource.ScriptKind:
 		policy += fmt.Sprintf(
 			" shell=%s onNonZero=%s",
@@ -697,7 +700,7 @@ func projectResolvedTree(root *registry.ResolvedNode, overrides workflow.PolicyO
 	projected := *root
 
 	projected.Children = make([]*registry.ResolvedNode, len(root.Children))
-	if root.Kind == resource.RoleKind {
+	if resource.IsRoleKind(root.Kind) {
 		policy, err := workflow.ResolveNodeRolePolicy(root, overrides)
 		if err != nil {
 			return nil, err
@@ -785,6 +788,7 @@ func (i *terminalInteractor) Display(text string) error {
 
 type workflowPermissionPolicy struct {
 	effectiveID string
+	kind        resource.Kind
 	mode        resource.PermissionMode
 }
 
@@ -813,8 +817,14 @@ func (c *workflowPermissionController) Bind(sessionID acp.SessionId, role resour
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	kind := role.Kind
+	if kind == "" {
+		kind = resource.RoleKind
+	}
+
 	c.policies[sessionID] = workflowPermissionPolicy{
 		effectiveID: role.ID,
+		kind:        kind,
 		mode:        role.EffectivePermissionMode(),
 	}
 }
@@ -840,7 +850,7 @@ func (c *workflowPermissionController) Handle(ctx context.Context, request acp.R
 	if ok {
 		loggerContext = loggerContext.
 			Str("id", policy.effectiveID).
-			Str("kind", string(resource.RoleKind)).
+			Str("kind", string(policy.kind)).
 			Str("policy", string(policy.mode))
 	}
 

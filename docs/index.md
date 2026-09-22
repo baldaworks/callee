@@ -2,7 +2,7 @@
 
 Callee turns repeatable agent work into repository-defined, statically
 validated workflows authored as versioned Markdown or YAML. A workflow can mix
-model-backed Roles, local Scripts, Human decisions, typed evaluations, and
+model-backed Roles and DynamicRoles, local Scripts, Human decisions, typed evaluations, and
 deterministic control flow. Start with a first run, then use the task-oriented
 guides and precise references as needed.
 
@@ -25,7 +25,7 @@ guides and precise references as needed.
 Start with [Choose an agent kind](agent-kinds/index.md) for a compact comparison,
 then use the page for the resource you are authoring:
 
-- Leaf kinds: [Role](agent-kinds/role.md), [Script](agent-kinds/script.md), and [Human](agent-kinds/human.md).
+- Leaf kinds: [Role](agent-kinds/role.md), [DynamicRole](agent-kinds/dynamic-role.md), [Script](agent-kinds/script.md), and [Human](agent-kinds/human.md).
 - Typed evaluators: [TypeSafeJev](agent-kinds/typesafe-jev.md) and [OpenRouterDecision](agent-kinds/openrouter-decision.md).
 - Composite workflow kinds: [Sequential](agent-kinds/sequential.md), [Parallel](agent-kinds/parallel.md), [Loop](agent-kinds/loop.md), and [Router](agent-kinds/router.md).
 

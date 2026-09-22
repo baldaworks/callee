@@ -9,7 +9,7 @@ live in the linked guides.
 | Flag | Effect |
 | --- | --- |
 | `--agent-root <dir>` | Use one exclusive agent catalog and write root instead of the user and project defaults. |
-| `--permissions <ask|allow|deny>` | Override every Role's effective ACP policy for `agent run` or `agent view`. |
+| `--permissions <ask|allow|deny>` | Override every Role or DynamicRole effective ACP policy for `agent run` or `agent view`. |
 | `--debug` | Enable debug diagnostics. |
 | `--trace` | Enable trace diagnostics and override `--debug`. |
 | `--version` | Print the executable version. |
@@ -44,11 +44,13 @@ structured command errors on stderr.
 ```bash
 callee agent list
 callee agent list --kind Role
+callee agent list --kind DynamicRole
 callee agent list --json
 ```
 
 `agent view <agent-id>` prints one canonical resource, its resolved tree,
-effective policies, and unbound Role parameters. It does not start providers.
+effective policies, and unbound Role-family parameters. DynamicRole text nodes
+show `provider=runtime`; JSON preserves the authored provider templates. It does not start providers.
 Use `--json` for the recursive structured representation.
 
 `agent validate <path>` decodes and validates one physical resource without
@@ -76,12 +78,14 @@ callee doctor --graph mermaid
 callee doctor --graph dot
 ```
 
-Plain doctor performs static validation, then initializes configured Role
+Plain doctor performs static validation, then initializes configured static Role
 providers and disposable sessions without sending a model prompt. It also
 validates reachable TypeSafe and OpenRouter evaluation configuration without
 making inference calls. `--timeout` applies to each Role provider process
-group. Plain doctor requires at least one Role or evaluation resource because
-Script, Human, and composite resources have no external readiness check.
+group. DynamicRole provider readiness is reported as deferred and no dynamic
+provider is started. Plain doctor requires at least one Role, DynamicRole, or
+evaluation resource because Script, Human, and composite resources have no
+external readiness check.
 
 Graph modes are static-only and never start providers. Their edges show the
 authored `canEscalate` value; `agent view` shows the effective capability for a

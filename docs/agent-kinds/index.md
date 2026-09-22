@@ -2,11 +2,12 @@
 
 Choose the smallest kind that owns the behavior you need. Leaves do work;
 typed evaluators make structured judgments; composites arrange other resources.
-All nine names below are public `callee.metalagman.dev/v1alpha1` kinds.
+All ten names below are public `callee.metalagman.dev/v1alpha1` kinds.
 
 | Group | Kind | Choose it when | Natural artifact |
 | --- | --- | --- | --- |
 | Leaf | [Role](role.md) | A coding agent must reason, use tools, or edit files through ACP. | The Role's final text. |
+| Leaf | [DynamicRole](dynamic-role.md) | Role behavior is needed, but provider configuration depends on visit-time state. | The DynamicRole's final text. |
 | Leaf | [Script](script.md) | A local shell command should perform a deterministic check or step. | A compact exit summary. |
 | Leaf | [Human](human.md) | The workflow must stop for one terminal response. | The response text. |
 | Typed evaluator | [TypeSafeJev](typesafe-jev.md) | TypeSafe System One should answer typed questions with a Jev model. | Compact validated JSON. |
@@ -16,7 +17,8 @@ All nine names below are public `callee.metalagman.dev/v1alpha1` kinds.
 | Composite | [Loop](loop.md) | Ordered work must repeat within a fixed bound until an authorized Role escalates. | The escalated or last child artifact. |
 | Composite | [Router](router.md) | An authored template can deterministically select exactly one named or default branch. | The selected child artifact. |
 
-Do not use a Role merely to obtain a typed judgment: `TypeSafeJev` and
+Prefer Role when provider configuration is static and use DynamicRole only when
+runtime state must select it. Do not use either merely to obtain a typed judgment: `TypeSafeJev` and
 `OpenRouterDecision` are native HTTP leaves, not ACP Roles. Do not use Router
 for model-selected routing: route selection is deterministic. Composites may
 reference any supported kind, subject to kind-specific restrictions such as
@@ -38,4 +40,5 @@ callee agent run workflows/review --message "Review the current change"
 ```
 
 `validate` checks one file; `view` resolves its complete tree. `callee doctor`
-checks the discovered catalog and executable readiness.
+checks static Role executable readiness and reports DynamicRole providers as
+deferred until runtime.

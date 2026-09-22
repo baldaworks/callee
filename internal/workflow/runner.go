@@ -244,7 +244,7 @@ func (r *runState) visitWithOptions(
 	logger.Info().Msg("running agent")
 
 	defer func() {
-		writeLifecycleFinish(logger, "agent finished", result, resultErr, started, node.Kind == agent.RoleKind, node.Resource.IsEvaluation(), opts.appendFinish)
+		writeLifecycleFinish(logger, "agent finished", result, resultErr, started, agent.IsRoleKind(node.Kind), node.Resource.IsEvaluation(), opts.appendFinish)
 	}()
 
 	if err := r.applyState(node, input); err != nil {
@@ -300,10 +300,12 @@ func writeLifecycleFinish(
 	}
 
 	if includeRoleMetrics {
-		event = event.
-			Str("role_provider", result.roleMetrics.provider).
-			Str("role_model", roleConfigurationValue(result.roleMetrics.model)).
-			Str("role_reasoning", roleConfigurationValue(result.roleMetrics.reasoning))
+		if result.roleMetrics.resolved {
+			event = event.
+				Str("role_provider", result.roleMetrics.provider).
+				Str("role_model", roleConfigurationValue(result.roleMetrics.model)).
+				Str("role_reasoning", roleConfigurationValue(result.roleMetrics.reasoning))
+		}
 
 		event = appendUsageMetrics(event, "role", result.roleMetrics.usage)
 
@@ -397,34 +399,44 @@ func (r *runState) role(
 	node *registry.ResolvedNode,
 	input string,
 ) (result nodeResult, resultErr error) {
-	result.roleMetrics = newRoleMetrics(node.Resource.Spec.Provider)
-
 	params, err := r.roleParams(ctx, node, input)
 	if err != nil {
 		return result, err
 	}
 
-	body, err := render(node.ResourceID+" spec.body", node.Resource.Spec.Body, agent.TemplateData{
+	templateData := agent.TemplateData{
 		Prompt: r.prompt,
 		Input:  input,
 		State:  r.snapshotState(),
 		Params: params,
-	})
+	}
+
+	body, err := render(node.ResourceID+" spec.body", node.Resource.Spec.Body, templateData)
 	if err != nil {
 		return result, err
 	}
 
-	provider, err := runtime.ProviderForAgent(node.Resource)
+	effective := node.Resource
+	if node.Kind == agent.DynamicRoleKind {
+		effective, err = node.Resource.RenderDynamicProvider(templateData)
+		if err != nil {
+			return result, err
+		}
+	}
+
+	result.roleMetrics = newRoleMetrics(effective.Spec.Provider)
+
+	provider, err := runtime.ProviderForAgent(effective)
 	if err != nil {
 		return result, err
 	}
 
-	process, err := r.process(ctx, node.Resource, provider)
+	process, err := r.process(ctx, effective, provider)
 	if err != nil {
 		return result, err
 	}
 
-	session, err := r.newSession(ctx, node, process)
+	session, err := r.newSession(ctx, node, effective, process)
 	if session != nil {
 		result.roleMetrics.applySessionConfiguration(session)
 	}
@@ -446,7 +458,8 @@ func (r *runState) role(
 	}
 
 	turnInput := body + controlInstructions(interactive, node.WithinLoop, node.CanEscalate)
-	turnCtx, cancelTurn := withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
+	providerTimeout := effective.ProviderTimeout()
+	turnCtx, cancelTurn := withActiveTimeout(ctx, providerTimeout, r.pauses)
 	roleStarted := time.Now()
 	waitStarted := r.operatorWaitDuration()
 	result.roleMetrics.turnStarted = true
@@ -458,7 +471,7 @@ func (r *runState) role(
 		r.metrics.add(result.roleMetrics.usage)
 	}()
 
-	return r.runRoleTurns(ctx, node, session, turnInput, turnCtx, cancelTurn, interactive, result)
+	return r.runRoleTurns(ctx, node, session, turnInput, turnCtx, cancelTurn, providerTimeout, interactive, result)
 }
 
 func (r *runState) roleInteractive(node *registry.ResolvedNode) bool {
@@ -487,6 +500,7 @@ func (r *runState) runRoleTurns(
 	turnInput string,
 	turnCtx context.Context,
 	cancelTurn context.CancelFunc,
+	providerTimeout time.Duration,
 	interactive bool,
 	result nodeResult,
 ) (nodeResult, error) {
@@ -531,7 +545,7 @@ func (r *runState) runRoleTurns(
 			}
 
 			turnInput = answer + replReminder()
-			turnCtx, cancelTurn = withActiveTimeout(ctx, node.Resource.ProviderTimeout(), r.pauses)
+			turnCtx, cancelTurn = withActiveTimeout(ctx, providerTimeout, r.pauses)
 		case outcomeReturn, outcomeEscalate:
 			if strings.TrimSpace(parsed.artifact) != "" {
 				r.promote(node.EffectiveID, parsed.artifact)
@@ -568,12 +582,13 @@ func (r *runState) operatorWaitDuration() time.Duration {
 func (r *runState) newSession(
 	ctx context.Context,
 	node *registry.ResolvedNode,
+	effective agent.Resource,
 	process runtime.ProviderProcess,
 ) (runtime.AgentSession, error) {
-	sessionCtx, cancelSession := context.WithTimeout(ctx, node.Resource.ProviderTimeout())
+	sessionCtx, cancelSession := context.WithTimeout(ctx, effective.ProviderTimeout())
 	defer cancelSession()
 
-	role := node.Resource
+	role := effective
 	policy := r.rolePolicy(node)
 	interactive := policy.Interactive
 	role.Spec.Interactive = &interactive
@@ -945,7 +960,7 @@ func ValidateRuntimeParams(root *registry.ResolvedNode, values map[string]string
 	var visit func(*registry.ResolvedNode)
 
 	visit = func(node *registry.ResolvedNode) {
-		if node.Kind == agent.RoleKind {
+		if agent.IsRoleKind(node.Kind) {
 			for name := range node.Resource.Spec.Params {
 				key := node.EffectiveID + "." + name
 				known[key] = true

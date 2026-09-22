@@ -2,7 +2,7 @@
 
 Use this reference when authoring or reviewing a Callee resource. If you have
 not selected a kind yet, start with [Choose an agent kind](../agent-kinds/index.md)
-and its task-oriented kind pages. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Parallel|Loop|Router>` to print a standalone schema document for one kind.
+and its task-oriented kind pages. The checked-in [Draft 2020-12 JSON Schema](../../internal/agent/schema.json) defines the structural contract; Callee also enforces semantic, template, state, and graph constraints in code. Use `callee agent schema <Role|DynamicRole|Script|Human|TypeSafeJev|OpenRouterDecision|Sequential|Parallel|Loop|Router>` to print a standalone schema document for one kind.
 
 ## Discovery and IDs
 
@@ -31,7 +31,7 @@ kind: Role
 spec: {}
 ```
 
-The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`. Unknown fields are rejected at every schema-defined object boundary.
+The only accepted API version is `callee.metalagman.dev/v1alpha1`. Supported kinds are `Role`, `DynamicRole`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`. Unknown fields are rejected at every schema-defined object boundary.
 
 ## Markdown and YAML representations
 
@@ -74,6 +74,9 @@ A YAML file must contain exactly one UTF-8 document. Markdown frontmatter and it
 All kinds require a nonblank `description`. Evaluation kinds require exactly one of `body` or structured `evidence`; every other kind requires a nonblank `body`. Every kind may declare `state`, whose values are described under [State modifiers](#state-modifiers).
 
 The supported fields differ by kind:
+
+`DynamicRole` accepts the same fields as `Role`. Its `provider` values are
+templates rendered at visit time; the table's Role column applies to both.
 
 | Field | Role | Script | Human | TypeSafeJev | OpenRouterDecision | Sequential | Parallel | Loop | Router |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -128,13 +131,31 @@ The body must contain exactly one unconditional, bare `{{ .Prompt }}` or `{{ .In
 
 See [ACP provider configuration](../guides/acp-providers.md) for the `provider` object.
 
-`spec.permissions.mode` accepts exactly `ask`, `allow`, or `deny` and defaults to `ask` when `permissions` is omitted. It is a Role-only runtime policy and is independent of backend-specific `spec.provider.mode` and the Role's interactive protocol. The root-persistent `--permissions` flag can override the effective value for one invocation. See [ACP permission requests](../guides/acp-permissions.md) for option selection and failure semantics.
+`spec.permissions.mode` accepts exactly `ask`, `allow`, or `deny` and defaults to `ask` when `permissions` is omitted. It is a Role-family runtime policy and is independent of backend-specific `spec.provider.mode` and the interactive protocol. The root-persistent `--permissions` flag can override the effective value for one invocation. See [ACP permission requests](../guides/acp-permissions.md) for option selection and failure semantics.
 
 `callee agent view <agent-id> --json` reports `specDrivenInteractive` and the
 effective whole-tree `interactive` value. Every resolved Role reports the
 spec-driven `authoredInteractive` value, effective `interactive`,
 `authoredPermissions`, and effective `permissions`. A `--permissions` override
 changes only the effective permission and aggregate interactive projection.
+
+## DynamicRole
+
+A `DynamicRole` has the same body, parameters, permissions, interaction,
+composition, artifact, and control contract as Role. Its difference is confined
+to `spec.provider`: `type`, `cmd`, `model`, `reasoning`, `mode`, `timeout`, and
+every `extraArgs` element are Go templates.
+
+Provider templates may read `.Prompt`, `.Input`, `.State`, and `.Params` from
+one coherent visit snapshot. `.Output` and non-deterministic or external helper
+surfaces are unavailable. Callee renders all fields once, validates the
+effective provider using the static Role rules, and only then resolves or starts
+a provider process. A later visit renders again. The authored provider object is
+never mutated or cached as an effective value.
+
+Use [Role](#role) when the provider is statically known. See
+[DynamicRole](../agent-kinds/dynamic-role.md) for a complete example and the
+security implications of state-driven `cmd` and `extraArgs`.
 
 ## Script
 
@@ -268,7 +289,7 @@ children:
 | `canEscalate` | Optional edge authorization for escalation toward the nearest enclosing Loop; defaults to `false`. |
 | `input` | Optional template that replaces natural input for this occurrence. |
 | `state` | Optional shallow state modifier applied when this child node is visited. |
-| `params` | Optional Role parameter bindings; valid only when `ref` resolves directly to a Role. |
+| `params` | Optional provider-backed parameter bindings; valid only when `ref` resolves directly to a Role or DynamicRole. |
 | `route` | Router-only nonblank, whitespace-canonical named route. Exactly one of `route` or `default: true` is required. |
 | `default` | Router-only no-match edge. At most one child may set `default: true`. |
 
@@ -276,7 +297,7 @@ Router children must use mapping form. Named routes are unique and case-sensitiv
 
 Every effective ID must be unique across the complete resolved root tree. An alias changes runtime parameter qualification, state output lookup, and lifecycle identity for that occurrence; it does not change the source resource ID.
 
-Bindings in child `params` must name parameters declared by the referenced Role. They use a restricted template surface without `.Params` or `.Output`, and their rendered values must be nonblank.
+Bindings in child `params` must name parameters declared by the referenced Role or DynamicRole. They use a restricted template surface without `.Params` or `.Output`, and their rendered values must be nonblank.
 
 ### Escalation authorization
 
@@ -361,7 +382,7 @@ spec:
 {{ .Input }}
 ```
 
-Any supported kind except `Human` may appear below Parallel. Descendant Roles always use the one-shot protocol; default or authored `permissions: ask` becomes `allow`, while `deny` remains `deny`. Missing Role parameters and incompatible explicit interactive overrides fail before fan-out.
+Any supported kind except `Human` may appear below Parallel. Descendant Roles and DynamicRoles always use the one-shot protocol; default or authored `permissions: ask` becomes `allow`, while `deny` remains `deny`. Missing provider-backed parameters and incompatible explicit interactive overrides fail before fan-out.
 
 All branches use the root run's live shared state. Each template sees a coherent snapshot, related state entries publish atomically, and a later read may observe a sibling's completed commit. Same-key writes follow actual commit order. Child commits are retained if another branch fails; the failed Parallel does not publish its own output. Natural aggregate JSON and failure diagnostics use authored child order. See [Parallel execution](workflow-semantics.md#parallel-execution) and the runnable [`parallel-review`](../../examples/workflows/parallel-review.md) and [`parallel-then-plan`](../../examples/workflows/parallel-then-plan.md) examples.
 
@@ -414,7 +435,7 @@ Templates use Go `text/template` with `missingkey=zero`. The common data root co
 | `.Prompt` | All authored templates | Immutable original root prompt. |
 | `.Input` | All authored templates | Input for the current node or surface. |
 | `.State` | All authored templates | Shared root-run state snapshot. |
-| `.Params` | Role body, composite body, child input, composite output | Current Role parameters in a Role body; otherwise an empty map. |
+| `.Params` | Role or DynamicRole body, DynamicRole provider, composite body, child input, composite output | Current provider-backed parameters in a Role-family body or DynamicRole provider; otherwise an empty map. |
 | `.Output` | Composite `spec.output` only | Natural artifact produced by the composite's children. |
 
 State string leaves and child parameter bindings use the restricted surface: `.Params` and `.Output` are unavailable. `.Output` is rejected outside composite `spec.output`.

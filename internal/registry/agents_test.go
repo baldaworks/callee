@@ -113,6 +113,44 @@ spec:
 	}
 }
 
+func TestDynamicRoleProjectsRolePolicyAndParameters(t *testing.T) {
+	t.Parallel()
+
+	dynamic := decodeAgent(t, "roles/dynamic", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: DynamicRole
+spec:
+  description: dynamic
+  provider:
+    type: '{{ .State.provider }}'
+  permissions:
+    mode: allow
+  params:
+    model: Model selection
+---
+{{ .Input }}
+`)
+
+	configured, err := NewAgentRegistry([]agent.Resource{dynamic})
+	if err != nil {
+		t.Fatalf("NewAgentRegistry() error: %v", err)
+	}
+
+	root, err := configured.Resolve(dynamic.ID)
+	if err != nil {
+		t.Fatalf("Resolve() error: %v", err)
+	}
+
+	if root.Permissions == nil || root.Permissions.Mode != agent.PermissionModeAllow {
+		t.Errorf("permissions = %+v, want allow", root.Permissions)
+	}
+
+	required := RequiredParams(root)
+	if len(required) != 1 || required[0].Key != "roles/dynamic.model" {
+		t.Errorf("RequiredParams() = %+v, want roles/dynamic.model", required)
+	}
+}
+
 func TestResolveRouterRetainsAllBranchesAndMetadata(t *testing.T) {
 	t.Parallel()
 

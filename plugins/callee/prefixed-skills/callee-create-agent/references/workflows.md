@@ -29,7 +29,7 @@ complete resource object and must include `spec.body` explicitly.
 
 ## Compose the resolved tree
 
-Use only `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`. A workflow child may reference
+Use only `Role`, `DynamicRole`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, and `Router`. A workflow child may reference
 any supported kind, so workflows may nest other workflows. Do not author
 standalone Join or arbitrary graph edges.
 
@@ -46,10 +46,10 @@ Each child accepts `ref` and optional `alias`, `canEscalate`, `input`,
 - Use `state` for shallow top-level state replacements applied before the node
   runs. String leaves are Go templates. Never author the reserved `outputs`,
   `scripts`, or `evaluations` keys.
-- Use child `params` only when that child resolves directly to a `Role` and
-  only for parameters declared by that Role. Bindings are Go templates over
+- Use child `params` only when that child resolves directly to a `Role` or `DynamicRole` and
+  only for parameters declared by that resource. Bindings are Go templates over
   `.Prompt`, `.Input`, and `.State`; they must render nonblank. Leave an
-  unbound Role parameter for the operator to supply at runtime.
+  unbound parameter for the operator to supply at runtime.
 - Permission policy belongs to each referenced Role's `spec.permissions`, not
   to the child edge or composite. Inspect the resolved authored and effective
   policy before running; omission defaults to `ask`. It is independent of the
@@ -73,7 +73,7 @@ stores its response at the top-level key selected by `spec.responseKey`. Use
 
 The template root exposes `.Prompt` for the immutable root user prompt,
 `.Input` for the current node input, and `.State` for shared root-run state.
-`.Params` is meaningful only while rendering a Role body. `.Output` is
+`.Params` is meaningful only while rendering a Role or DynamicRole body or its DynamicRole provider. `.Output` is
 available only in a composite `spec.output` template. Template surfaces use Go
 `text/template` plus Callee's deterministic safe Sprig allowlist.
 
@@ -114,8 +114,8 @@ spec:
 {{ .Input }}
 ```
 
-Keep a child `params` entry only if the referenced Role declares that exact
-parameter. For example, a child Role that declares `spec.params.language` may
+Keep a child `params` entry only if the referenced Role or DynamicRole declares that exact
+parameter. For example, a provider-backed child that declares `spec.params.language` may
 be bound with:
 
 ```yaml

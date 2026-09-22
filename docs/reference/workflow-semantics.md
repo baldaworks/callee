@@ -11,8 +11,8 @@ explicit nonblank `--message`. The run owns:
 - one immutable original prompt;
 - one shared, ephemeral state object initialized with empty `outputs`, `scripts`, and `evaluations` maps;
 - one set of runtime parameter values;
-- reusable ACP provider processes when Roles are reached;
-- fresh provider sessions for individual Role visits.
+- reusable ACP provider processes when Roles or DynamicRoles are reached;
+- fresh provider sessions for individual provider-backed visits.
 
 The run succeeds only when the root produces a nonblank artifact and any
 started provider processes close successfully. Callee writes that artifact
@@ -29,13 +29,13 @@ Every visit follows the same outer sequence:
 3. Render all string leaves against one pre-node state snapshot.
 4. Atomically commit the state modifier.
 5. Execute the kind-specific behavior.
-6. Emit `agent finished` with status, outcome when available, and a Go duration string. Role visits also emit the per-visit fields defined in [Execution metrics](execution-metrics.md).
+6. Emit `agent finished` with status, outcome when available, and a Go duration string. Role and DynamicRole visits also emit the per-visit fields defined in [Execution metrics](execution-metrics.md).
 
 If state rendering fails, no part of that visit's modifier is committed and no provider is started for the node.
 
 ## Role execution
 
-For a Role visit, Callee resolves parameters in sorted name order. A child-edge
+For a Role or DynamicRole visit, Callee resolves parameters in sorted name order. A child-edge
 binding wins; otherwise the runner uses a qualified CLI value. Interactive mode
 prompts on the controlling terminal for a missing value; non-interactive mode
 rejects all missing values during preflight. The completed map is available as
@@ -56,6 +56,19 @@ errors. It does not include Role rendering, process startup, session prepare,
 REPL idle time between turns, or composite execution.
 
 A normal non-REPL response without a control record is treated as a successful artifact when it is nonempty. Explicit control records use the rules below.
+
+## DynamicRole execution
+
+A DynamicRole follows Role execution with one additional boundary. After
+parameters resolve, Callee captures one coherent post-node-state template
+snapshot and renders both the body and every `spec.provider` field from it. The
+effective provider is validated before process lookup, startup, or session
+creation. Template and effective-provider errors therefore start nothing.
+
+The effective configuration is fixed for the complete visit, including later
+REPL turns. A later Loop visit captures current state and renders again. Equal
+effective provider identities can reuse a process; different identities start
+lazily, and every visit still receives a fresh session.
 
 ## Script execution
 
@@ -96,9 +109,9 @@ Without sticky escalation, the natural output is the last child's artifact. An o
 
 ## Parallel execution
 
-A Parallel applies its node state modifier, renders its body, and pre-renders every direct-child input from one coherent state snapshot before starting any child. A child without explicit `input` receives the Parallel local input. The pinned ADK graph fans out all direct children without a concurrency limit and joins every started branch before the Parallel finishes. Nested Role, Script, TypeSafeJev, OpenRouterDecision, Sequential, Loop, Router, and Parallel nodes use their ordinary executors and identities.
+A Parallel applies its node state modifier, renders its body, and pre-renders every direct-child input from one coherent state snapshot before starting any child. A child without explicit `input` receives the Parallel local input. The pinned ADK graph fans out all direct children without a concurrency limit and joins every started branch before the Parallel finishes. Nested Role, DynamicRole, Script, TypeSafeJev, OpenRouterDecision, Sequential, Loop, Router, and Parallel nodes use their ordinary executors and identities.
 
-Parallel is an unattended boundary. `Human` is rejected anywhere in its resolved subtree. Descendant Roles use `interactive=false`; default or authored `permissions: ask` resolves to `allow`, while authored `deny` and explicit whole-run `allow` or `deny` retain their normal precedence. Explicit `--interactive=true`, explicit `--permissions=ask`, and missing unbound Role parameters fail before provider startup.
+Parallel is an unattended boundary. `Human` is rejected anywhere in its resolved subtree. Descendant Roles and DynamicRoles use `interactive=false`; default or authored `permissions: ask` resolves to `allow`, while authored `deny` and explicit whole-run `allow` or `deny` retain their normal precedence. Explicit `--interactive=true`, explicit `--permissions=ask`, and missing unbound provider-backed parameters fail before provider startup.
 
 The root run retains one live shared state. Template reads use coherent point-in-time snapshots and related publications commit atomically. A branch may observe a sibling value after that sibling commits it. Concurrent writes to the same key use actual commit order; no branch merge, conflict diagnostic, or rollback occurs. A branch failure leaves earlier child commits in state but suppresses the Parallel node's own output.
 
@@ -168,7 +181,7 @@ If no escalation occurs before the bound:
 
 ## Artifact promotion
 
-Every successful nonblank Role, Script, Human, TypeSafeJev, or OpenRouterDecision artifact is written to `State.outputs[effectiveId]`. Evaluation leaves also publish their typed result at `State.evaluations[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation and a Router that propagates selected-child escalation also promote their final artifacts before returning the escalation.
+Every successful nonblank Role, DynamicRole, Script, Human, TypeSafeJev, or OpenRouterDecision artifact is written to `State.outputs[effectiveId]`. Evaluation leaves also publish their typed result at `State.evaluations[effectiveId]`. A successfully completed composite promotes its final output under its own effective ID. A Sequential that propagates sticky escalation and a Router that propagates selected-child escalation also promote their final artifacts before returning the escalation.
 
 Failed outcomes are not promoted. Repeated successful visits to the same effective ID replace the previous value.
 
@@ -211,27 +224,27 @@ callee agent run workflows/review \
   --param-file worker.context=./request.md
 ```
 
-Both flags are repeatable. A key may appear only once across both forms. `--param-file` reads the exact file contents and does not accept `-` for stdin. Missing unbound values are requested immediately before the Role visit and cached for later visits to the same effective ID. Blank values are rejected.
+Both flags are repeatable. A key may appear only once across both forms. `--param-file` reads the exact file contents and does not accept `-` for stdin. Missing unbound values are requested immediately before the Role or DynamicRole visit and cached for later visits to the same effective ID. Blank values are rejected.
 
 Use `callee agent view <agent-id>` to inspect the required qualified keys before running.
 
 ## TTY, permissions, and timeouts
 
 `agent run` has two whole-run modes. With an explicit `--interactive` value,
-that value selects the mode and also overrides the Role protocol throughout the
+that value selects the mode and also overrides the Role-family protocol throughout the
 tree. Without the flag, Callee derives the mode after applying any permissions
-override: any interactive Role, effective `ask` policy, or Human node makes the
+override: any interactive Role or DynamicRole, effective `ask` policy, or Human node makes the
 run interactive. Otherwise the run is non-interactive.
 
 Interactive mode opens `/dev/tty` and can collect an omitted message, missing
-Role parameters, Human responses, REPL responses, and ACP permission choices.
+Role-family parameters, Human responses, REPL responses, and ACP permission choices.
 Non-interactive mode never opens `/dev/tty`; before creating a provider it
-requires a nonblank `--message`, every Role parameter, no Human anywhere in the
-resolved tree, no effective `ask` policy, and no effective interactive Role.
+requires a nonblank `--message`, every Role or DynamicRole parameter, no Human anywhere in the
+resolved tree, no effective `ask` policy, and no effective interactive Role or DynamicRole.
 
-When an ACP provider requests permission, Callee applies the current Role
+When an ACP provider requests permission, Callee applies the current Role-family
 visit's effective permission policy. The root-persistent
-`--permissions=ask|allow|deny` flag overrides every Role for that invocation.
+`--permissions=ask|allow|deny` flag overrides every Role and DynamicRole for that invocation.
 The default `ask` policy uses the controlling TTY for an interactive numbered
 selection; `allow` and `deny` select compatible provider options automatically.
 Permissions and the Role protocol are independent: `allow` does not force

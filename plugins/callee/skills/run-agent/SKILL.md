@@ -21,7 +21,7 @@ Resolve a naturally named agent against its exact agent ID or unambiguous descri
 callee agent view "<agent-id>" --json
 ```
 
-The selected ID may identify a `Role`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router`. Treat all kinds as the same run boundary. Do not invent a separate workflow or evaluation command.
+The selected ID may identify a `Role`, `DynamicRole`, `Script`, `Human`, `TypeSafeJev`, `OpenRouterDecision`, `Sequential`, `Parallel`, `Loop`, or `Router`. Treat all kinds as the same run boundary. A DynamicRole renders its provider lazily from visit-time state. Do not invent a separate workflow or evaluation command.
 
 ## Select the execution path
 
@@ -36,7 +36,7 @@ callee --permissions="<ask|allow|deny>" agent view "<agent-id>" --json
 
 Read top-level `specDrivenInteractive` as the authored baseline and top-level
 `interactive` as the effective whole-run mode after the permission override.
-For every Role, inspect `authoredInteractive`, effective `interactive`,
+For every Role and DynamicRole, inspect `authoredInteractive`, effective `interactive`,
 `authoredPermissions`, and effective `permissions`. Keep permissions and the
 Role protocol independent.
 
@@ -119,7 +119,7 @@ For a Parallel, expect descendant Roles to run one-shot with automatic permissio
 Return the final stdout artifact and a concise capability trace. Then read the structured lifecycle events from stderr and include these execution metrics in the final response:
 
 - From the final `agent run finished` event, report `agent_duration`, `agent_wait_duration`, `agent_token_usage`, and every emitted numeric `agent_*_tokens` field.
-- From every Role `agent finished` event, report its effective ID and visit together with `role_provider`, `role_model`, `role_reasoning`, `role_token_usage`, every emitted numeric `role_*_tokens` field, and `role_duration` plus `role_wait_duration` when present.
+- From every Role or DynamicRole `agent finished` event, report its effective ID and visit together with every emitted `role_provider`, `role_model`, `role_reasoning`, `role_token_usage`, numeric `role_*_tokens`, `role_duration`, and `role_wait_duration` field. A DynamicRole failure before provider resolution omits provider-selection fields and reports unavailable token usage.
 - From every TypeSafeJev or OpenRouterDecision `agent finished` event, report its effective ID and visit together with emitted `evaluation_service`, requested and actual model, provider/request ID, attempts, token usage, cost, and error class fields. These are log fields; evaluations do not add run metrics.
 
 Keep repeated and nested visits separate. Preserve `complete`, `partial`, or `unavailable` Role token status and do not invent numeric or duration fields that the event omitted. On failure, report the exit status and any data emitted before termination. Never expose evaluation evidence, questions, answers, credentials, provider session IDs, internal handles, or raw terminal transcripts.

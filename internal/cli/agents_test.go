@@ -516,7 +516,7 @@ func TestAgentSchemaCommandReportsKindErrors(t *testing.T) {
 		{
 			name: "unsupported kind",
 			args: []string{"agent", "schema", "Unknown"},
-			want: `unsupported kind "Unknown" (want Role, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router)`,
+			want: `unsupported kind "Unknown" (want Role, DynamicRole, Script, Human, TypeSafeJev, OpenRouterDecision, Sequential, Parallel, Loop, or Router)`,
 		},
 	}
 
@@ -768,6 +768,70 @@ spec:
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("agent view = %q, want containing %q", stdout.String(), want)
 		}
+	}
+}
+
+func TestAgentListAndViewIncludeDynamicRole(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+
+	writeVersionedAgent(t, dir, "roles/dynamic.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: DynamicRole
+spec:
+  description: Selects a provider at runtime.
+  provider:
+    type: '{{ .State.provider }}'
+    model: '{{ .Params.model }}'
+  params:
+    model: Runtime model.
+  state:
+    provider: codex
+---
+{{ .Input }}
+`)
+
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(context.Background(), []string{"agent", "list", "--kind", "DynamicRole", "--json"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent list exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var catalog agentListOutput
+	if err := json.Unmarshal(stdout.Bytes(), &catalog); err != nil {
+		t.Fatalf("decode agent list: %v", err)
+	}
+
+	if len(catalog.Agents) != 1 || catalog.Agents[0].Kind != agent.DynamicRoleKind {
+		t.Fatalf("DynamicRole catalog = %+v", catalog.Agents)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	if exitCode := Run(context.Background(), []string{"agent", "view", "roles/dynamic"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	for _, want := range []string{"roles/dynamic [DynamicRole]", "provider=runtime", "permissions=ask", "roles/dynamic.model"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("agent view = %q, want containing %q", stdout.String(), want)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	if exitCode := Run(context.Background(), []string{"agent", "view", "roles/dynamic", "--json"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent JSON view exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	var view agentViewOutput
+	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+		t.Fatalf("decode agent view: %v", err)
+	}
+
+	if got := view.Resource.Spec.Provider.Type; got != `{{ .State.provider }}` {
+		t.Errorf("authored provider type = %q, want template", got)
 	}
 }
 

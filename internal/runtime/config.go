@@ -29,7 +29,7 @@ func (p Provider) Type() string {
 
 // ProviderForAgent returns the reusable ACP process configuration for a Role.
 func ProviderForAgent(r resource.Resource) (Provider, error) {
-	if r.Kind != resource.RoleKind || r.Spec.Provider == nil {
+	if !resource.IsRoleKind(r.Kind) || r.Spec.Provider == nil {
 		return Provider{}, fmt.Errorf("agent %q is not a provider-backed Role", r.ID)
 	}
 

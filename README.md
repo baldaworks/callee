@@ -30,10 +30,12 @@ returns one final artifact.
 
 ## Supported agent kinds
 
-All nine public `callee.metalagman.dev/v1alpha1` kinds fit into three groups.
+All ten public `callee.metalagman.dev/v1alpha1` kinds fit into three groups.
 See [Choose an agent kind](docs/agent-kinds/index.md) for the complete chooser.
 
-- **Leaves:** [Role](docs/agent-kinds/role.md) gives a coding agent a task;
+- **Leaves:** [Role](docs/agent-kinds/role.md) gives a coding agent a task with
+  static provider configuration; [DynamicRole](docs/agent-kinds/dynamic-role.md)
+  renders provider configuration from visit-time state;
   [Script](docs/agent-kinds/script.md) runs a deterministic local shell step;
   [Human](docs/agent-kinds/human.md) pauses for one operator response.
 - **Typed evaluators:** [TypeSafeJev](docs/agent-kinds/typesafe-jev.md) is the
@@ -71,8 +73,8 @@ spec:
   output: "{{ .State.outputs.architect }}"
 ```
 
-References resolve before the run starts. Each Role visit gets a fresh model
-session; Scripts run local commands; Human nodes collect an operator response;
+References resolve before the run starts. Each Role or DynamicRole visit gets a
+fresh model session; Scripts run local commands; Human nodes collect an operator response;
 typed evaluation nodes call their own HTTP APIs. Composite nodes only control
 data flow and execution order, so a child can be any resource kind.
 
@@ -101,7 +103,7 @@ $callee Run workflows/investigate to explain this project's architecture and mai
 ```
 
 Provider executables and credentials are separate runtime prerequisites for
-Roles. Scripts and Human nodes need no model provider; TypeSafeJev and
+Roles and DynamicRoles. Scripts and Human nodes need no model provider; TypeSafeJev and
 OpenRouterDecision use their respective HTTP APIs. See the
 [Quickstart](docs/getting-started/quickstart.md) for the complete first run and
 [Installation](docs/getting-started/installation.md) for CLI-only and other

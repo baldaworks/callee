@@ -46,6 +46,7 @@ type roleMetrics struct {
 	duration    time.Duration
 	wait        time.Duration
 	turnStarted bool
+	resolved    bool
 	provider    string
 	model       string
 	reasoning   string
@@ -57,6 +58,7 @@ func newRoleMetrics(provider *agent.Provider) roleMetrics {
 	}
 
 	return roleMetrics{
+		resolved:  true,
 		provider:  strings.TrimSpace(provider.Type),
 		model:     strings.TrimSpace(provider.Model),
 		reasoning: strings.TrimSpace(provider.Reasoning),
