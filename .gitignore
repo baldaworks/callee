@@ -39,3 +39,8 @@ Thumbs.db
 .beads.gate.lock
 tmp/
 temp/
+
+# Local environment files
+.env
+.env.*
+!.env.example
