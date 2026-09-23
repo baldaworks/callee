@@ -835,6 +835,58 @@ spec:
 	}
 }
 
+func TestAgentRunDynamicRoleErrorDoesNotDiscloseRenderedProvider(t *testing.T) {
+	project := isolateAgentRoots(t)
+	dir := filepath.Join(project, ".callee")
+
+	writeVersionedAgent(t, dir, "roles/dynamic.md", `---
+apiVersion: callee.metalagman.dev/v1alpha1
+kind: DynamicRole
+spec:
+  description: Resolves its provider at runtime.
+  provider:
+    type: '{{ .State.provider }}'
+  permissions:
+    mode: allow
+  interactive: false
+  state:
+    provider: private-provider-value
+---
+{{ .Input }}
+`)
+
+	oldOpenTerminal := openTerminal
+	oldFactory := newWorkflowFactory
+
+	t.Cleanup(func() {
+		openTerminal = oldOpenTerminal
+		newWorkflowFactory = oldFactory
+	})
+
+	openTerminal = func() (io.ReadWriteCloser, error) {
+		return &splitTerminal{input: strings.NewReader("")}, nil
+	}
+	starts := 0
+	newWorkflowFactory = func(io.Writer, *terminalInteractor, *workflow.PauseController) runtime.ProcessFactory {
+		return cliTestFactory{process: &cliTestProcess{}, starts: &starts}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{"agent", "run", "roles/dynamic", "--message", "review"}, &stdout, &stderr)
+	if exitCode != exitError {
+		t.Fatalf("agent run exit = %d, want %d; stderr=%q", exitCode, exitError, stderr.String())
+	}
+
+	if starts != 0 {
+		t.Errorf("provider starts = %d, want 0", starts)
+	}
+
+	if !strings.Contains(stderr.String(), "spec.provider.type") || strings.Contains(stderr.String(), "private-provider-value") {
+		t.Errorf("agent run error = %q, want field without rendered value", stderr.String())
+	}
+}
+
 func TestAgentListUsesExclusiveAgentRoot(t *testing.T) {
 	project := isolateAgentRoots(t)
 	defaultDir := filepath.Join(project, ".callee")

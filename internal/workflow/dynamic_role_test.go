@@ -3,11 +3,13 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/baldaworks/callee/internal/agent"
+	"github.com/baldaworks/callee/internal/runtime"
 	"github.com/rs/zerolog"
 )
 
@@ -172,7 +174,7 @@ func TestRunnerDynamicRoleMetricsUseEffectiveProvider(t *testing.T) {
 	_, err := (Runner{
 		Root:    root,
 		Factory: &scriptedFactory{process: process},
-		Params:  map[string]string{"roles/dynamic.model": "model-v2"},
+		Params:  map[string]string{"roles/dynamic.model": "private-model-selection"},
 	}).Run(ctx, "review")
 	if err != nil {
 		t.Fatalf("Runner.Run() error: %v", err)
@@ -192,13 +194,139 @@ func TestRunnerDynamicRoleMetricsUseEffectiveProvider(t *testing.T) {
 
 	for field, want := range map[string]any{
 		"role_provider":    "generic_acp",
-		"role_model":       "model-v2",
-		"role_reasoning":   "high",
+		"role_model":       "redacted",
+		"role_reasoning":   "redacted",
 		"role_token_usage": "unavailable",
 	} {
 		if got := finished[field]; got != want {
 			t.Errorf("%s = %#v, want %#v", field, got, want)
 		}
+	}
+
+	if strings.Contains(output.String(), "private-model-selection") {
+		t.Errorf("lifecycle output disclosed a runtime provider selection: %s", output.String())
+	}
+
+	if got := process.roles[0].Spec.Provider; got.Model != "private-model-selection" || got.Reasoning != "high" {
+		t.Errorf("session received provider selections %#v", got)
+	}
+}
+
+func TestRunnerDynamicRoleMetricsRedactedAfterProviderStartFailure(t *testing.T) {
+	t.Parallel()
+
+	role := dynamicRoleResource(t, "roles/dynamic")
+	root := resolvedRoot(t, role)
+
+	var output bytes.Buffer
+
+	ctx := zerolog.New(&output).WithContext(context.Background())
+
+	_, err := (Runner{
+		Root:    root,
+		Factory: errorFactory{err: context.DeadlineExceeded},
+		Params:  map[string]string{"roles/dynamic.model": "private-model-selection"},
+	}).Run(ctx, "review")
+	if err == nil {
+		t.Fatal("Runner.Run() succeeded with a failing provider factory")
+	}
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Runner.Run() error = %v, want deadline classification", err)
+	}
+
+	if strings.Contains(output.String(), "private-model-selection") {
+		t.Errorf("failed visit disclosed a runtime provider selection: %s", output.String())
+	}
+
+	for _, event := range decodeLifecycleEvents(t, &output) {
+		if event["message"] != "agent finished" || event["kind"] != "DynamicRole" {
+			continue
+		}
+
+		if event["role_provider"] != "generic_acp" || event["role_model"] != "redacted" || event["role_reasoning"] != "redacted" {
+			t.Errorf("failed DynamicRole selections = %#v", event)
+		}
+
+		return
+	}
+
+	t.Fatal("missing DynamicRole finish event")
+}
+
+func TestRunnerDynamicRoleErrorsDoNotDiscloseRuntimeValues(t *testing.T) {
+	t.Parallel()
+
+	const privateValue = "private-provider-value"
+
+	tests := []struct {
+		name    string
+		prepare func(*agent.Resource)
+		factory func() runtime.ProcessFactory
+		field   string
+	}{
+		{
+			name: "normalization",
+			prepare: func(role *agent.Resource) {
+				role.Spec.Provider.Reasoning = "{{ .State.private }}"
+				role.Spec.State["private"] = privateValue
+			},
+			field: "spec.provider",
+		},
+		{
+			name: "startup",
+			prepare: func(role *agent.Resource) {
+				role.Spec.Provider.Model = "{{ .State.private }}"
+				role.Spec.State["private"] = privateValue
+			},
+			factory: func() runtime.ProcessFactory {
+				return errorFactory{err: errors.New("failed to start " + privateValue)}
+			},
+			field: "spec.provider",
+		},
+		{
+			name: "session",
+			prepare: func(role *agent.Resource) {
+				role.Spec.Provider.Model = "{{ .State.private }}"
+				role.Spec.State["private"] = privateValue
+			},
+			factory: func() runtime.ProcessFactory {
+				return &scriptedFactory{process: &scriptedProcess{prepareErr: errors.New("failed to prepare " + privateValue)}}
+			},
+			field: "spec.provider",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			role := dynamicRoleResource(t, "roles/dynamic")
+			test.prepare(&role)
+			root := resolvedRoot(t, role)
+			defaultFactory := &scriptedFactory{process: &scriptedProcess{}}
+
+			var factory runtime.ProcessFactory = defaultFactory
+			if test.factory != nil {
+				factory = test.factory()
+			}
+
+			_, err := (Runner{
+				Root: root, Factory: factory,
+				Params: map[string]string{"roles/dynamic.model": "model-v2"},
+			}).Run(context.Background(), "review")
+			if err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("Runner.Run() error = %v, want %s", err, test.field)
+			}
+
+			if strings.Contains(err.Error(), privateValue) {
+				t.Errorf("Runner.Run() disclosed runtime provider value: %v", err)
+			}
+
+			if test.name == "normalization" && defaultFactory.starts != 0 {
+				t.Errorf("provider starts = %d, want 0 for invalid configuration", defaultFactory.starts)
+			}
+		})
 	}
 }
 

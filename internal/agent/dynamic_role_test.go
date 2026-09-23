@@ -147,6 +147,42 @@ func TestDynamicRoleRejectsInvalidRenderedProvider(t *testing.T) {
 	}
 }
 
+func TestDynamicRoleErrorsDoNotDiscloseRenderedProviderValues(t *testing.T) {
+	t.Parallel()
+
+	const privateValue = "private-provider-value"
+
+	tests := []struct {
+		name  string
+		field string
+		set   func(*Provider)
+	}{
+		{name: "type", field: "spec.provider.type", set: func(provider *Provider) { provider.Type = "{{ .State.private }}" }},
+		{name: "timeout", field: "spec.provider.timeout", set: func(provider *Provider) { provider.Timeout = "{{ .State.private }}" }},
+		{name: "render", field: "spec.provider.model", set: func(provider *Provider) { provider.Model = "{{ fail .State.private }}" }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			resource := validDynamicRole()
+			test.set(resource.Spec.Provider)
+
+			_, err := resource.RenderDynamicProvider(TemplateData{State: map[string]any{
+				"provider": "generic_acp", "cmd": "agent", "arg": "ok", "timeout": "1s", "private": privateValue,
+			}})
+			if err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("RenderDynamicProvider() error = %v, want %s", err, test.field)
+			}
+
+			if strings.Contains(err.Error(), privateValue) {
+				t.Errorf("RenderDynamicProvider() disclosed rendered value: %v", err)
+			}
+		})
+	}
+}
+
 func TestRoleProviderRemainsStatic(t *testing.T) {
 	t.Parallel()
 

@@ -301,10 +301,15 @@ func writeLifecycleFinish(
 
 	if includeRoleMetrics {
 		if result.roleMetrics.resolved {
+			model, reasoning := roleConfigurationValue(result.roleMetrics.model), roleConfigurationValue(result.roleMetrics.reasoning)
+			if result.roleMetrics.redactSelections {
+				model, reasoning = "redacted", "redacted"
+			}
+
 			event = event.
 				Str("role_provider", result.roleMetrics.provider).
-				Str("role_model", roleConfigurationValue(result.roleMetrics.model)).
-				Str("role_reasoning", roleConfigurationValue(result.roleMetrics.reasoning))
+				Str("role_model", model).
+				Str("role_reasoning", reasoning)
 		}
 
 		event = appendUsageMetrics(event, "role", result.roleMetrics.usage)
@@ -425,14 +430,23 @@ func (r *runState) role(
 	}
 
 	result.roleMetrics = newRoleMetrics(effective.Spec.Provider)
+	result.roleMetrics.redactSelections = node.Kind == agent.DynamicRoleKind
 
 	provider, err := runtime.ProviderForAgent(effective)
 	if err != nil {
+		if node.Kind == agent.DynamicRoleKind {
+			return result, dynamicProviderError(node.EffectiveID, "runtime configuration rejected", err)
+		}
+
 		return result, err
 	}
 
 	process, err := r.process(ctx, effective, provider)
 	if err != nil {
+		if node.Kind == agent.DynamicRoleKind {
+			return result, dynamicProviderError(node.EffectiveID, "process startup failed", err)
+		}
+
 		return result, err
 	}
 
@@ -442,6 +456,10 @@ func (r *runState) role(
 	}
 
 	if err != nil {
+		if node.Kind == agent.DynamicRoleKind {
+			return result, dynamicProviderError(node.EffectiveID, "session setup failed", err)
+		}
+
 		return result, fmt.Errorf("agent %q: %w", node.EffectiveID, err)
 	}
 
@@ -472,6 +490,17 @@ func (r *runState) role(
 	}()
 
 	return r.runRoleTurns(ctx, node, session, turnInput, turnCtx, cancelTurn, providerTimeout, interactive, result)
+}
+
+func dynamicProviderError(id, stage string, err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("agent %q: spec.provider %s: %w", id, stage, context.Canceled)
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("agent %q: spec.provider %s: %w", id, stage, context.DeadlineExceeded)
+	default:
+		return fmt.Errorf("agent %q: spec.provider %s", id, stage)
+	}
 }
 
 func (r *runState) roleInteractive(node *registry.ResolvedNode) bool {

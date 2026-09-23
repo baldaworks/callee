@@ -56,7 +56,7 @@ func (r Resource) RenderDynamicProvider(data TemplateData) (Resource, error) {
 	effective := r
 	effective.Spec.Provider = &provider
 
-	if err := effective.validateConcreteProvider(); err != nil {
+	if err := effective.validateConcreteProviderWithDiagnostics(true); err != nil {
 		return Resource{}, err
 	}
 
@@ -103,5 +103,10 @@ func renderDynamicProviderField(name, source string, data TemplateData) (string,
 		return "", err
 	}
 
-	return RenderTemplate(parsed, data)
+	value, err := RenderTemplate(parsed, data)
+	if err != nil {
+		return "", fmt.Errorf("render %s: template execution failed", name)
+	}
+
+	return value, nil
 }

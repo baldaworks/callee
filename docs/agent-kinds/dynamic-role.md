@@ -48,6 +48,7 @@ process, but every visit still creates a fresh session.
 Rendering or effective-provider validation errors fail the visit before a
 provider starts. `cmd` remains one executable name and `extraArgs` remains an
 ordered argument vector; Callee never parses either as a shell command.
+Errors identify the provider field without printing the rendered value.
 
 ## Inspection and security
 
@@ -56,6 +57,11 @@ the authored templates. Plain `callee doctor` validates the resource, template,
 and graph but reports provider readiness as deferred because runtime state is
 not available. The selected executable is checked only when the node is
 reached.
+
+After provider rendering, lifecycle events report the validated provider type
+and `redacted` for `role_model` and `role_reasoning`; the actual selections still
+reach the provider session. Before rendering succeeds, those three fields are
+omitted. Provider setup errors also avoid echoing rendered configuration.
 
 Do not route untrusted model-produced state directly into `cmd` or
 `extraArgs`. Constrain those values through authored template branches or use a

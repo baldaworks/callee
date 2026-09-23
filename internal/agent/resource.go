@@ -663,12 +663,20 @@ func (r Resource) validateDynamicRole() error {
 }
 
 func (r Resource) validateConcreteProvider() error {
+	return r.validateConcreteProviderWithDiagnostics(false)
+}
+
+func (r Resource) validateConcreteProviderWithDiagnostics(redactValues bool) error {
 	provider := r.Spec.Provider
 	if provider == nil {
 		return fmt.Errorf("agent %q: missing spec.provider", r.ID)
 	}
 
 	if _, ok := RuntimeType(provider.Type); !ok {
+		if redactValues {
+			return fmt.Errorf("agent %q: unsupported spec.provider.type", r.ID)
+		}
+
 		return fmt.Errorf("agent %q: unsupported spec.provider.type %q", r.ID, provider.Type)
 	}
 
@@ -691,6 +699,10 @@ func (r Resource) validateConcreteProvider() error {
 	if provider.Timeout != "" {
 		timeout, err := time.ParseDuration(provider.Timeout)
 		if err != nil {
+			if redactValues {
+				return fmt.Errorf("agent %q: spec.provider.timeout must be a valid duration", r.ID)
+			}
+
 			return fmt.Errorf("agent %q: spec.provider.timeout %q: %w", r.ID, provider.Timeout, err)
 		}
 
