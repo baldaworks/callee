@@ -301,15 +301,10 @@ func writeLifecycleFinish(
 
 	if includeRoleMetrics {
 		if result.roleMetrics.resolved {
-			model, reasoning := roleConfigurationValue(result.roleMetrics.model), roleConfigurationValue(result.roleMetrics.reasoning)
-			if result.roleMetrics.redactSelections {
-				model, reasoning = "redacted", "redacted"
-			}
-
 			event = event.
 				Str("role_provider", result.roleMetrics.provider).
-				Str("role_model", model).
-				Str("role_reasoning", reasoning)
+				Str("role_model", roleConfigurationValue(result.roleMetrics.model)).
+				Str("role_reasoning", roleConfigurationValue(result.roleMetrics.reasoning))
 		}
 
 		event = appendUsageMetrics(event, "role", result.roleMetrics.usage)
@@ -430,7 +425,6 @@ func (r *runState) role(
 	}
 
 	result.roleMetrics = newRoleMetrics(effective.Spec.Provider)
-	result.roleMetrics.redactSelections = node.Kind == agent.DynamicRoleKind
 
 	provider, err := runtime.ProviderForAgent(effective)
 	if err != nil {

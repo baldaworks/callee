@@ -59,9 +59,9 @@ not available. The selected executable is checked only when the node is
 reached.
 
 After provider rendering, lifecycle events report the validated provider type
-and `redacted` for `role_model` and `role_reasoning`; the actual selections still
-reach the provider session. Before rendering succeeds, those three fields are
-omitted. Provider setup errors also avoid echoing rendered configuration.
+and effective `role_model` and `role_reasoning` selections. Before rendering
+succeeds, those three fields are omitted. Provider setup errors avoid echoing
+rendered configuration in the error message.
 
 Do not route untrusted model-produced state directly into `cmd` or
 `extraArgs`. Constrain those values through authored template branches or use a

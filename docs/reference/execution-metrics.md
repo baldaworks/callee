@@ -58,20 +58,18 @@ Automatic `allow` and `deny` permission decisions do not prompt and add no wait.
 
 ## Provider-selection fields
 
-Every successfully resolved Role-family `agent finished` event reports provider-selection fields. Static Roles report their effective selections; DynamicRoles redact model and reasoning because provider templates can read run input and state:
+Every successfully resolved Role-family `agent finished` event reports its effective provider selections:
 
 | Field | Meaning |
 | --- | --- |
 | `role_provider` | The visit's validated public provider type, such as `codex` or `generic_acp`. This value comes from the effective resource, not ACP session configuration. |
-| `role_model` | For a static Role, the latest concrete model selection observed in ACP session configuration during preparation or a turn; otherwise its explicit `spec.provider.model`. For a resolved DynamicRole, `redacted`. |
-| `role_reasoning` | For a static Role, the latest concrete reasoning selection observed in ACP session configuration during preparation or a turn; otherwise its explicit `spec.provider.reasoning`. For a resolved DynamicRole, `redacted`. ACP providers can report this selection as `reasoning`, `reasoning_effort`, or `thought_level`. |
+| `role_model` | The latest concrete model selection observed in ACP session configuration during preparation or a turn; otherwise the effective `spec.provider.model`. |
+| `role_reasoning` | The latest concrete reasoning selection observed in ACP session configuration during preparation or a turn; otherwise the effective `spec.provider.reasoning`. ACP providers can report this selection as `reasoning`, `reasoning_effort`, or `thought_level`. |
 
-Callee resolves static Role model and reasoning independently. For each field, the latest concrete ACP value wins over the authored resource value. If ACP does not report a concrete value, the static selection remains the fallback. Only when neither source supplies a concrete value does Callee emit `backend-default`. This marker does not identify or make a claim about the backend's private default. `role_provider` is always the validated effective provider type and does not use the marker.
+Callee resolves Role model and reasoning independently. For each field, the latest concrete ACP value wins over the effective resource value (rendered at runtime for a DynamicRole). If ACP does not report a concrete value, the effective selection remains the fallback. Only when neither source supplies a concrete value does Callee emit `backend-default`. This marker does not identify or make a claim about the backend's private default. `role_provider` is always the validated effective provider type and does not use the marker.
 
-These three fields are present even when a static Role fails before its first
-provider turn. A DynamicRole reports the validated provider type after provider
-rendering succeeds, but always reports `redacted` for model and reasoning,
-including after session configuration changes or a startup failure. If rendering
+These three fields are present even when a Role fails before its first provider
+turn, once its effective provider has been resolved. If DynamicRole rendering
 or validation fails before an effective provider exists, its event omits all
 three fields. It still reports `role_token_usage=unavailable`.
 Root and nested provider-backed leaves use the same resolution rules. Other

@@ -42,15 +42,14 @@ func (m *RunMetrics) add(usage runtime.UsageMetrics) {
 }
 
 type roleMetrics struct {
-	usage            runtime.UsageMetrics
-	duration         time.Duration
-	wait             time.Duration
-	turnStarted      bool
-	resolved         bool
-	redactSelections bool
-	provider         string
-	model            string
-	reasoning        string
+	usage       runtime.UsageMetrics
+	duration    time.Duration
+	wait        time.Duration
+	turnStarted bool
+	resolved    bool
+	provider    string
+	model       string
+	reasoning   string
 }
 
 func newRoleMetrics(provider *agent.Provider) roleMetrics {

@@ -194,8 +194,8 @@ func TestRunnerDynamicRoleMetricsUseEffectiveProvider(t *testing.T) {
 
 	for field, want := range map[string]any{
 		"role_provider":    "generic_acp",
-		"role_model":       "redacted",
-		"role_reasoning":   "redacted",
+		"role_model":       "private-model-selection",
+		"role_reasoning":   "high",
 		"role_token_usage": "unavailable",
 	} {
 		if got := finished[field]; got != want {
@@ -203,16 +203,12 @@ func TestRunnerDynamicRoleMetricsUseEffectiveProvider(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(output.String(), "private-model-selection") {
-		t.Errorf("lifecycle output disclosed a runtime provider selection: %s", output.String())
-	}
-
 	if got := process.roles[0].Spec.Provider; got.Model != "private-model-selection" || got.Reasoning != "high" {
 		t.Errorf("session received provider selections %#v", got)
 	}
 }
 
-func TestRunnerDynamicRoleMetricsRedactedAfterProviderStartFailure(t *testing.T) {
+func TestRunnerDynamicRoleMetricsUseEffectiveProviderAfterStartFailure(t *testing.T) {
 	t.Parallel()
 
 	role := dynamicRoleResource(t, "roles/dynamic")
@@ -235,16 +231,12 @@ func TestRunnerDynamicRoleMetricsRedactedAfterProviderStartFailure(t *testing.T)
 		t.Errorf("Runner.Run() error = %v, want deadline classification", err)
 	}
 
-	if strings.Contains(output.String(), "private-model-selection") {
-		t.Errorf("failed visit disclosed a runtime provider selection: %s", output.String())
-	}
-
 	for _, event := range decodeLifecycleEvents(t, &output) {
 		if event["message"] != "agent finished" || event["kind"] != "DynamicRole" {
 			continue
 		}
 
-		if event["role_provider"] != "generic_acp" || event["role_model"] != "redacted" || event["role_reasoning"] != "redacted" {
+		if event["role_provider"] != "generic_acp" || event["role_model"] != "private-model-selection" || event["role_reasoning"] != "high" {
 			t.Errorf("failed DynamicRole selections = %#v", event)
 		}
 
