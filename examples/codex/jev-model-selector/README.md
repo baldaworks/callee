@@ -15,6 +15,58 @@ The workflow reads the selected value from
 default model so it also validates and runs independently; the workflow's child
 state replaces that default before provider rendering.
 
+## Workflow diagrams
+
+The Sequential workflow selects a model first, then reviews the original
+request with that model:
+
+```mermaid
+flowchart TD
+    request["Original review request"]
+    subgraph workflow["Sequential: workflows/review"]
+        selector["TypeSafeJev: model_selector"]
+        choice["Validated Choice:<br/>gpt-5.6-luna / gpt-5.6-terra / gpt-5.6-sol"]
+        model["Reviewer child state:<br/>.State.model = selected Choice"]
+        reviewer["DynamicRole: reviewer<br/>Codex model = .State.model"]
+        output["Workflow output:<br/>selected model + review findings"]
+        selector --> choice --> model --> reviewer --> output
+    end
+    request --> selector
+    request -->|"Original prompt as reviewer input"| reviewer
+```
+
+The selected Choice is published in the root run's shared state. The reviewer
+child state overrides the role's default model before the provider is rendered
+and validated. Each reviewer visit then creates a fresh Codex session through
+Norma Runtime:
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Workflow as Sequential workflow
+    participant Jev as TypeSafe Jev API
+    participant State as Shared state
+    participant Reviewer as DynamicRole reviewer
+    participant Norma as Norma Runtime
+    participant Codex as Codex ACP provider
+
+    User->>Workflow: Original review request
+    Workflow->>Jev: Evaluate request evidence and model Choice question
+    Jev-->>Workflow: Model Choice
+    Workflow->>State: Publish validated evaluations.model_selector.answers.model.choice
+    Workflow->>Reviewer: Visit with original prompt as input
+    Reviewer->>State: Commit merged role and child state with selected Choice as model
+    State-->>Reviewer: Visit-time snapshot with selected model
+    Reviewer->>Reviewer: Render body and provider.model, then validate provider
+    Reviewer->>Norma: Resolve provider and prepare fresh session with selected model
+    Norma->>Codex: Create session and submit review prompt
+    Codex-->>Norma: Review findings
+    Norma-->>Reviewer: Review artifact
+    Reviewer->>State: Publish outputs.reviewer
+    Workflow->>State: Read selected Choice and reviewer output
+    Workflow-->>User: Selected model + review findings
+```
+
 ## Validate and inspect the pack
 
 From the repository root:
