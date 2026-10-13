@@ -527,11 +527,22 @@ func TestStarterAgentAssetsMatchExamples(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		examplePath := filepath.Join("..", "..", "examples", strings.TrimPrefix(file.source, starterAssetRoot))
+		relative := strings.TrimPrefix(file.source, starterAssetRoot)
+		switch relative {
+		case "workflows/goalkeeper.md", "roles/implementer.md", "roles/reviewer.md":
+			relative = "goalkeeper/" + relative
+		}
+
+		examplePath := filepath.Join("..", "..", "examples", relative)
 
 		got, err := os.ReadFile(examplePath)
 		if err != nil {
 			t.Fatal(err)
+		}
+
+		// The pack uses namespaced references; setup installs at the catalog root.
+		if relative == "goalkeeper/workflows/goalkeeper.md" {
+			want = bytes.ReplaceAll(want, []byte("ref: roles/"), []byte("ref: goalkeeper/roles/"))
 		}
 
 		if !bytes.Equal(got, want) {
@@ -550,7 +561,7 @@ func TestCheckedInExamplesFormValidAgentRegistry(t *testing.T) {
 	}
 
 	assertStarterWorkflowTree(t, configured, "workflows/investigate", agent.SequentialKind, []string{"explorer", "architect"})
-	assertStarterWorkflowTree(t, configured, "workflows/goalkeeper", agent.LoopKind, []string{"worker", "validator"})
+	assertStarterWorkflowTree(t, configured, "goalkeeper/workflows/goalkeeper", agent.LoopKind, []string{"worker", "validator"})
 	assertStarterWorkflowTree(t, configured, "workflows/task-router", agent.RouterKind, []string{"routed_implementer", "routed_reviewer", "routed_generalist"})
 	assertStarterWorkflowTree(t, configured, "workflows/routed-task", agent.SequentialKind, []string{"classifier", "router"})
 	assertStarterWorkflowTree(t, configured, "evaluations/typesafe-triage", agent.SequentialKind, []string{"triage", "recommendation"})

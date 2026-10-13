@@ -158,6 +158,58 @@ spec:
 	}
 }
 
+func TestAgentImportCommandImportsSelfContainedGoalkeeperPack(t *testing.T) {
+	// Use the actual pack so missing bundled Roles or external references fail.
+	repo, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	project := isolateAgentRoots(t)
+	stubCloneAgentImportRepository(t, repo, nil)
+
+	var stdout, stderr bytes.Buffer
+
+	exitCode := Run(context.Background(), []string{
+		"agent", "import", "https://example.invalid/repo.git",
+		"--path", "examples/goalkeeper", "--prefix", "goalkeeper",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("agent import exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+
+	configured, err := registry.LoadAgents(registry.AgentLoadOptions{
+		ExclusiveDir: filepath.Join(project, defaultProjectAgentDir),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantIDs := []string{
+		"goalkeeper/roles/implementer",
+		"goalkeeper/roles/reviewer",
+		"goalkeeper/workflows/goalkeeper",
+	}
+	if got := configured.IDs(); fmt.Sprint(got) != fmt.Sprint(wantIDs) {
+		t.Fatalf("imported IDs = %v, want %v", got, wantIDs)
+	}
+
+	root, err := configured.Resolve("goalkeeper/workflows/goalkeeper")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if root.Kind != agent.LoopKind || len(root.Children) != 2 {
+		t.Fatalf("imported workflow kind = %s, children = %d", root.Kind, len(root.Children))
+	}
+
+	for index, want := range wantIDs[:2] {
+		if got := root.Children[index].ResourceID; got != want {
+			t.Errorf("child %d resource = %q, want %q", index, got, want)
+		}
+	}
+}
+
 func TestAgentImportCommandRejectsMalformedResourceDocument(t *testing.T) {
 	project := isolateAgentRoots(t)
 	repo := writeImportRepository(t, map[string]string{

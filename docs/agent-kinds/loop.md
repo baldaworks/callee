@@ -51,12 +51,12 @@ continues; `callee.control.v1.fail` never requests another iteration.
 ## Inspect and run
 
 ```bash
-callee --agent-root examples agent view workflows/goalkeeper --json
-callee --agent-root examples agent run workflows/goalkeeper \
+callee --agent-root examples agent view goalkeeper/workflows/goalkeeper --json
+callee --agent-root examples agent run goalkeeper/workflows/goalkeeper \
   --message "Implement and validate the requested change"
 ```
 
-Use the runnable [goalkeeper workflow](../../examples/workflows/goalkeeper.md).
+Use the self-contained [GoalKeeper pack](../../examples/goalkeeper/README.md).
 See [edge authorization](../reference/agent-resources.md#escalation-authorization),
 [Loop fields](../reference/agent-resources.md#loop), and
 [Loop execution](../reference/workflow-semantics.md#loop-execution).

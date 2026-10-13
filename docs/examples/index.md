@@ -8,6 +8,7 @@ workflow without inventing a schema from scratch. Examples use the current
 
 | Example | What it demonstrates |
 | --- | --- |
+| [GoalKeeper](../../examples/goalkeeper/README.md) | A self-contained worker/validator Loop with bundled implementation and review Roles. |
 | [Codex Sol + Luna](../../examples/codex/sol-luna/README.md) | A plan-then-implement workflow with explicit model and reasoning choices. |
 | [Jev model selector](../../examples/codex/jev-model-selector/README.md) | A self-contained TypeSafe Jev → DynamicRole pack with visit-time Codex model selection. |
 | [OpenCode rejudge](../../examples/opencode/rejudge/README.md) | A repository-authored multi-reviewer panel and diff-focused variant. |
@@ -18,7 +19,6 @@ workflow without inventing a schema from scratch. Examples use the current
 - [Reviewer Role](../../examples/roles/reviewer.md)
 - [Dynamic reviewer](../../examples/roles/dynamic-reviewer.md)
 - [Investigate Sequential](../../examples/workflows/investigate.md)
-- [GoalKeeper Loop](../../examples/workflows/goalkeeper.md)
 - [Parallel review](../../examples/workflows/parallel-review.md)
 - [Task Router](../../examples/workflows/task-router.md)
 - [Routed task composition](../../examples/workflows/routed-task.md)

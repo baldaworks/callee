@@ -397,7 +397,7 @@ spec:
   onExhausted: fail
 ```
 
-`onExhausted` defaults to `fail`; set it to `complete` only when the last natural child artifact is a valid successful result. A Loop consumes escalation from eligible descendants according to the rules in [Loop execution](workflow-semantics.md#loop-execution). The complete runnable example is [`examples/workflows/goalkeeper.md`](../../examples/workflows/goalkeeper.md).
+`onExhausted` defaults to `fail`; set it to `complete` only when the last natural child artifact is a valid successful result. A Loop consumes escalation from eligible descendants according to the rules in [Loop execution](workflow-semantics.md#loop-execution). The complete runnable example is [`examples/goalkeeper/workflows/goalkeeper.md`](../../examples/goalkeeper/workflows/goalkeeper.md).
 
 ## Router
 

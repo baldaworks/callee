@@ -4,7 +4,7 @@ kind: Loop
 spec:
   description: Repeats a worker and validator until the validator escalates.
   children:
-    - ref: roles/implementer
+    - ref: goalkeeper/roles/implementer
       alias: worker
       input: |
         Goal:
@@ -14,7 +14,7 @@ spec:
         Previous validation:
         {{ . }}
         {{ end }}
-    - ref: roles/reviewer
+    - ref: goalkeeper/roles/reviewer
       alias: validator
       canEscalate: true
       input: |

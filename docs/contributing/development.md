@@ -55,7 +55,7 @@ go run ./cmd/callee agent run --help
 # Validate checked-in examples through the CLI.
 go run ./cmd/callee agent validate examples/roles/reviewer.md
 go run ./cmd/callee agent validate examples/roles/dynamic-reviewer.md
-go run ./cmd/callee agent validate examples/workflows/goalkeeper.md
+go run ./cmd/callee agent validate examples/goalkeeper/workflows/goalkeeper.md
 go run ./cmd/callee agent validate examples/workflows/task-router.md
 go run ./cmd/callee agent validate examples/opencode/rejudge/workflows/rejudge.md
 go run ./cmd/callee agent validate examples/opencode/rejudge/workflows/rejudge-diff.md
