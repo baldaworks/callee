@@ -454,6 +454,7 @@ func TestPublicMetadataUsesAgentPositioning(t *testing.T) {
 
 func TestAgentPluginsManifestSupportsMarketplaceInstallation(t *testing.T) {
 	const manifestPath = "plugin.json"
+
 	manifest := readJSONObject(t, manifestPath)
 	assertJSONFields(t, manifestPath, manifest, []string{
 		"$schema",
