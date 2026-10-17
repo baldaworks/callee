@@ -402,6 +402,7 @@ func TestCodexSkillMetadataUsesPublicNames(t *testing.T) {
 func TestPublicMetadataUsesAgentPositioning(t *testing.T) {
 	for path, want := range map[string]string{
 		filepath.Join("..", "..", "README.md"):                             "## Put repeatable agent work in the repository",
+		"plugin.json":                                                       "Run Markdown-defined agents and deterministic workflows.",
 		filepath.Join(".claude-plugin", "plugin.json"):                     "Run Markdown-defined agents and deterministic workflows.",
 		filepath.Join(".codex-plugin", "plugin.json"):                      "Markdown agents and deterministic workflows.",
 		filepath.Join(".cursor-plugin", "plugin.json"):                     "Run Markdown-defined agents and deterministic workflows.",
@@ -424,6 +425,7 @@ func TestPublicMetadataUsesAgentPositioning(t *testing.T) {
 
 	for _, path := range []string{
 		filepath.Join("..", "..", "README.md"),
+		"plugin.json",
 		filepath.Join(".claude-plugin", "plugin.json"),
 		filepath.Join(".codex-plugin", "plugin.json"),
 		filepath.Join(".cursor-plugin", "plugin.json"),
@@ -448,6 +450,25 @@ func TestPublicMetadataUsesAgentPositioning(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestAgentPluginsManifestSupportsMarketplaceInstallation(t *testing.T) {
+	const manifestPath = "plugin.json"
+	manifest := readJSONObject(t, manifestPath)
+	assertJSONFields(t, manifestPath, manifest, []string{
+		"$schema",
+		"name",
+		"version",
+		"description",
+		"author",
+		"homepage",
+		"repository",
+		"license",
+		"keywords",
+	})
+	assertJSONString(t, manifestPath, manifest, "$schema", "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json")
+	assertJSONString(t, manifestPath, manifest, "name", "callee")
+	assertJSONString(t, manifestPath, manifest, "version", releaseVersion)
 }
 
 func TestCursorManifestsUseSupportedFields(t *testing.T) {
@@ -877,6 +898,7 @@ func TestDistributionMetadataMatchesRelease(t *testing.T) {
 		filepath.Join("..", "..", ".claude-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".grok-plugin", "marketplace.json"),
 		filepath.Join("..", "..", ".github", "plugin", "marketplace.json"),
+		"plugin.json",
 		filepath.Join(".claude-plugin", "plugin.json"),
 		filepath.Join(".codex-plugin", "plugin.json"),
 		filepath.Join(".cursor-plugin", "plugin.json"),

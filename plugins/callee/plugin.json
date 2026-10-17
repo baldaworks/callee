@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "callee",
+  "version": "0.22.1",
+  "description": "Run Markdown-defined agents and deterministic workflows.",
+  "author": {
+    "name": "Alexey Samoylov",
+    "url": "https://github.com/metalagman"
+  },
+  "homepage": "https://github.com/baldaworks/callee",
+  "repository": "https://github.com/baldaworks/callee",
+  "license": "MIT",
+  "keywords": ["markdown", "agents", "workflows", "cli", "acp"]
+}
